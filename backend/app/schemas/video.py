@@ -9,6 +9,9 @@ class VideoBase(BaseModel):
     is_short: bool = False
     width: int = 1024
     height: int = 1792
+    youtube_title: Optional[str] = None
+    youtube_description: Optional[str] = None
+    youtube_tags: Optional[str] = None
 
 class VideoCreate(VideoBase):
     pass

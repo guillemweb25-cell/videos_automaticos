@@ -113,23 +113,10 @@ async def get_video_metadata(
     if not video:
         raise HTTPException(status_code=404, detail="Vídeo no encontrado")
         
-    base_dir = Path(video.base_dir)
-    seo_path = base_dir / "seo" / "metadata.json"
-    
-    if not seo_path.exists():
-        # Initialize if not exists
-        return {
-            "title": video.title,
-            "description": "",
-            "tags": "",
-            "thumbnail_url": f"/videos/{video.id}/thumbnail.png"
-        }
-    
-    data = json.loads(seo_path.read_text())
     return {
-        "title": data.get("title", video.title),
-        "description": data.get("description", ""),
-        "tags": data.get("tags", ""),
+        "title": video.youtube_title or video.title,
+        "description": video.youtube_description or "",
+        "tags": video.youtube_tags or "",
         "thumbnail_url": f"/videos/{video.id}/thumbnail.png"
     }
 
@@ -156,7 +143,17 @@ async def upload_video_to_youtube(
     try:
         metadata = req.dict()
         response = service.upload_video(video_path, metadata)
-        return {"status": "success", "youtube_id": response.get("id")}
+        youtube_id = response.get("id")
+        
+        # Upload thumbnail if exists
+        thumb_path = Path(video.base_dir) / "output" / "thumbnail.png"
+        if thumb_path.exists() and youtube_id:
+            try:
+                service.set_thumbnail(youtube_id, thumb_path)
+            except Exception as e:
+                print(f"Error uploading thumbnail: {e}")
+                
+        return {"status": "success", "youtube_id": youtube_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -180,6 +177,23 @@ async def regenerate_youtube_title(
     
     seo = SEOEngine()
     title = seo.generate_video_title(script_snippet)
+    
+    # Save to DB
+    video.youtube_title = title
+    db.commit()
+    
+    # Also update JSON for backward compatibility/reference
+    base_dir = Path(video.base_dir)
+    seo_dir = base_dir / "seo"
+    seo_dir.mkdir(parents=True, exist_ok=True)
+    seo_path = seo_dir / "metadata.json"
+    
+    data = {}
+    if seo_path.exists():
+        data = json.loads(seo_path.read_text())
+    data["title"] = title
+    seo_path.write_text(json.dumps(data, indent=4))
+    
     return {"title": title}
 
 @router.post("/{video_id}/regenerate/description")
@@ -202,6 +216,23 @@ async def regenerate_youtube_description(
     
     seo = SEOEngine()
     description = seo.generate_description(script_snippet[:4000])
+    
+    # Save to DB
+    video.youtube_description = description
+    db.commit()
+    
+    # Also update JSON
+    base_dir = Path(video.base_dir)
+    seo_dir = base_dir / "seo"
+    seo_dir.mkdir(parents=True, exist_ok=True)
+    seo_path = seo_dir / "metadata.json"
+    
+    data = {}
+    if seo_path.exists():
+        data = json.loads(seo_path.read_text())
+    data["description"] = description
+    seo_path.write_text(json.dumps(data, indent=4))
+    
     return {"description": description}
 
 @router.post("/{video_id}/regenerate/tags")
@@ -224,4 +255,21 @@ async def regenerate_youtube_tags(
     
     seo = SEOEngine()
     tags = seo.generate_video_questions_tags(script_snippet[:4000])
+    
+    # Save to DB
+    video.youtube_tags = tags
+    db.commit()
+    
+    # Also update JSON
+    base_dir = Path(video.base_dir)
+    seo_dir = base_dir / "seo"
+    seo_dir.mkdir(parents=True, exist_ok=True)
+    seo_path = seo_dir / "metadata.json"
+    
+    data = {}
+    if seo_path.exists():
+        data = json.loads(seo_path.read_text())
+    data["tags"] = tags
+    seo_path.write_text(json.dumps(data, indent=4))
+    
     return {"tags": tags}

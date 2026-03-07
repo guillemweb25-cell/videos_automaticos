@@ -17,6 +17,12 @@ class Video(Base):
     height = Column(Integer, default=1792)
     duration_seconds = Column(Float, nullable=True)
     last_error = Column(String(1000), nullable=True)
+    
+    # YouTube SEO Persistence
+    youtube_title = Column(String(100), nullable=True)
+    youtube_description = Column(Text, nullable=True)
+    youtube_tags = Column(String(500), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -117,11 +117,27 @@ class YouTubeService:
         
         youtube = build("youtube", "v3", credentials=creds)
         
+        # Sanitize tags: YouTube tags cannot contain certain characters like < > or be too long
+        raw_tags = metadata.get("tags", "").split(",")
+        clean_tags = []
+        total_len = 0
+        for tag in raw_tags:
+            # Remove invalid chars and extra spaces
+            t = tag.replace("?", "").replace("\u00bf", "").strip()
+            if not t: continue
+            if len(t) > 100: t = t[:97] + "..." # YouTube limit is 100 per tag
+            
+            if total_len + len(t) + 1 < 500: # Total limit is 500
+                clean_tags.append(t)
+                total_len += len(t) + 1
+            else:
+                break
+
         body = {
             "snippet": {
                 "title": metadata.get("title", "Untitled Video"),
                 "description": metadata.get("description", ""),
-                "tags": metadata.get("tags", "").split(","),
+                "tags": clean_tags,
                 "categoryId": metadata.get("category_id", "22")  # Default to People & Blogs
             },
             "status": {
@@ -154,4 +170,19 @@ class YouTubeService:
             if status:
                 print(f"Uploaded {int(status.progress() * 100)}%")
         
+        return response
+
+    def set_thumbnail(self, video_id: str, thumbnail_path: Path):
+        """Sets a custom thumbnail for a video."""
+        creds = self.get_credentials()
+        if not creds:
+            raise RuntimeError("Not authenticated with YouTube")
+        
+        youtube = build("youtube", "v3", credentials=creds)
+        
+        request = youtube.thumbnails().set(
+            videoId=video_id,
+            media_body=MediaFileUpload(str(thumbnail_path))
+        )
+        response = request.execute()
         return response

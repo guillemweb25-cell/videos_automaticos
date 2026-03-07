@@ -393,7 +393,10 @@ class ApiClient {
       headers: this.getHeaders(true),
       body: JSON.stringify(metadata),
     });
-    if (!res.ok) throw new Error('Error al subir a YouTube');
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Error al subir a YouTube');
+    }
     return res.json();
   }
 
