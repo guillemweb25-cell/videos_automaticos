@@ -26,7 +26,7 @@ services:
       - "8001:8000"
     volumes:
       - ./backend:/app
-      - ./downloads:/app/downloads
+      - ./cache:/app/cache
     env_file:
       - .env
     depends_on:

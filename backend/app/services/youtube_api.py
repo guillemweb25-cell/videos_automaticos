@@ -5,7 +5,9 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 import re
+from typing import Dict, Any
 
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
@@ -106,3 +108,50 @@ class YouTubeService:
                 "view_count": v["statistics"].get("viewCount", "0")
             })
         return videos
+
+    def upload_video(self, video_path: Path, metadata: Dict[str, Any]):
+        """Uploads a video to YouTube with the provided metadata."""
+        creds = self.get_credentials()
+        if not creds:
+            raise RuntimeError("Not authenticated with YouTube")
+        
+        youtube = build("youtube", "v3", credentials=creds)
+        
+        body = {
+            "snippet": {
+                "title": metadata.get("title", "Untitled Video"),
+                "description": metadata.get("description", ""),
+                "tags": metadata.get("tags", "").split(","),
+                "categoryId": metadata.get("category_id", "22")  # Default to People & Blogs
+            },
+            "status": {
+                "privacyStatus": metadata.get("privacy_status", "private"),
+                "selfDeclaredMadeForKids": False
+            }
+        }
+        
+        if metadata.get("publish_at"):
+            body["status"]["publishAt"] = metadata["publish_at"]
+            # Scheduled videos must be private or unlisted during upload
+            if body["status"]["privacyStatus"] == "public":
+                body["status"]["privacyStatus"] = "private"
+
+        media = MediaFileUpload(
+            str(video_path),
+            mimetype="video/mp4",
+            resumable=True
+        )
+        
+        request = youtube.videos().insert(
+            part="snippet,status",
+            body=body,
+            media_body=media
+        )
+        
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                print(f"Uploaded {int(status.progress() * 100)}%")
+        
+        return response

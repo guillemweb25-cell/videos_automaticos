@@ -1,8 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
-from app.routers import auth, channels, youtube
+from app.routers import auth, channels, youtube, video_gen
 
 settings = get_settings()
 
@@ -11,6 +12,9 @@ app = FastAPI(
     description="API para la creación automática de vídeos",
     version="0.1.0",
 )
+
+# Static files for cache
+app.mount("/cache", StaticFiles(directory="cache"), name="cache")
 
 # CORS
 app.add_middleware(
@@ -25,6 +29,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(channels.router)
 app.include_router(youtube.router)
+app.include_router(video_gen.router, prefix="/videos", tags=["video-gen"])
 
 
 @app.get("/health")

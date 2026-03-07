@@ -7,8 +7,21 @@ from app.models.channel import Channel
 from app.core.deps import get_current_user
 from app.services.youtube_api import YouTubeService
 from app.services.youtube_dl import YouTubeDLService
+from app.services.seo_engine import SEOEngine
+from app.models.video import Video
+from pathlib import Path
+import json
+from pydantic import BaseModel
+from typing import Optional
 
 router = APIRouter(prefix="/youtube", tags=["YouTube"])
+
+class VideoUploadRequest(BaseModel):
+    title: str
+    description: str
+    tags: str
+    privacy_status: str
+    publish_at: Optional[str] = None
 
 @router.get("/channel/{channel_id}")
 async def get_youtube_channel_info(
@@ -89,3 +102,126 @@ async def list_channel_downloads(
     
     files = YouTubeDLService.list_downloads(channel.name)
     return files
+
+@router.get("/{video_id}/metadata")
+async def get_video_metadata(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    video = db.query(Video).join(Channel).filter(Video.id == video_id, Channel.user_id == current_user.id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Vídeo no encontrado")
+        
+    base_dir = Path(video.base_dir)
+    seo_path = base_dir / "seo" / "metadata.json"
+    
+    if not seo_path.exists():
+        # Initialize if not exists
+        return {
+            "title": video.title,
+            "description": "",
+            "tags": "",
+            "thumbnail_url": f"/videos/{video.id}/thumbnail.png"
+        }
+    
+    data = json.loads(seo_path.read_text())
+    return {
+        "title": data.get("title", video.title),
+        "description": data.get("description", ""),
+        "tags": data.get("tags", ""),
+        "thumbnail_url": f"/videos/{video.id}/thumbnail.png"
+    }
+
+@router.post("/{video_id}/upload")
+async def upload_video_to_youtube(
+    video_id: int,
+    req: VideoUploadRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    video = db.query(Video).join(Channel).filter(Video.id == video_id, Channel.user_id == current_user.id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Vídeo no encontrado")
+    
+    channel = video.channel
+    if not channel or not channel.creds_dir:
+        raise HTTPException(status_code=400, detail="El canal no tiene YouTube configurado")
+        
+    video_path = Path(video.base_dir) / "output" / "final_video.mp4"
+    if not video_path.exists():
+        raise HTTPException(status_code=400, detail="El vídeo no ha sido renderizado aún")
+    
+    service = YouTubeService(channel.creds_dir)
+    try:
+        metadata = req.dict()
+        response = service.upload_video(video_path, metadata)
+        return {"status": "success", "youtube_id": response.get("id")}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{video_id}/regenerate/title")
+async def regenerate_youtube_title(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    video = db.query(Video).join(Channel).filter(Video.id == video_id, Channel.user_id == current_user.id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Vídeo no encontrado")
+        
+    base_dir = Path(video.base_dir)
+    plan_path = base_dir / "plan.json"
+    if not plan_path.exists():
+        raise HTTPException(status_code=400, detail="No se encontró el plan del vídeo")
+        
+    plan = json.loads(plan_path.read_text())
+    script_snippet = "\n".join([item.get("spoken", "") for item in plan[:5]]) # First 5 paragraphs
+    
+    seo = SEOEngine()
+    title = seo.generate_video_title(script_snippet)
+    return {"title": title}
+
+@router.post("/{video_id}/regenerate/description")
+async def regenerate_youtube_description(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    video = db.query(Video).join(Channel).filter(Video.id == video_id, Channel.user_id == current_user.id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Vídeo no encontrado")
+        
+    base_dir = Path(video.base_dir)
+    plan_path = base_dir / "plan.json"
+    if not plan_path.exists():
+        raise HTTPException(status_code=400, detail="No se encontró el plan del vídeo")
+        
+    plan = json.loads(plan_path.read_text())
+    script_snippet = "\n".join([item.get("spoken", "") for item in plan])
+    
+    seo = SEOEngine()
+    description = seo.generate_description(script_snippet[:4000])
+    return {"description": description}
+
+@router.post("/{video_id}/regenerate/tags")
+async def regenerate_youtube_tags(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    video = db.query(Video).join(Channel).filter(Video.id == video_id, Channel.user_id == current_user.id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Vídeo no encontrado")
+        
+    base_dir = Path(video.base_dir)
+    plan_path = base_dir / "plan.json"
+    if not plan_path.exists():
+        raise HTTPException(status_code=400, detail="No se encontró el plan del vídeo")
+        
+    plan = json.loads(plan_path.read_text())
+    script_snippet = "\n".join([item.get("spoken", "") for item in plan])
+    
+    seo = SEOEngine()
+    tags = seo.generate_video_questions_tags(script_snippet[:4000])
+    return {"tags": tags}

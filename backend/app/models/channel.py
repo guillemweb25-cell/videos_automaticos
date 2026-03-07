@@ -19,6 +19,7 @@ class Channel(Base):
 
     # Relación con el usuario
     owner = relationship("User", back_populates="channels")
+    videos = relationship("Video", back_populates="channel", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<Channel(id={self.id}, name={self.name})>"

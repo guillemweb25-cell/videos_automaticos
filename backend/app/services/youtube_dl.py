@@ -2,7 +2,7 @@ import os
 import subprocess
 from pathlib import Path
 
-DOWNLOAD_BASE = Path("/app/downloads")
+DOWNLOAD_BASE = Path("/app/cache/youtube_downloads")
 
 class YouTubeDLService:
     @staticmethod
@@ -48,4 +48,5 @@ class YouTubeDLService:
         output_dir = DOWNLOAD_BASE / channel_name
         if not output_dir.exists():
             return []
-        return [f.name for f in output_dir.glob("*.mp3")]
+        # Support both name and full path for debugging
+        return [{"name": f.name, "path": str(f)} for f in output_dir.glob("*.mp3")]
