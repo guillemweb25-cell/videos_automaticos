@@ -22,6 +22,9 @@ class Video(Base):
     youtube_title = Column(String(100), nullable=True)
     youtube_description = Column(Text, nullable=True)
     youtube_tags = Column(String(500), nullable=True)
+    
+    youtube_video_id = Column(String(100), nullable=True)
+    is_uploaded = Column(Boolean, default=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

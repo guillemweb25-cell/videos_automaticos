@@ -145,6 +145,11 @@ async def upload_video_to_youtube(
         response = service.upload_video(video_path, metadata)
         youtube_id = response.get("id")
         
+        if youtube_id:
+            video.youtube_video_id = youtube_id
+            video.is_uploaded = True
+            db.commit()
+        
         # Upload thumbnail if exists
         thumb_path = Path(video.base_dir) / "output" / "thumbnail.png"
         if thumb_path.exists() and youtube_id:
@@ -154,6 +159,44 @@ async def upload_video_to_youtube(
                 print(f"Error uploading thumbnail: {e}")
                 
         return {"status": "success", "youtube_id": youtube_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{video_id}/update-metadata")
+async def update_youtube_metadata(
+    video_id: int,
+    req: VideoUploadRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    video = db.query(Video).join(Channel).filter(Video.id == video_id, Channel.user_id == current_user.id).first()
+    if not video or not video.is_uploaded or not video.youtube_video_id:
+        raise HTTPException(status_code=404, detail="Vídeo no encontrado o no ha sido subido a YouTube")
+    
+    channel = video.channel
+    if not channel or not channel.creds_dir:
+        raise HTTPException(status_code=400, detail="El canal no tiene YouTube configurado")
+    
+    service = YouTubeService(channel.creds_dir)
+    try:
+        metadata = req.dict()
+        service.update_video_metadata(video.youtube_video_id, metadata)
+        
+        # Sync local metadata in DB
+        video.youtube_title = req.title
+        video.youtube_description = req.description
+        video.youtube_tags = req.tags
+        db.commit()
+
+        # Update thumbnail if it exists
+        thumb_path = Path(video.base_dir) / "output" / "thumbnail.png"
+        if thumb_path.exists():
+            try:
+                service.set_thumbnail(video.youtube_video_id, thumb_path)
+            except Exception as e:
+                print(f"Error updating thumbnail: {e}")
+
+        return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

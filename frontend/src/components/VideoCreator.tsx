@@ -1,5 +1,6 @@
 import React, { useState, ChangeEvent } from 'react';
 import { api, type VideoResponse } from '../api';
+import VideoUploadModal from './VideoUploadModal';
 
 interface VideoCreatorProps {
   channelId: number;
@@ -20,6 +21,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
   const [finalVideo, setFinalVideo] = useState('');
   const [videoId, setVideoId] = useState<number | null>(initialVideo?.id || null);
   const [isBusy, setIsBusy] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   const [availableVoices, setAvailableVoices] = useState<{ tiktok: any[], elevenlabs: any[] }>({ tiktok: [], elevenlabs: [] });
   const [availableStyles, setAvailableStyles] = useState<{ id: string, name: string }[]>([]);
@@ -208,9 +210,33 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
     }
   };
 
+  const isLocked = !!initialVideo?.is_uploaded;
+
   return (
     <div className="video-creator">
-      <div className="glass-panel" style={{ marginBottom: '24px' }}>
+      {isLocked && (
+        <div className="glass-panel" style={{ borderLeft: '4px solid #4ade80', marginBottom: '16px', background: 'rgba(74, 222, 128, 0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '1.5rem' }}>✅</span>
+            <div>
+              <h4 style={{ margin: 0, color: '#4ade80' }}>Vídeo Publicado en YouTube</h4>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: '#94a3b8' }}>
+                Este vídeo ya está en vivo. Para mantener la consistencia, la edición de audio, guion y estilo está bloqueada. 
+                Puedes gestionar la miniatura y el SEO desde el botón de YouTube.
+              </p>
+            </div>
+            <button 
+              className="btn btn-primary" 
+              style={{ marginLeft: 'auto', background: '#dc2626' }}
+              onClick={() => setShowUploadModal(true)}
+            >
+              🚀 Gestionar YouTube
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="glass-panel" style={{ marginBottom: '24px', opacity: isLocked ? 0.8 : 1 }}>
         <h2>{initialVideo ? 'Continuar Vídeo' : 'Crear Nuevo Vídeo'}</h2>
         <p style={{ color: '#94a3b8', marginBottom: '24px' }}>
           {initialVideo ? `Continuando con ID: ${initialVideo.id}` : 'Configura los parámetros iniciales y lanza el pipeline automático.'}
@@ -223,7 +249,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
             placeholder="Ej: Curiosidades sobre el espacio" 
             value={title}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
-            disabled={isBusy}
+            disabled={isBusy || isLocked}
           />
         </div>
 
@@ -237,7 +263,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
           </div>
           <div className="form-group">
             <label>Voz</label>
-            <select value={voice} onChange={(e: ChangeEvent<HTMLSelectElement>) => setVoice(e.target.value)} disabled={isBusy}>
+            <select value={voice} onChange={(e: ChangeEvent<HTMLSelectElement>) => setVoice(e.target.value)} disabled={isBusy || isLocked}>
               {currentVoices.map((v: any) => (
                 <option key={v.id} value={v.id}>{v.name}</option>
               ))}
@@ -245,7 +271,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
           </div>
           <div className="form-group">
             <label>Estilo Visual</label>
-            <select value={style} onChange={(e: ChangeEvent<HTMLSelectElement>) => setStyle(e.target.value)} disabled={isBusy}>
+            <select value={style} onChange={(e: ChangeEvent<HTMLSelectElement>) => setStyle(e.target.value)} disabled={isBusy || isLocked}>
               {availableStyles.map((s: any) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
@@ -260,13 +286,13 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
               value={maxImagesPerParagraph}
               onChange={(e) => setMaxImagesPerParagraph(parseInt(e.target.value) || 1)}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={isBusy}
+              disabled={isBusy || isLocked}
             />
             <p className="text-xs text-gray-500 mt-1">Si el párrafo dura menos de 10s, se generará solo 1.</p>
           </div>
           <div className="form-group">
             <label>Orientación / Tamaño</label>
-            <select value={orientation} onChange={(e: ChangeEvent<HTMLSelectElement>) => setOrientation(e.target.value as 'horizontal' | 'vertical')} disabled={isBusy}>
+            <select value={orientation} onChange={(e: ChangeEvent<HTMLSelectElement>) => setOrientation(e.target.value as 'horizontal' | 'vertical')} disabled={isBusy || isLocked}>
               <option value="vertical">Vertical (1024x1792) - Shorts/TikTok</option>
               <option value="horizontal">Horizontal (1792x1024) - YouTube</option>
             </select>
@@ -280,7 +306,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
             placeholder="Escribe aquí el contenido del vídeo..." 
             value={script}
             onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setScript(e.target.value)}
-            disabled={isBusy}
+            disabled={isBusy || isLocked}
           />
         </div>
 
@@ -289,7 +315,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
             className="btn btn-primary" 
             style={{ minWidth: '200px' }}
             onClick={handleGenerate}
-            disabled={isBusy}
+            disabled={isBusy || isLocked}
           >
             {status === 'idle' && !initialVideo ? 'Lanzar Generación 🚀' : 'Reintentar / Continuar'}
           </button>
@@ -329,6 +355,13 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
             </div>
           )}
         </div>
+      )}
+
+      {showUploadModal && videoId && (
+        <VideoUploadModal 
+          videoId={videoId} 
+          onClose={() => setShowUploadModal(false)} 
+        />
       )}
     </div>
   );

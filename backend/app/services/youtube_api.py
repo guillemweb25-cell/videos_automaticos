@@ -172,6 +172,45 @@ class YouTubeService:
         
         return response
 
+    def update_video_metadata(self, video_id: str, metadata: Dict[str, Any]):
+        """Updates metadata for an existing YouTube video."""
+        creds = self.get_credentials()
+        if not creds:
+            raise RuntimeError("Not authenticated with YouTube")
+        
+        youtube = build("youtube", "v3", credentials=creds)
+        
+        # Sanitize tags (reusing logic from upload_video)
+        raw_tags = metadata.get("tags", "").split(",")
+        clean_tags = []
+        total_len = 0
+        for tag in raw_tags:
+            t = tag.replace("?", "").replace("\u00bf", "").strip()
+            if not t: continue
+            if len(t) > 100: t = t[:97] + "..."
+            if total_len + len(t) + 1 < 500:
+                clean_tags.append(t)
+                total_len += len(t) + 1
+            else:
+                break
+
+        body = {
+            "id": video_id,
+            "snippet": {
+                "title": metadata.get("title"),
+                "description": metadata.get("description"),
+                "tags": clean_tags,
+                "categoryId": metadata.get("category_id", "22")
+            }
+        }
+        
+        request = youtube.videos().update(
+            part="snippet",
+            body=body
+        )
+        response = request.execute()
+        return response
+
     def set_thumbnail(self, video_id: str, thumbnail_path: Path):
         """Sets a custom thumbnail for a video."""
         creds = self.get_credentials()

@@ -28,6 +28,8 @@ class VideoResponse(VideoBase):
     base_dir: Optional[str] = None
     duration_seconds: Optional[float] = None
     last_error: Optional[str] = None
+    youtube_video_id: Optional[str] = None
+    is_uploaded: bool = False
     created_at: datetime
     updated_at: datetime
 

@@ -267,7 +267,13 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
                             )}
                             {g.status === 'ready' ? (
                               <>
-                                <button className="btn-link" style={{ color: '#ff4444' }} onClick={() => setUploadingVideoId(g.id)}>Subir a YouTube</button>
+                                <button 
+                                  className="btn-link" 
+                                  style={{ color: g.is_uploaded ? '#4ade80' : '#ff4444' }} 
+                                  onClick={() => setUploadingVideoId(g.id)}
+                                >
+                                  {g.is_uploaded ? 'Gestionar YouTube' : 'Subir a YouTube'}
+                                </button>
                                 <button className="btn-link">Ver Carpeta</button>
                               </>
                             ) : (

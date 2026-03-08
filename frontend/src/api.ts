@@ -7,6 +7,13 @@ export interface Video {
 export interface VideoResponse extends Video {
   created_at: string;
   last_error?: string;
+  is_uploaded?: boolean;
+  youtube_video_id?: string;
+  youtube_title?: string;
+  youtube_description?: string;
+  youtube_tags?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface ParagraphPrompt {
@@ -379,6 +386,8 @@ class ApiClient {
     description: string;
     tags: string;
     thumbnail_url: string;
+    is_uploaded?: boolean;
+    youtube_video_id?: string;
   }> {
     const res = await fetch(`${this.baseUrl}/youtube/${videoId}/metadata`, {
       headers: this.getHeaders(true),
@@ -396,6 +405,19 @@ class ApiClient {
     if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.detail || 'Error al subir a YouTube');
+    }
+    return res.json();
+  }
+
+  async updateYouTubeMetadata(videoId: number, metadata: any): Promise<{ status: string }> {
+    const res = await fetch(`${this.baseUrl}/youtube/${videoId}/update-metadata`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: JSON.stringify(metadata),
+    });
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Error al actualizar YouTube');
     }
     return res.json();
   }

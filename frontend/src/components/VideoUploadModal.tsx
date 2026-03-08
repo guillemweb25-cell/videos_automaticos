@@ -81,21 +81,31 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
 
   const handleUpload = async () => {
     setUploading(true);
-    setUploadStatus("Subiendo vídeo a YouTube...");
+    const isSync = metadata?.is_uploaded;
+    setUploadStatus(isSync ? "Sincronizando con YouTube..." : "Subiendo vídeo a YouTube...");
     try {
-      const res = await api.uploadToYouTube(videoId, {
-        title,
-        description,
-        tags,
-        privacy_status: privacyStatus,
-        publish_at: publishAt || undefined
-      });
-      setUploadStatus(`¡Vídeo subido con éxito! ID: ${res.youtube_id}`);
-      setTimeout(() => onClose(), 3000);
+      if (isSync) {
+        await api.updateYouTubeMetadata(videoId, {
+          title,
+          description,
+          tags
+        });
+        setUploadStatus("¡YouTube actualizado correctamente!");
+      } else {
+        const res = await api.uploadToYouTube(videoId, {
+          title,
+          description,
+          tags,
+          privacy_status: privacyStatus,
+          publish_at: publishAt || undefined
+        });
+        setUploadStatus(`¡Vídeo subido con éxito! ID: ${res.youtube_id}`);
+      }
+      setTimeout(() => onClose(), 2000);
     } catch (err: any) {
       console.error(err);
-      setUploadStatus("Error al subir el vídeo");
-      alert("Error al subir el vídeo a YouTube");
+      setUploadStatus(isSync ? "Error al sincronizar" : "Error al subir el vídeo");
+      alert(isSync ? "Error al sincronizar con YouTube" : "Error al subir el vídeo a YouTube");
     } finally {
       setUploading(false);
     }
@@ -137,7 +147,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
             <svg style={{ width: '32px', height: '32px', color: '#dc2626' }} fill="currentColor" viewBox="0 0 24 24">
               <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
             </svg>
-            <h2>Publicar en YouTube</h2>
+            <h2>{metadata?.is_uploaded ? 'Gestionar en YouTube' : 'Publicar en YouTube'}</h2>
           </div>
           <button className="yt-modal-close" onClick={onClose} title="Cerrar">×</button>
         </div>
@@ -145,7 +155,9 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
         {/* Content */}
         <div className="yt-modal-content">
           <p style={{ color: '#94a3b8', marginBottom: '24px' }}>
-            Configura el SEO y la visibilidad de tu vídeo antes de subirlo.
+            {metadata?.is_uploaded 
+              ? `Este vídeo ya está en YouTube (ID: ${metadata.youtube_video_id}). Sincroniza los cambios de SEO y miniatura.`
+              : 'Configura el SEO y la visibilidad de tu vídeo antes de subirlo.'}
           </p>
 
           <div className="yt-modal-grid">
@@ -160,7 +172,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
 
               <div className="yt-form-group" style={{ padding: '16px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}>
                 <span className="yt-section-label" style={{ color: '#fff', fontSize: '0.8rem', marginBottom: '16px' }}>⚙️ Ajustes de Publicación</span>
-                <div className="yt-settings-row">
+                <div className="yt-settings-row" style={{ opacity: metadata?.is_uploaded ? 0.5 : 1, pointerEvents: metadata?.is_uploaded ? 'none' : 'auto' }}>
                   <div>
                     <label className="yt-section-label" style={{ fontSize: '0.7rem' }}>Visibilidad</label>
                     <select 
@@ -184,6 +196,11 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
                     />
                   </div>
                 </div>
+                {metadata?.is_uploaded && (
+                  <p style={{ fontSize: '0.65rem', color: '#fbbf24', marginTop: '10px' }}>
+                    * Los ajustes de visibilidad ya no se pueden cambiar desde aquí.
+                  </p>
+                )}
                 <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '10px' }}>
                   * La programación publicará el vídeo automáticamente en la fecha elegida.
                 </p>
@@ -279,7 +296,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
                 </>
               ) : (
                 <>
-                  <span>🚀 Publicar en YouTube</span>
+                  <span>{metadata?.is_uploaded ? '🔄 Sincronizar Cambios' : '🚀 Publicar en YouTube'}</span>
                 </>
               )}
             </button>
