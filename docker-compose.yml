@@ -29,6 +29,8 @@ services:
       - ./cache:/app/cache
     env_file:
       - .env
+    environment:
+      - PYTHONUNBUFFERED=1
     depends_on:
       db:
         condition: service_healthy

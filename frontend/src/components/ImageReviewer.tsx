@@ -254,9 +254,35 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
         </div>
 
         {data?.items?.map((item: any) => (
-          <div key={item.paragraph_id} style={{ marginBottom: '48px', paddingLeft: '24px', borderLeft: '4px solid #a855f7' }}>
-            <h3 style={{ fontSize: '1.25rem', color: '#d8b4fe', marginBottom: '16px' }}>Párrafo {item.paragraph_id} ({item.seconds.toFixed(1)}s)</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
+          <div key={item.paragraph_id} style={{ marginBottom: '64px', paddingBottom: '32px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.5rem', color: '#d8b4fe', margin: '0 0 8px 0' }}>📦 Párrafo {item.paragraph_id}</h3>
+                <span style={{ fontSize: '0.9rem', color: '#9ca3af', backgroundColor: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '4px' }}>
+                  🕒 Duración: {item.seconds.toFixed(1)}s
+                </span>
+              </div>
+              
+              <div style={{ flex: 1, margin: '0 40px', padding: '16px', backgroundColor: 'rgba(168, 85, 247, 0.05)', borderRadius: '12px', border: '1px solid rgba(168, 85, 247, 0.2)' }}>
+                <label style={{ display: 'block', fontSize: '0.7rem', color: '#a855f7', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.05em' }}>
+                  Transcripción del Párrafo
+                </label>
+                <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: '1.5', color: '#e5e7eb', fontStyle: 'italic' }}>
+                  "{item.spoken || 'Sin transcripción disponible'}"
+                </p>
+                
+                <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold' }}>AUDIO:</label>
+                  <audio 
+                    controls 
+                    src={`${API_URL}${item.audio_url}`} 
+                    style={{ height: '32px', flex: 1, filter: 'invert(1) hue-rotate(180deg) brightness(1.5)' }} 
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '32px' }}>
               {item.prompts?.map((p: any) => {
                 const key = `${item.paragraph_id}_${p.id}`;
                 return (

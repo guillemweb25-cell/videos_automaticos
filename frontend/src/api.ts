@@ -203,7 +203,7 @@ class ApiClient {
     return res.json();
   }
 
-  async createVideo(data: { channel_id: number; title: string; voice?: string; style?: string }): Promise<VideoResponse> {
+  async createVideo(data: { channel_id: number; title: string; voice?: string; style?: string; width?: number; height?: number }): Promise<VideoResponse> {
     const res = await fetch(`${this.baseUrl}/videos/`, {
       method: 'POST',
       headers: this.getHeaders(true),
@@ -230,7 +230,7 @@ class ApiClient {
     return res.json();
   }
 
-  async getScript(videoId: number): Promise<{ script: string }> {
+  async getVideoScript(videoId: number): Promise<{ script: string }> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/script`, {
       headers: this.getHeaders(true),
     });

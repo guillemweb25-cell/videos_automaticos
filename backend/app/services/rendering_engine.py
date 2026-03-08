@@ -8,6 +8,7 @@ from moviepy.editor import (
 from moviepy.audio.AudioClip import CompositeAudioClip
 from PIL import Image
 import subprocess
+import sys
 
 class RenderingEngine:
     @staticmethod
@@ -40,7 +41,6 @@ class RenderingEngine:
             scale = base_scale * z
             nw, nh = int(W0 * scale), int(H0 * scale)
             
-            # Simple resize and crop
             img_resized = base.resize((nw, nh), Image.LANCZOS)
             arr = np.array(img_resized)
             
@@ -59,22 +59,19 @@ class RenderingEngine:
         out_size: Tuple[int, int] = (1080, 1920), 
         fps: int = 24,
         bg_music_path: Optional[Path] = None,
-        bg_music_volume: float = 0.15
+        bg_music_volume: float = 0.06,
+        voice_volume: float = 1.6
     ):
         clips = []
         t_cursor = 0.0
         
         # 1. Main visual clips
         for i, (img_p, dur) in enumerate(zip(image_paths, durations)):
-            is_last = (i == len(image_paths) - 1)
             clip = RenderingEngine.make_kenburns_clip(
                 img_path=img_p,
                 duration=dur,
                 out_size=out_size
             ).set_start(t_cursor)
-            
-            # Fade out the very last image clip if no logo follows
-            # We will handle logo separately below
             clips.append(clip)
             t_cursor += dur
 
@@ -86,18 +83,14 @@ class RenderingEngine:
                 img_path=thumbnail_path,
                 duration=thumb_dur,
                 out_size=out_size,
-                z0=1.0, 
-                z1=1.05
+                z0=1.0, z1=1.05
             ).set_start(t_cursor).fadein(0.5)
             clips.append(thumb_clip)
             t_cursor += thumb_dur
 
         # 3. Check for logo in channel directory
-        # out_path is something like .../cache/0001-channel/YYYY-MM-DD-title/output/final_video.mp4
-        # Channel dir is out_path.parent.parent.parent
         channel_dir = out_path.parent.parent.parent
         logo_path = channel_dir / "logo.png"
-        
         if logo_path.exists():
             logo_dur = 2.5
             logo_clip = ImageClip(str(logo_path)) \
@@ -107,53 +100,79 @@ class RenderingEngine:
                 .on_color(size=out_size, color=(0,0,0), pos="center") \
                 .set_start(t_cursor) \
                 .fadein(0.5)
-            
             clips.append(logo_clip)
             t_cursor += logo_dur
         
-        # Add fade out to the very last clip in the sequence
         if clips:
             clips[-1] = clips[-1].fadeout(1.0)
             
         video = CompositeVideoClip(clips, size=out_size).set_duration(t_cursor)
         
-        # Audio assembly: Voiceover
+        # ── Audio: boost voice + duck music ──
         audio_clips = [AudioFileClip(str(p)) for p in audio_paths]
         voiceover = None
         if audio_clips:
             voiceover = concatenate_audioclips(audio_clips)
+            if voice_volume != 1.0:
+                voiceover = voiceover.volumex(voice_volume)
         
-        # Background Music
         final_audio = voiceover
         if bg_music_path and bg_music_path.exists():
             bg_music = AudioFileClip(str(bg_music_path)).volumex(bg_music_volume)
-            
-            # Loop background music if shorter than video
             if bg_music.duration < t_cursor:
                 n_loops = int(np.ceil(t_cursor / bg_music.duration))
                 bg_music = concatenate_audioclips([bg_music] * n_loops)
-            
-            # Trim and add fadeout
             bg_music = bg_music.subclip(0, t_cursor).audio_fadeout(2.0)
-            
             if voiceover:
-                # Ensure voiceover is at least as long as video (padding with silence if needed)
-                # but usually it's shorter. CompositeAudioClip handles different lengths.
                 final_audio = CompositeAudioClip([voiceover, bg_music])
             else:
                 final_audio = bg_music
         
         if final_audio:
             video = video.set_audio(final_audio)
-            
+
+        # ── Render with moviepy (verbose=True for Docker-visible progress) ──
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_render = out_path.parent / "__tmp_render__.mp4"
+
+        print(f"[render] Writing video to {out_path} ({t_cursor:.1f}s, {fps}fps) ...", flush=True)
         video.write_videofile(
-            str(out_path),
+            str(tmp_render),
             fps=fps,
             codec="libx264",
             audio_codec="aac",
-            temp_audiofile=str(out_path.with_suffix(".m4a")),
-            remove_temp=True,
+            audio_bitrate="192k",
             threads=4,
-            logger=None
+            preset="medium",
+            ffmpeg_params=[
+                "-crf", "22",
+                "-pix_fmt", "yuv420p",
+                "-tune", "stillimage",
+                "-movflags", "+faststart",
+                "-g", str(max(1, fps * 2)),
+            ],
+            verbose=True,
+            temp_audiofile=str(out_path.parent / "__tmp_audio__.m4a"),
+            remove_temp=True,
         )
+
+        # ── Post-process: normalize loudness with ffmpeg ──
+        print("[render] Normalizing audio loudness...", flush=True)
+        norm_cmd = [
+            "ffmpeg", "-y",
+            "-i", str(tmp_render),
+            "-c:v", "copy",
+            "-af", "loudnorm=I=-14:TP=-1:LRA=11",
+            "-c:a", "aac", "-b:a", "192k",
+            "-movflags", "+faststart",
+            str(out_path),
+        ]
+        result = subprocess.run(norm_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"[render] loudnorm warning: {result.stderr[-500:]}", flush=True)
+            # Fallback: just rename tmp to final
+            tmp_render.rename(out_path)
+        else:
+            tmp_render.unlink(missing_ok=True)
+
+        print(f"[render] Done! {out_path} ({out_path.stat().st_size / 1024 / 1024:.1f} MB)", flush=True)

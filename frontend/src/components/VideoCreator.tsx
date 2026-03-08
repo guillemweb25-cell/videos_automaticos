@@ -6,7 +6,7 @@ interface VideoCreatorProps {
   initialVideo?: VideoResponse | null;
 }
 
-type GenerationStep = 'idle' | 'creating' | 'script' | 'audio' | 'images' | 'seo' | 'rendering' | 'completed' | 'error';
+type GenerationStep = 'idle' | 'creating' | 'script' | 'audio' | 'generating_audio' | 'audio_ready' | 'images' | 'generating_images' | 'images_ready' | 'seo' | 'rendering' | 'completed' | 'error';
 
 const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) => {
   const [title, setTitle] = useState(initialVideo?.title || '');
@@ -19,6 +19,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
   const [error, setError] = useState('');
   const [finalVideo, setFinalVideo] = useState('');
   const [videoId, setVideoId] = useState<number | null>(initialVideo?.id || null);
+  const [isBusy, setIsBusy] = useState(false);
 
   const [availableVoices, setAvailableVoices] = useState<{ tiktok: any[], elevenlabs: any[] }>({ tiktok: [], elevenlabs: [] });
   const [availableStyles, setAvailableStyles] = useState<{ id: string, name: string }[]>([]);
@@ -55,17 +56,38 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
           const scriptRes = await api.getVideoScript(initialVideo.id);
           setScript(scriptRes.script);
           
+          if (initialVideo.width === 1792) {
+            setOrientation('horizontal');
+          } else {
+            setOrientation('vertical');
+          }
+          
           // Determine starting step based on status
-          if (initialVideo.status === 'audio_ready') {
+          if (initialVideo.status === 'generating_audio') {
+            setStatus('audio');
+            addLog('Continuando: Generación de audio interrumpida.');
+          } else if (initialVideo.status === 'audio_ready') {
             setStatus('images');
             addLog('Continuando desde: Audio ya generado.');
+          } else if (initialVideo.status === 'generating_images') {
+            setStatus('images');
+            addLog('Continuando: Generación de imágenes interrumpida.');
           } else if (initialVideo.status === 'images_ready') {
              setStatus('seo');
              addLog('Continuando desde: Imágenes ya generadas.');
-          } else if (initialVideo.last_error) {
-            setError(initialVideo.last_error);
+          } else if (initialVideo.status === 'rendering') {
+            setStatus('rendering');
+            addLog('Continuando: Renderizado interrumpido.');
+          } else if (initialVideo.status === 'seo') {
+            setStatus('seo');
+            addLog('Continuando: SEO interrumpido.');
+          } else if (initialVideo.status === 'ready') {
+            setStatus('completed');
+            addLog('Vídeo ya está listo.');
+          } else if (initialVideo.status === 'failed') {
             setStatus('error');
-            addLog(`ERROR previo detectado: ${initialVideo.last_error}`);
+            setError(initialVideo.last_error || 'Error desconocido');
+            addLog(`Error detectado: ${initialVideo.last_error}`);
           }
         }
       } catch (err) {
@@ -92,6 +114,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
       return;
     }
 
+    setIsBusy(true);
     setStatus('creating');
     setLog([]);
     setError('');
@@ -117,38 +140,62 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
       } else {
         addLog(`Usando registro existente ID: ${currentId}`);
       }
+ 
+      const vStatus = initialVideo?.status || 'idle';
 
-      // 2. Upload Script
-      setStatus('script');
-      addLog('Subiendo y procesando guion...');
-      await api.uploadScript(currentId, script);
-      addLog('Guion procesado correctamente.');
+      // 2. Upload Script (Always do it if not already generating images/rendering to be safe, 
+      // or if user might have edited it)
+      const skipScript = ['audio_ready', 'generating_images', 'images_ready', 'seo', 'rendering', 'ready'].includes(vStatus);
+      if (!skipScript) {
+        setStatus('script');
+        addLog('Subiendo y procesando guion...');
+        await api.uploadScript(currentId, script);
+        addLog('Guion procesado correctamente.');
+      } else {
+        addLog('Saltando: Guion ya procesado.');
+      }
 
       // 3. Generate Audio
-      setStatus('audio');
-      addLog(`Generando audio con ${provider} (voz: ${voice})...`);
-      await api.generateAudio(currentId, voice, provider);
-      addLog('Audio generado con éxito.');
+      const skipAudio = ['audio_ready', 'generating_images', 'images_ready', 'seo', 'rendering', 'ready'].includes(vStatus);
+      if (!skipAudio) {
+        setStatus('audio');
+        addLog(`Generando audio con ${provider} (voz: ${voice})...`);
+        await api.generateAudio(currentId, voice, provider);
+        addLog('Audio generado con éxito.');
+      } else {
+        addLog('Saltando: Audio ya generado.');
+      }
 
       // 4. Generate Images
-      setStatus('images');
-      addLog('Generando imágenes para cada párrafo...');
-      setStatus('generating_images');
-      await api.generateImages(currentId, style, maxImagesPerParagraph);
-      addLog('Imágenes generadas correctamente.');
+      const skipImages = ['images_ready', 'seo', 'rendering', 'ready'].includes(vStatus);
+      if (!skipImages) {
+        setStatus('images');
+        addLog('Generando imágenes para cada párrafo...');
+        setStatus('generating_images');
+        await api.generateImages(currentId, style, maxImagesPerParagraph);
+        addLog('Imágenes generadas correctamente.');
+      } else {
+        addLog('Saltando: Imágenes ya generadas.');
+      }
 
       // 5. Generate SEO
-      setStatus('seo');
-      addLog('Generando metadatos SEO...');
-      await api.generateSEO(currentId);
-      addLog('SEO completado.');
+      const skipSEO = ['ready'].includes(vStatus); // SEO is usually fast, but we can skip if ready
+      if (!skipSEO) {
+        setStatus('seo');
+        addLog('Generando metadatos SEO...');
+        await api.generateSEO(currentId);
+        addLog('SEO completado.');
+      }
 
       // 6. Rendering
-      setStatus('rendering');
-      addLog('Iniciando renderizado del vídeo final (esto puede tardar)...');
-      const renderRes = await api.renderVideo(currentId);
-      addLog('¡Renderizado completado!');
-      setFinalVideo(renderRes.output);
+      const skipRender = ['ready'].includes(vStatus);
+      if (!skipRender) {
+        setStatus('rendering');
+        addLog('Iniciando renderizado del vídeo final (esto puede tardar)...');
+        const renderRes = await api.renderVideo(currentId);
+        addLog('¡Renderizado completado!');
+        setFinalVideo(renderRes.output);
+      }
 
       setStatus('completed');
     } catch (err: any) {
@@ -156,6 +203,8 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
       setError(err.message || 'Error desconocido durante la generación');
       setStatus('error');
       addLog('ERROR: ' + err.message);
+    } finally {
+      setIsBusy(false);
     }
   };
 
@@ -174,21 +223,21 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
             placeholder="Ej: Curiosidades sobre el espacio" 
             value={title}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
-            disabled={status !== 'idle' && status !== 'completed' && status !== 'error'}
+            disabled={isBusy}
           />
         </div>
 
         <div className="form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
           <div className="form-group">
             <label>Proveedor TTS</label>
-            <select value={provider} onChange={(e: ChangeEvent<HTMLSelectElement>) => setProvider(e.target.value as any)} disabled={status !== 'idle'}>
+            <select value={provider} onChange={(e: ChangeEvent<HTMLSelectElement>) => setProvider(e.target.value as any)} disabled={isBusy}>
               <option value="tiktok">TikTok (Gratis)</option>
               <option value="elevenlabs">ElevenLabs (Premium/Lento)</option>
             </select>
           </div>
           <div className="form-group">
             <label>Voz</label>
-            <select value={voice} onChange={(e: ChangeEvent<HTMLSelectElement>) => setVoice(e.target.value)} disabled={status !== 'idle'}>
+            <select value={voice} onChange={(e: ChangeEvent<HTMLSelectElement>) => setVoice(e.target.value)} disabled={isBusy}>
               {currentVoices.map((v: any) => (
                 <option key={v.id} value={v.id}>{v.name}</option>
               ))}
@@ -196,7 +245,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
           </div>
           <div className="form-group">
             <label>Estilo Visual</label>
-            <select value={style} onChange={(e: ChangeEvent<HTMLSelectElement>) => setStyle(e.target.value)} disabled={status !== 'idle'}>
+            <select value={style} onChange={(e: ChangeEvent<HTMLSelectElement>) => setStyle(e.target.value)} disabled={isBusy}>
               {availableStyles.map((s: any) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
@@ -211,13 +260,13 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
               value={maxImagesPerParagraph}
               onChange={(e) => setMaxImagesPerParagraph(parseInt(e.target.value) || 1)}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={status !== 'idle'}
+              disabled={isBusy}
             />
             <p className="text-xs text-gray-500 mt-1">Si el párrafo dura menos de 10s, se generará solo 1.</p>
           </div>
           <div className="form-group">
             <label>Orientación / Tamaño</label>
-            <select value={orientation} onChange={(e: ChangeEvent<HTMLSelectElement>) => setOrientation(e.target.value as 'horizontal' | 'vertical')} disabled={status !== 'idle'}>
+            <select value={orientation} onChange={(e: ChangeEvent<HTMLSelectElement>) => setOrientation(e.target.value as 'horizontal' | 'vertical')} disabled={isBusy}>
               <option value="vertical">Vertical (1024x1792) - Shorts/TikTok</option>
               <option value="horizontal">Horizontal (1792x1024) - YouTube</option>
             </select>
@@ -231,7 +280,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
             placeholder="Escribe aquí el contenido del vídeo..." 
             value={script}
             onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setScript(e.target.value)}
-            disabled={status !== 'idle' && status !== 'completed' && status !== 'error'}
+            disabled={isBusy}
           />
         </div>
 
@@ -240,9 +289,9 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
             className="btn btn-primary" 
             style={{ minWidth: '200px' }}
             onClick={handleGenerate}
-            disabled={status !== 'idle' && status !== 'completed' && status !== 'error'}
+            disabled={isBusy}
           >
-            {status === 'idle' ? 'Lanzar Generación 🚀' : 'Reintentar / Continuar'}
+            {status === 'idle' && !initialVideo ? 'Lanzar Generación 🚀' : 'Reintentar / Continuar'}
           </button>
         </div>
       </div>

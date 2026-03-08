@@ -95,8 +95,6 @@ def create_video(video_in: VideoCreate, db: Session = Depends(get_db)):
 def get_channel_videos(channel_id: int, db: Session = Depends(get_db)):
     return db.query(Video).filter(Video.channel_id == channel_id).order_by(Video.created_at.desc()).all()
 
-    return video
-
 @router.get("/{video_id}/thumbnail.png")
 def get_video_thumbnail(video_id: int, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
@@ -190,6 +188,7 @@ async def generate_audio(
         (base_dir / "paragraphs_durations.json").write_text(json.dumps(results, indent=2))
         
         video.duration_seconds = total_sec
+        video.status = "audio_ready"
         db.commit()
         return {"ok": True, "total_seconds": total_sec, "chunks": len(results)}
     except Exception as e:
@@ -244,7 +243,11 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
                 # Only reuse if style and max_images are the same
                 if old_data.get("style") == style_name and old_data.get("max_images_per_paragraph") == max_images_per_paragraph:
                     for item in old_data.get("items", []):
-                        existing_prompts_all[item["paragraph_id"]] = [p["prompt"] for p in item["prompts"]]
+                        # Store both prompts and the spoken text they were based on
+                        existing_prompts_all[item["paragraph_id"]] = {
+                            "prompts": [p["prompt"] for p in item["prompts"]],
+                            "spoken": item.get("spoken", "")
+                        }
             except:
                 pass
 
@@ -261,9 +264,10 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
                 import math
                 images_count = min(max_images_per_paragraph, math.ceil(duration / seconds_per_image))
             
-            # 1. Generate prompts (or reuse)
-            if idx in existing_prompts_all and len(existing_prompts_all[idx]) == images_count:
-                prompts = existing_prompts_all[idx]
+            # 1. Generate prompts (or reuse if text matches)
+            cached = existing_prompts_all.get(idx)
+            if cached and cached["spoken"] == text and len(cached["prompts"]) == images_count:
+                prompts = cached["prompts"]
             else:
                 prompts = engine.generate_prompts(text, style_name, n=images_count)
             
@@ -272,6 +276,7 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
             paragraph_item = {
                 "paragraph_id": idx,
                 "seconds": duration,
+                "spoken": text,
                 "images_count": len(prompts),
                 "seconds_per_image": duration / len(prompts) if prompts else 0,
                 "prompts": []
@@ -285,7 +290,7 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
                 if not out_path.exists():
                     style = StyleService.get_style(style_name)
                     neg = style.get("negative_prompt")
-                    engine.generate_leonardo_image(p_text, out_path, negative_prompt=neg)
+                    engine.generate_leonardo_image(p_text, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg)
                 
                 paragraph_item["prompts"].append({
                     "id": img_idx,
@@ -313,7 +318,7 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
                 all_prompts_data["thumbnail"]["hook"] = hook
                 all_prompts_data["thumbnail"]["visual_prompt"] = visual_prompt
                 
-                engine.generate_thumbnail(hook, visual_prompt, thumbnail_path)
+                engine.generate_thumbnail(hook, visual_prompt, thumbnail_path, size=f"{video.width}x{video.height}")
             except Exception as e:
                 print(f"Warning: Thumbnail generation failed: {e}")
 
@@ -343,6 +348,7 @@ def get_images_data(video_id: int, db: Session = Depends(get_db)):
     # We want "cache/0001-channel/.../images/p001_01.png"
     for item in data.get("items", []):
         p_idx = item["paragraph_id"]
+        item["audio_url"] = f"/{video.base_dir}/audio/chunks/{p_idx:03d}.mp3"
         for p_info in item.get("prompts", []):
             img_idx = p_info["id"]
             rel_path = f"{video.base_dir}/images/p{p_idx:03d}_{img_idx:02d}.png"
@@ -410,7 +416,7 @@ async def regenerate_image(
     
     # Check if a specific model was requested (passed as a query param or from somewhere)
     # For now, we'll allow an optional model_id in the regenerate call too if we want
-    engine.generate_leonardo_image(target_prompt, out_path, negative_prompt=neg)
+    engine.generate_leonardo_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg)
     
     return {"ok": True, "url": f"/{video.base_dir}/images/{out_path.name}?t={int(datetime.now().timestamp())}"}
 
@@ -590,7 +596,7 @@ async def generate_thumbnail_api(
 
     thumbnail_path = base_dir / "output" / "thumbnail.png"
     engine = ImageEngine()
-    engine.generate_thumbnail(current_hook, current_visual, thumbnail_path, model_id=model_id)
+    engine.generate_thumbnail(current_hook, current_visual, thumbnail_path, size=f"{video.width}x{video.height}", model_id=model_id)
     
     # Save updates
     images_json.write_text(json.dumps(data, indent=2))
@@ -681,7 +687,8 @@ def render_video(video_id: int, db: Session = Depends(get_db)):
             out_path=out_path,
             out_size=out_size,
             bg_music_path=bg_music_path,
-            bg_music_volume=0.15
+            bg_music_volume=0.06,
+            voice_volume=1.6
         )
         
         video.status = "ready"
