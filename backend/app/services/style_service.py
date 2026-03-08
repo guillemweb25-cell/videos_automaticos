@@ -111,6 +111,15 @@ STYLES: Dict[str, StyleSpec] = {
         "display_name": "Candelaria México",
         "image_style_prompt": "Traditional Mexican Candelaria festival, vibrant colors, cultural celebration, photorealistic",
         "negative_prompt": NEGATIVE_BASE,
+    },
+    "celtico_oscuro": {
+        "display_name": "Céltico Histórico",
+        "image_style_prompt": (
+            "Grim historically accurate 5th-century Celtic/Irish setting; rugged landscapes, "
+            "damp mist, overcast skies; wool and leather textures; torchlight or cold natural light; "
+            "cinematic moody atmosphere; photorealistic, raw"
+        ),
+        "negative_prompt": NEGATIVE_BASE + ", modern buildings, electricity, bright colors, happy tone",
     }
 }
 
@@ -128,6 +137,7 @@ ALIASES = {
     "stock16x9": "stock_photo",
     "stock9x16": "stock_photo",
     "stockthumb": "stock_photo",
+    "celtico": "celtico_oscuro",
 }
 
 class StyleService:

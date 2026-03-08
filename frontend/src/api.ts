@@ -14,6 +14,9 @@ export interface VideoResponse extends Video {
   youtube_tags?: string;
   width?: number;
   height?: number;
+  voice?: string;
+  style?: string;
+  max_images_per_paragraph?: number;
 }
 
 export interface ParagraphPrompt {
@@ -210,7 +213,7 @@ class ApiClient {
     return res.json();
   }
 
-  async createVideo(data: { channel_id: number; title: string; voice?: string; style?: string; width?: number; height?: number }): Promise<VideoResponse> {
+  async createVideo(data: { channel_id: number; title: string; voice?: string; style?: string; width?: number; height?: number; max_images_per_paragraph?: number }): Promise<VideoResponse> {
     const res = await fetch(`${this.baseUrl}/videos/`, {
       method: 'POST',
       headers: this.getHeaders(true),
@@ -292,6 +295,27 @@ class ApiClient {
     });
     if (!res.ok) throw new Error('Error al generar SEO');
     return res.json();
+  }
+
+  async addImage(videoId: number, paragraphId: number, style?: string): Promise<{ok: boolean, image: any}> {
+    let url = `${this.baseUrl}/videos/${videoId}/add-image?paragraph_id=${paragraphId}`;
+    if (style) url += `&style_name=${encodeURIComponent(style)}`;
+    
+    const response = await fetch(url, {
+      method: "POST",
+      headers: this.getHeaders(true),
+    });
+    if (!response.ok) throw new Error("Failed to add image");
+    return response.json();
+  }
+
+  async removeImage(videoId: number, paragraphId: number, imageId: number): Promise<{ok: boolean}> {
+    const response = await fetch(`${this.baseUrl}/videos/${videoId}/remove-image?paragraph_id=${paragraphId}&image_id=${imageId}`, {
+      method: "DELETE",
+      headers: this.getHeaders(true),
+    });
+    if (!response.ok) throw new Error("Failed to remove image");
+    return response.json();
   }
 
   async regenerateImage(videoId: number, paragraphId: number, imageId: number, customPrompt?: string, modelId?: string): Promise<{ ok: boolean, url: string }> {

@@ -1,15 +1,16 @@
-import React, { useState, ChangeEvent } from 'react';
+import React, { useState, ChangeEvent, useRef } from 'react';
 import { api, type VideoResponse } from '../api';
 import VideoUploadModal from './VideoUploadModal';
 
 interface VideoCreatorProps {
   channelId: number;
   initialVideo?: VideoResponse | null;
+  onReviewImages?: (id: number) => void;
 }
 
 type GenerationStep = 'idle' | 'creating' | 'script' | 'audio' | 'generating_audio' | 'audio_ready' | 'images' | 'generating_images' | 'images_ready' | 'seo' | 'rendering' | 'completed' | 'error';
 
-const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) => {
+const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, onReviewImages }) => {
   const [title, setTitle] = useState(initialVideo?.title || '');
   const [script, setScript] = useState('');
   const [voice, setVoice] = useState('es_mx_002');
@@ -27,6 +28,8 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
   const [availableStyles, setAvailableStyles] = useState<{ id: string, name: string }[]>([]);
   const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('vertical');
   const [maxImagesPerParagraph, setMaxImagesPerParagraph] = useState(2);
+  const [shouldAutoRender, setShouldAutoRender] = useState(false);
+  const stopRequested = useRef(false);
 
   const addLog = (msg: string) => setLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
@@ -63,6 +66,18 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
           } else {
             setOrientation('vertical');
           }
+          
+          if (initialVideo.voice) {
+             setVoice(initialVideo.voice);
+             // Determine provider by checking if voice is in elevenlabs list
+             // For now simple check: if it doesn't start with es_ it might be elevenlabs?
+             // Or better, let's just make sure both possibilities are handled
+             if (!initialVideo.voice.startsWith('es_') && !initialVideo.voice.startsWith('en_') && !initialVideo.voice.startsWith('br_')) {
+               setProvider('elevenlabs');
+             }
+          }
+          if (initialVideo.style) setStyle(initialVideo.style);
+          if (initialVideo.max_images_per_paragraph) setMaxImagesPerParagraph(initialVideo.max_images_per_paragraph);
           
           // Determine starting step based on status
           if (initialVideo.status === 'generating_audio') {
@@ -120,6 +135,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
     setStatus('creating');
     setLog([]);
     setError('');
+    stopRequested.current = false;
     addLog('Iniciando proceso de generación...');
 
     try {
@@ -134,7 +150,10 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
           title, 
           channel_id: channelId,
           width,
-          height
+          height,
+          voice,
+          style,
+          max_images_per_paragraph: maxImagesPerParagraph
         });
         currentId = video.id;
         setVideoId(currentId);
@@ -143,12 +162,19 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
         addLog(`Usando registro existente ID: ${currentId}`);
       }
  
-      const vStatus = initialVideo?.status || 'idle';
+      if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
+
+      // Determine what to skip based on either the record or our current progress 
+      let vStatus = (initialVideo?.status as any) || 'idle'; 
+      if (['audio_ready', 'images_ready', 'seo', 'rendering', 'completed'].includes(status)) {
+        vStatus = status;
+      }
 
       // 2. Upload Script (Always do it if not already generating images/rendering to be safe, 
       // or if user might have edited it)
       const skipScript = ['audio_ready', 'generating_images', 'images_ready', 'seo', 'rendering', 'ready'].includes(vStatus);
       if (!skipScript) {
+        if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
         setStatus('script');
         addLog('Subiendo y procesando guion...');
         await api.uploadScript(currentId, script);
@@ -160,6 +186,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
       // 3. Generate Audio
       const skipAudio = ['audio_ready', 'generating_images', 'images_ready', 'seo', 'rendering', 'ready'].includes(vStatus);
       if (!skipAudio) {
+        if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
         setStatus('audio');
         addLog(`Generando audio con ${provider} (voz: ${voice})...`);
         await api.generateAudio(currentId, voice, provider);
@@ -171,6 +198,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
       // 4. Generate Images
       const skipImages = ['images_ready', 'seo', 'rendering', 'ready'].includes(vStatus);
       if (!skipImages) {
+        if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
         setStatus('images');
         addLog('Generando imágenes para cada párrafo...');
         setStatus('generating_images');
@@ -183,6 +211,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
       // 5. Generate SEO
       const skipSEO = ['ready'].includes(vStatus); // SEO is usually fast, but we can skip if ready
       if (!skipSEO) {
+        if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
         setStatus('seo');
         addLog('Generando metadatos SEO...');
         await api.generateSEO(currentId);
@@ -190,16 +219,18 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
       }
 
       // 6. Rendering
-      const skipRender = ['ready'].includes(vStatus);
-      if (!skipRender) {
+      if (shouldAutoRender || vStatus === 'rendering') {
+        if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
         setStatus('rendering');
         addLog('Iniciando renderizado del vídeo final (esto puede tardar)...');
         const renderRes = await api.renderVideo(currentId);
         addLog('¡Renderizado completado!');
         setFinalVideo(renderRes.output);
+        setStatus('completed');
+      } else {
+        addLog('Pipeline pausado. Revisa las imágenes antes de renderizar.');
+        setStatus('images_ready');
       }
-
-      setStatus('completed');
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Error desconocido durante la generación');
@@ -297,6 +328,16 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
               <option value="horizontal">Horizontal (1792x1024) - YouTube</option>
             </select>
           </div>
+          <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '28px' }}>
+            <input 
+              type="checkbox" 
+              id="autoRender" 
+              checked={shouldAutoRender} 
+              onChange={(e) => setShouldAutoRender(e.target.checked)} 
+              disabled={isBusy}
+            />
+            <label htmlFor="autoRender" style={{ margin: 0, cursor: 'pointer' }}>Auto-Renderizar</label>
+          </div>
         </div>
 
         <div className="form-group">
@@ -310,7 +351,19 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
           />
         </div>
 
-        <div style={{ textAlign: 'right' }}>
+        <div style={{ textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          {isBusy && (
+            <button 
+              className="btn" 
+              style={{ background: '#ef4444', color: 'white', minWidth: '120px' }}
+              onClick={() => {
+                stopRequested.current = true;
+                addLog('⚠️ Detención solicitada...');
+              }}
+            >
+              Detener ⛔
+            </button>
+          )}
           <button 
             className="btn btn-primary" 
             style={{ minWidth: '200px' }}
@@ -352,6 +405,26 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo }) 
             <div style={{ marginTop: '24px', padding: '16px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '8px', textAlign: 'center' }}>
                <h4 style={{ color: '#22c55e', margin: '0 0 8px 0' }}>¡Vídeo Generado con Éxito!</h4>
                <p style={{ fontSize: '0.9rem', marginBottom: '16px' }}>Localización: {finalVideo}</p>
+            </div>
+          )}
+
+          {['images_ready', 'seo', 'completed'].includes(status) && videoId && (
+            <div style={{ marginTop: '24px', display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button 
+                className="btn btn-secondary" 
+                style={{ background: '#a855f7' }}
+                onClick={() => onReviewImages?.(videoId)}
+              >
+                🎨 Revisar Imágenes y Tiempos
+              </button>
+              {status !== 'completed' && (
+                <button 
+                  className="btn btn-primary" 
+                  onClick={() => { setShouldAutoRender(true); setTimeout(handleGenerate, 100); }}
+                >
+                  🎬 Renderizar Vídeo Final
+                </button>
+              )}
             </div>
           )}
         </div>

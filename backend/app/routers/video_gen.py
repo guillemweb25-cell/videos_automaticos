@@ -157,6 +157,7 @@ async def generate_audio(
         raise HTTPException(status_code=404, detail="Video not found")
     
     video.status = "generating_audio"
+    video.voice = voice
     db.commit()
     
     try:
@@ -204,6 +205,8 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
         raise HTTPException(status_code=404, detail="Video not found")
     
     video.status = "generating_images"
+    video.style = style_name
+    video.max_images_per_paragraph = max_images_per_paragraph
     db.commit()
     
     try:
@@ -283,6 +286,7 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
             }
             
             # 2. Generate images (skip if exists)
+            paragraph_item["prompts"] = []
             for i, p_text in enumerate(prompts):
                 img_idx = i + 1
                 out_path = base_dir / "images" / f"p{idx:03d}_{img_idx:02d}.png"
@@ -290,7 +294,18 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
                 if not out_path.exists():
                     style = StyleService.get_style(style_name)
                     neg = style.get("negative_prompt")
-                    engine.generate_leonardo_image(p_text, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg)
+                    
+                    # Guidance logic for sequential images
+                    init_image_id = None
+                    if i > 0:
+                        prev_img_path = base_dir / "images" / f"p{idx:03d}_{i:02d}.png"
+                        if prev_img_path.exists():
+                            try:
+                                init_image_id = engine.upload_init_image(prev_img_path)
+                            except Exception as e:
+                                print(f"Warning: Failed to upload reference image for paragraph {idx} image {img_idx}: {e}")
+                    
+                    engine.generate_leonardo_image(p_text, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id)
                 
                 paragraph_item["prompts"].append({
                     "id": img_idx,
@@ -419,6 +434,135 @@ async def regenerate_image(
     engine.generate_leonardo_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg)
     
     return {"ok": True, "url": f"/{video.base_dir}/images/{out_path.name}?t={int(datetime.now().timestamp())}"}
+
+@router.post("/{video_id}/add-image")
+async def add_image(video_id: int, paragraph_id: int, style_name: str = None, db: Session = Depends(get_db)):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    base_dir = Path(video.base_dir)
+    images_json = base_dir / "image_prompts_all.json"
+    if not images_json.exists():
+        raise HTTPException(status_code=400, detail="Images not yet generated")
+    
+    data = json.loads(images_json.read_text())
+    target_para = None
+    for item in data.get("items", []):
+        if item["paragraph_id"] == paragraph_id:
+            target_para = item
+            break
+    
+    if not target_para:
+        raise HTTPException(status_code=404, detail="Paragraph not found in JSON")
+
+    # 1. Get reference image and prompt
+    last_p = target_para["prompts"][-1]
+    last_img_id = last_p["id"]
+    last_prompt = last_p["prompt"]
+    last_img_path = base_dir / "images" / f"p{paragraph_id:03d}_{last_img_id:02d}.png"
+
+    # 2. Logic for continuity
+    engine = ImageEngine()
+    init_image_id = None
+    if last_img_path.exists():
+        try:
+            init_image_id = engine.upload_init_image(last_img_path)
+        except Exception as e:
+            print(f"Warning: Failed to upload init image for guidance: {e}")
+
+    # Use style_name if provided, else fall back to JSON
+    effective_style = style_name or data.get("style", "stocksenior")
+    new_prompt = engine.generate_continuation_prompt(target_para["spoken"], last_prompt, effective_style)
+    
+    # 3. Generate New Image
+    new_img_id = last_img_id + 1
+    out_path = base_dir / "images" / f"p{paragraph_id:03d}_{new_img_id:02d}.png"
+    
+    style = StyleService.get_style(effective_style)
+    neg = style.get("negative_prompt")
+    
+    engine.generate_leonardo_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id)
+
+    # 4. Update JSON
+    target_para["prompts"].append({
+        "id": new_img_id,
+        "prompt": new_prompt,
+        "url": f"/{video.base_dir}/images/p{paragraph_id:03d}_{new_img_id:02d}.png"
+    })
+    target_para["images_count"] = len(target_para["prompts"])
+    target_para["seconds_per_image"] = target_para["seconds"] / target_para["images_count"]
+    data["total_images"] += 1
+    
+    images_json.write_text(json.dumps(data, indent=2))
+    
+    return {"ok": True, "image": target_para["prompts"][-1]}
+
+@router.delete("/{video_id}/remove-image")
+async def remove_image(video_id: int, paragraph_id: int, image_id: int, db: Session = Depends(get_db)):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    base_dir = Path(video.base_dir)
+    images_json = base_dir / "image_prompts_all.json"
+    if not images_json.exists():
+        raise HTTPException(status_code=400, detail="Images not yet generated")
+    
+    data = json.loads(images_json.read_text())
+    target_para = None
+    for item in data.get("items", []):
+        if item["paragraph_id"] == paragraph_id:
+            target_para = item
+            break
+    
+    if not target_para:
+        raise HTTPException(status_code=404, detail="Paragraph not found in JSON")
+    
+    if len(target_para["prompts"]) <= 1:
+        raise HTTPException(status_code=400, detail="Cannot remove the last image of a paragraph")
+
+    # 1. Remove from JSON
+    target_para["prompts"] = [p for p in target_para["prompts"] if p["id"] != image_id]
+    
+    # 2. Resequence Files and IDs
+    import shutil
+    old_images = sorted(list((base_dir / "images").glob(f"p{paragraph_id:03d}_*.png")))
+    
+    # Delete the target file
+    target_file = base_dir / "images" / f"p{paragraph_id:03d}_{image_id:02d}.png"
+    if target_file.exists():
+        target_file.unlink()
+
+    # Re-list and rename remaining
+    remaining_files = sorted(list((base_dir / "images").glob(f"p{paragraph_id:03d}_*.png")))
+    new_prompts = []
+    for i, f_path in enumerate(remaining_files):
+        new_id = i + 1
+        new_name = f"p{paragraph_id:03d}_{new_id:02d}.png"
+        new_path = base_dir / "images" / new_name
+        if f_path != new_path:
+            shutil.move(str(f_path), str(new_path))
+        
+        # Match with original prompt if possible, or just keep sequence
+        # Since we modified the list in step 1, we should actually reconstruct the list
+        # based on the original prompts that stayed.
+        # Let's simplify: reconstruct the prompts list with new IDs
+    
+    # Actually, a better way to handle prompt-image sync after deletion:
+    # We already removed from target_para["prompts"] at step 1.
+    # Now we just need to update their IDs and URLs to match the new file sequence.
+    for i, p_info in enumerate(target_para["prompts"]):
+        p_info["id"] = i + 1
+        p_info["url"] = f"/{video.base_dir}/images/p{paragraph_id:03d}_{p_info['id']:02d}.png"
+
+    target_para["images_count"] = len(target_para["prompts"])
+    target_para["seconds_per_image"] = target_para["seconds"] / target_para["images_count"]
+    data["total_images"] = sum(p["images_count"] for p in data["items"])
+    
+    images_json.write_text(json.dumps(data, indent=2))
+    
+    return {"ok": True}
 
 @router.post("/{video_id}/regenerate-prompt")
 async def regenerate_prompt_api(

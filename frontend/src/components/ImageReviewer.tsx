@@ -9,6 +9,7 @@ interface ImageReviewerProps {
 const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [addingImage, setAddingImage] = useState<number | null>(null);
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
   const [prompts, setPrompts] = useState<{ [key: string]: string }>({});
@@ -18,6 +19,8 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [thumbnailRegenerating, setThumbnailRegenerating] = useState(false);
   const [leonardoModels, setLeonardoModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState('de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3'); // Default Phoenix
+  const [availableStyles, setAvailableStyles] = useState<any[]>([]);
+  const [selectedStyle, setSelectedStyle] = useState('epic');
   const [uploading, setUploading] = useState(false);
 
   const loadData = async () => {
@@ -38,9 +41,14 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
       setThumbnailHook(res.thumbnail?.hook || '');
       setThumbnailVisualPrompt(res.thumbnail?.visual_prompt || '');
 
-      // Load models
+      // Load models and styles
       const config = await api.getConfig() as any;
       setLeonardoModels(config.leonardo_models || []);
+      setAvailableStyles(config.styles || []);
+      
+      if (res.style) {
+        setSelectedStyle(res.style);
+      }
     } catch (err) {
       console.error("Error loading data:", err);
     } finally {
@@ -90,6 +98,39 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
     } catch (error) {
       console.error("Error regenerating image:", error);
       alert("Error al regenerar la imagen");
+    } finally {
+      setRegenerating(null);
+    }
+  };
+
+  const handleAddImage = async (paraId: number) => {
+    setAddingImage(paraId);
+    try {
+      const res = await api.addImage(videoId, paraId, selectedStyle);
+      if (res.ok) {
+        // Refresh data or update locally
+        await loadData();
+      }
+    } catch (error) {
+      console.error("Error adding image:", error);
+      alert("Error al añadir imagen");
+    } finally {
+      setAddingImage(null);
+    }
+  };
+
+  const handleRemoveImage = async (paraId: number, imgId: number) => {
+    if (!confirm("¿Seguro que quieres eliminar esta imagen? Se recalcularán los tiempos del párrafo.")) return;
+    
+    setRegenerating(`${paraId}_${imgId}`);
+    try {
+      const res = await api.removeImage(videoId, paraId, imgId);
+      if (res.ok) {
+        await loadData();
+      }
+    } catch (error) {
+      console.error("Error removing image:", error);
+      alert("Error al eliminar imagen");
     } finally {
       setRegenerating(null);
     }
@@ -220,6 +261,26 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                 ))}
               </select>
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold' }}>ESTILO VISUAL</label>
+              <select 
+                value={selectedStyle}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedStyle(e.target.value)}
+                style={{
+                  backgroundColor: '#1f2937',
+                  color: 'white',
+                  border: '1px solid #16a34a',
+                  borderRadius: '6px',
+                  padding: '4px 8px',
+                  fontSize: '0.8rem',
+                  outline: 'none'
+                }}
+              >
+                {availableStyles.map((s: any) => (
+                  <option key={s.id} value={s.id}>{s.name || s.id}</option>
+                ))}
+              </select>
+            </div>
             <button 
               onClick={handleRender}
               disabled={rendering}
@@ -314,14 +375,45 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                           display: 'block'
                         }}
                       />
-                      {regenerating === key && (
+                      
+                      {/* Delete Button */}
+                      <button
+                        onClick={() => handleRemoveImage(item.paragraph_id, p.id)}
+                        style={{
+                          position: 'absolute',
+                          top: '12px',
+                          right: '12px',
+                          backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '32px',
+                          height: '32px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          fontSize: '1.2rem',
+                          boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                          zIndex: 5
+                        }}
+                        title="Eliminar esta imagen"
+                      >
+                        ×
+                      </button>
+
+                      {(regenerating === key || addingImage === item.paragraph_id) && (
                         <div style={{
                           position: 'absolute',
                           inset: 0,
                           backgroundColor: 'rgba(0,0,0,0.6)',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center'
+                          justifyContent: 'center',
+                          flexDirection: 'column',
+                          gap: '12px',
+                          zIndex: 6
                         }}>
                           <div className="spinner"></div>
                           <span style={{fontWeight: 'bold'}}>Procesando...</span>
@@ -384,6 +476,32 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                   </div>
                 );
               })}
+              
+              {/* Add Image Button */}
+              <button
+                onClick={() => handleAddImage(item.paragraph_id)}
+                disabled={addingImage === item.paragraph_id}
+                style={{
+                  backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                  border: '2px dashed rgba(168, 85, 247, 0.4)',
+                  borderRadius: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  minHeight: '400px',
+                  color: '#d8b4fe',
+                  gap: '12px',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.2)'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.1)'}
+              >
+                <span style={{ fontSize: '3rem' }}>+</span>
+                <span style={{ fontWeight: 'bold' }}>Añadir Imagen Continua</span>
+                <small style={{ color: '#9ca3af' }}>Usará la IA para seguir la historia</small>
+              </button>
             </div>
           </div>
         ))}

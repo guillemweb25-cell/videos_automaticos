@@ -292,7 +292,11 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
         )}
 
         {activeTab === 'create' && (
-          <VideoCreator channelId={channel.id} initialVideo={selectedVideo} />
+          <VideoCreator 
+            channelId={channel.id} 
+            initialVideo={selectedVideo} 
+            onReviewImages={(id) => setReviewingVideoId(id)}
+          />
         )}
 
         {activeTab === 'youtube' && (

@@ -12,6 +12,9 @@ class VideoBase(BaseModel):
     youtube_title: Optional[str] = None
     youtube_description: Optional[str] = None
     youtube_tags: Optional[str] = None
+    voice: Optional[str] = None
+    style: Optional[str] = None
+    max_images_per_paragraph: int = 2
 
 class VideoCreate(VideoBase):
     pass
@@ -21,6 +24,9 @@ class VideoUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = None
     duration_seconds: Optional[float] = None
+    voice: Optional[str] = None
+    style: Optional[str] = None
+    max_images_per_paragraph: Optional[int] = None
 
 class VideoResponse(VideoBase):
     id: int

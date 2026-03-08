@@ -18,6 +18,11 @@ class Video(Base):
     duration_seconds = Column(Float, nullable=True)
     last_error = Column(String(1000), nullable=True)
     
+    # Generation Parameters Persistence
+    voice = Column(String(100), nullable=True)
+    style = Column(String(100), nullable=True)
+    max_images_per_paragraph = Column(Integer, default=2)
+    
     # YouTube SEO Persistence
     youtube_title = Column(String(100), nullable=True)
     youtube_description = Column(Text, nullable=True)

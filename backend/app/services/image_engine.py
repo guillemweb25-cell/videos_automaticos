@@ -52,8 +52,70 @@ class ImageEngine:
                 prompts.append(p[:800])
         return prompts[:n]
 
-    def generate_leonardo_image(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, model_id: Optional[str] = None) -> None:
-        """Generates an image using Leonardo.ai with optional model selection."""
+    def generate_continuation_prompt(self, text: str, previous_prompt: str, style_name: str) -> str:
+        """Generates a visual continuation prompt based on the previous scene."""
+        style = StyleService.get_style(style_name)
+        style_prompt = style.get("image_style_prompt", "")
+        
+        system_msg = (
+            "You are a creative visual director. Generate a cinematic AI image prompt that continues a sequence. "
+            "IMPORTANT: Maintain absolute visual continuity with the previous scene. "
+            "Keep the same characters, same clothing, and same environmental settings. "
+            "STRICTLY follow the age and demographic described in the Style. "
+            "Output ONLY the prompt text in English."
+        )
+        
+        user_msg = (
+            f"Previous Scene Prompt: {previous_prompt}\n\n"
+            f"New Narration: {text}\n\n"
+            f"Style: {style_prompt}\n\n"
+            "Generate a prompt for the next shot that logically follows the previous one while being relevant to the new narration."
+        )
+        
+        response = self.openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg}
+            ],
+            temperature=0.7
+        )
+        
+        return response.choices[0].message.content.strip()[:800]
+
+    def upload_init_image(self, image_path: Path) -> str:
+        """Uploads an image to Leonardo.ai and returns the initImageId."""
+        if not self.leonardo_api_key:
+            raise RuntimeError("LEONARDO_API_KEY not configured")
+
+        headers = {
+            "Authorization": f"Bearer {self.leonardo_api_key}",
+            "Content-Type": "application/json"
+        }
+
+        # 1. Get presigned URL
+        ext = image_path.suffix.lower().replace(".", "")
+        if ext == "jpg": ext = "jpeg"
+        
+        payload = {"extension": ext}
+        resp = requests.post(f"{self.leonardo_url}/init-image", headers=headers, json=payload)
+        resp.raise_for_status()
+        
+        data = resp.json()["uploadInitImage"]
+        fields = json.loads(data["fields"])
+        url = data["url"]
+        image_id = data["id"]
+
+        # 2. Upload to S3
+        with open(image_path, "rb") as f:
+            files = {"file": f}
+            s3_resp = requests.post(url, data=fields, files=files)
+            s3_resp.raise_for_status()
+        
+        return image_id
+
+    def generate_leonardo_image(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, model_id: Optional[str] = None, init_image_id: Optional[str] = None) -> None:
+        """Generates an image using Leonardo.ai with optional model selection and image guidance."""
         if not self.leonardo_api_key:
             raise RuntimeError("LEONARDO_API_KEY not configured")
 
@@ -64,8 +126,6 @@ class ImageEngine:
             "Content-Type": "application/json"
         }
         
-        # Default to Phoenix 1.0 if no model_id provided
-        # Phoenix 1.0 Model ID: de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3
         target_model = model_id or "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3"
         
         payload = {
@@ -81,6 +141,14 @@ class ImageEngine:
         
         if negative_prompt:
             payload["negative_prompt"] = negative_prompt
+
+        if init_image_id:
+            # Using Image Guidance (Newer API pattern usually involves imageGuidance)
+            # For Character Reference, we use weighting
+            payload["imagePrompts"] = [init_image_id] # Legacy init_image approach
+            # Note: For Phoenix and newer models, Leonardo uses 'imageGuidance'
+            # Let's try the modern approach first if possible, or fallback
+            payload["init_image_id"] = init_image_id
         
         resp = requests.post(f"{self.leonardo_url}/generations", headers=headers, json=payload)
         resp.raise_for_status()
