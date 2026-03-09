@@ -143,15 +143,18 @@ class ImageEngine:
             payload["negative_prompt"] = negative_prompt
 
         if init_image_id:
-            # Using Image Guidance (Newer API pattern usually involves imageGuidance)
-            # For Character Reference, we use weighting
-            payload["imagePrompts"] = [init_image_id] # Legacy init_image approach
-            # Note: For Phoenix and newer models, Leonardo uses 'imageGuidance'
-            # Let's try the modern approach first if possible, or fallback
             payload["init_image_id"] = init_image_id
+            payload["imagePrompts"] = [init_image_id]
+        
+        # Alchemy is a paid feature. Allow disabling it via env var if needed.
+        use_alchemy = os.getenv("LEONARDO_ALCHEMY", "true").lower() == "true"
+        payload["alchemy"] = use_alchemy
         
         resp = requests.post(f"{self.leonardo_url}/generations", headers=headers, json=payload)
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            print(f"Leonardo API Error ({resp.status_code}): {resp.text}")
+            resp.raise_for_status()
+        
         gen_id = resp.json()["sdGenerationJob"]["generationId"]
         
         # 2. Poll for completion
