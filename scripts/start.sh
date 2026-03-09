@@ -4,4 +4,5 @@
 export DOCKER_API_VERSION=1.41
 
 echo "Starting Docker services with DOCKER_API_VERSION=1.41..."
-docker compose up -d --build
+#docker compose up -d --build
+docker compose up

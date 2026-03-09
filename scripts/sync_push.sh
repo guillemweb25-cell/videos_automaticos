@@ -23,8 +23,9 @@ REMOTE_PORT_SSH=$REMOTE_SSH_PORT
 echo "--- Starting Sync: Laptop -> Server ---"
 
 # 1. Sync Cache
-echo "Step 1: Synchronizing cache from server..."
-rsync -avz --exclude="*.mp4" -e "ssh -p $REMOTE_PORT_SSH" $REMOTE_SSH:$REMOTE_BASE_PATH/cache/ cache/
+echo "Step 1: Synchronizing cache..."
+# Use --no-o --no-g to avoid permission errors on remote
+rsync -avz --no-o --no-g --exclude="*.mp4" -e "ssh -p $REMOTE_PORT_SSH" cache/ $REMOTE_SSH:$REMOTE_BASE_PATH/cache/
 
 # 2. Sync Database
 echo "Step 2: Synchronizing database..."
@@ -39,12 +40,19 @@ DATE=$(date +%Y%m%d_%H%M%S)
 DUMP_FILE="/tmp/db_dump_$DATE.sql"
 
 echo "Exporting local database..."
-docker exec videos_automaticos-db-1 mysqldump -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE > $DUMP_FILE
+if ! docker exec videos_automaticos-db-1 mariadb-dump -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE > $DUMP_FILE; then
+    echo "Error: Failed to export local database!"
+    rm -f $DUMP_FILE
+    exit 1
+fi
 
 # Upload and import to remote DB
 echo "Uploading and importing to remote database..."
-# Note: Using villages-db-1 based on user screenshot of the remote server
-cat $DUMP_FILE | ssh -p $REMOTE_PORT_SSH $REMOTE_SSH "docker exec -i videos_automaticos-db-1 mariadb -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE"
+if ! cat $DUMP_FILE | ssh -p $REMOTE_PORT_SSH $REMOTE_SSH "docker exec -i videos_automaticos-db-1 mariadb -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE"; then
+    echo "Error: Failed to import to remote database!"
+    rm -f $DUMP_FILE
+    exit 1
+fi
 
 # Cleanup
 rm $DUMP_FILE
