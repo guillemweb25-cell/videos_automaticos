@@ -29,7 +29,7 @@ rsync -avz --no-o --no-g --exclude="*.mp4" -e "ssh -p $REMOTE_PORT_SSH" $REMOTE_
 
 # 2. Sync YouTube Credentials
 echo "Step 2: Synchronizing YouTube credentials from server..."
-rsync -avz --no-o --no-g -e "ssh -p $REMOTE_PORT_SSH" $REMOTE_SSH:$REMOTE_BASE_PATH/youtube_creds/ youtube_creds/
+rsync -avz --no-o --no-g -e "ssh -p $REMOTE_PORT_SSH" $REMOTE_SSH:$REMOTE_BASE_PATH/backend/youtube_creds/ backend/youtube_creds/
 
 # 3. Sync Database
 echo "Step 3: Synchronizing database from server..."
