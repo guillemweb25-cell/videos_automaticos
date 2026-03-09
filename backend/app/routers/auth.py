@@ -12,22 +12,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user."""
-    existing = db.query(User).filter(User.email == user_data.email).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Ya existe un usuario con este email",
-        )
-
-    user = User(
-        email=user_data.email,
-        hashed_password=hash_password(user_data.password),
+    """Disabled registration."""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="El registro de nuevos usuarios está desactivado por seguridad.",
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
 
 
 @router.post("/login", response_model=Token)

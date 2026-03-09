@@ -136,15 +136,9 @@ function App() {
             </div>
             {error && <div className="error-text">{error}</div>}
             <button className="btn btn-primary" style={{ width: '100%', marginTop: '16px' }} type="submit">
-              {isLogin ? 'Entrar' : 'Registrarse'}
+              Entrar
             </button>
           </form>
-          
-          <div style={{ textAlign: 'center', marginTop: '24px' }}>
-            <button className="btn-link" onClick={() => { setIsLogin(!isLogin); setError('') }}>
-              {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
-            </button>
-          </div>
         </div>
       </div>
     )
