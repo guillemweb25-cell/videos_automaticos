@@ -18,9 +18,11 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [thumbnailVisualPrompt, setThumbnailVisualPrompt] = useState('');
   const [thumbnailRegenerating, setThumbnailRegenerating] = useState(false);
   const [leonardoModels, setLeonardoModels] = useState<any[]>([]);
-  const [selectedModel, setSelectedModel] = useState('de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3'); // Default Phoenix
+  const [selectedModel, setSelectedModel] = useState('7b592283-e8a7-4c5a-9ba6-d18c31f258b9'); // Default to Lucid Origin
   const [availableStyles, setAvailableStyles] = useState<any[]>([]);
   const [selectedStyle, setSelectedStyle] = useState('epic');
+  const [generationModes, setGenerationModes] = useState<any[]>([]);
+  const [generationMode, setGenerationMode] = useState('QUALITY');
   const [uploading, setUploading] = useState(false);
 
   const loadData = async () => {
@@ -45,6 +47,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
       const config = await api.getConfig() as any;
       setLeonardoModels(config.leonardo_models || []);
       setAvailableStyles(config.styles || []);
+      setGenerationModes(config.generation_modes || []);
       
       if (res.style) {
         setSelectedStyle(res.style);
@@ -81,7 +84,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
     const prompt = prompts[key];
     setRegenerating(key);
     try {
-      const res = await api.regenerateImage(videoId, paraId, imgId, prompt, selectedModel);
+      const res = await api.regenerateImage(videoId, paraId, imgId, prompt, selectedModel, generationMode);
       if (res.ok) {
         const newData = { ...data };
         for (const item of newData.items) {
@@ -106,7 +109,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleAddImage = async (paraId: number) => {
     setAddingImage(paraId);
     try {
-      const res = await api.addImage(videoId, paraId, selectedStyle);
+      const res = await api.addImage(videoId, paraId, selectedStyle, generationMode);
       if (res.ok) {
         // Refresh data or update locally
         await loadData();
@@ -281,6 +284,26 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                 ))}
               </select>
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold' }}>CALIDAD / COSTE</label>
+              <select 
+                value={generationMode}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setGenerationMode(e.target.value)}
+                style={{
+                  backgroundColor: '#1f2937',
+                  color: 'white',
+                  border: '1px solid #3b82f6',
+                  borderRadius: '6px',
+                  padding: '4px 8px',
+                  fontSize: '0.8rem',
+                  outline: 'none'
+                }}
+              >
+                {generationModes.map((m: any) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
             <button 
               onClick={handleRender}
               disabled={rendering}
@@ -365,6 +388,25 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                       minHeight: '300px',
                       maxHeight: '600px'
                     }}>
+                      {/* Cost Badge */}
+                      {p.cost && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '12px',
+                          left: '12px',
+                          backgroundColor: 'rgba(22, 163, 74, 0.9)',
+                          color: 'white',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                          zIndex: 5
+                        }}>
+                          💰 ${parseFloat(p.cost.amount).toFixed(4)}
+                        </div>
+                      )}
+
                       <img 
                         src={`${API_URL}${p.url}`} 
                         alt={`Paragraph ${item.paragraph_id} Image ${p.id}`}

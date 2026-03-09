@@ -43,10 +43,17 @@ def get_available_config():
 
     # Leonardo Models
     leonardo_models = [
+        {"id": "7b592283-e8a7-4c5a-9ba6-d18c31f258b9", "name": "Lucid Origin (Economic/Great Text)"},
+        {"id": "b24e16ff-06e3-43eb-8d33-4416c2d75876", "name": "Leonardo Vision XL (Fast)"},
+        {"id": "gpt-image-1.5", "name": "GPT Image-1.5 (High Quality/Expensive)"},
         {"id": "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3", "name": "Phoenix 1.0 (Best for Text)"},
         {"id": "e316348f-7773-490e-adcd-46757c738eb7", "name": "Absolute Reality v1.6"},
-        {"id": "d69c8273-6b17-4a30-a13e-d6637ae1c644", "name": "3D Animation Style"},
-        {"id": "5c232a9e-906d-409f-952b-31c7c1510491", "name": "Leonardo Vision XL"},
+    ]
+    
+    # Generation Modes
+    generation_modes = [
+        {"id": "FAST", "name": "Modo Rápido ($0.012)", "cost": 0.012},
+        {"id": "QUALITY", "name": "Modo Calidad ($0.0852)", "cost": 0.0852},
     ]
     
     return {
@@ -55,7 +62,8 @@ def get_available_config():
             "elevenlabs": eleven_voices
         },
         "styles": styles,
-        "leonardo_models": leonardo_models
+        "leonardo_models": leonardo_models,
+        "generation_modes": generation_modes
     }
 
 @router.post("/", response_model=VideoResponse)
@@ -199,7 +207,7 @@ async def generate_audio(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{video_id}/images")
-async def generate_images(video_id: int, style_name: str = "epic", max_images_per_paragraph: int = 2, db: Session = Depends(get_db)):
+async def generate_images(video_id: int, style_name: str = "realistic", max_images_per_paragraph: int = 2, model_id: str = None, generation_mode: str = "QUALITY", db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -234,7 +242,8 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
             "total_paragraphs": len(plan),
             "processed_paragraphs": 0,
             "total_images": 0,
-            "items": []
+            "items": [],
+            "generation_mode": generation_mode
         }
 
         # Caching: Load existing prompts if possible
@@ -248,7 +257,7 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
                     for item in old_data.get("items", []):
                         # Store both prompts and the spoken text they were based on
                         existing_prompts_all[item["paragraph_id"]] = {
-                            "prompts": [p["prompt"] for p in item["prompts"]],
+                            "prompts": item["prompts"], # Store objects, not just strings
                             "spoken": item.get("spoken", "")
                         }
             except:
@@ -270,9 +279,13 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
             # 1. Generate prompts (or reuse if text matches)
             cached = existing_prompts_all.get(idx)
             if cached and cached["spoken"] == text and len(cached["prompts"]) == images_count:
-                prompts = cached["prompts"]
+                # cached["prompts"] is a list of objects now
+                prompts = [p["prompt"] for p in cached["prompts"]]
+                # We also need to preserve the cost if possible
+                cached_prompts_objs = cached["prompts"]
             else:
                 prompts = engine.generate_prompts(text, style_name, n=images_count)
+                cached_prompts_objs = []
             
             if not prompts: continue
             
@@ -305,12 +318,28 @@ async def generate_images(video_id: int, style_name: str = "epic", max_images_pe
                             except Exception as e:
                                 print(f"Warning: Failed to upload reference image for paragraph {idx} image {img_idx}: {e}")
                     
-                    engine.generate_leonardo_image(p_text, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id)
-                
-                paragraph_item["prompts"].append({
-                    "id": img_idx,
-                    "prompt": p_text
-                })
+                    cost_info = engine.generate_leonardo_image(p_text, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=model_id, mode=generation_mode)
+                    p_info_entry = {
+                        "id": img_idx,
+                        "prompt": p_text
+                    }
+                    if cost_info:
+                        p_info_entry["cost"] = cost_info
+                    paragraph_item["prompts"].append(p_info_entry)
+                else:
+                    # Restore from cache including cost
+                    existing_p = None
+                    if cached_prompts_objs and i < len(cached_prompts_objs):
+                        existing_p = cached_prompts_objs[i]
+                    
+                    entry = {
+                        "id": img_idx,
+                        "prompt": p_text
+                    }
+                    if existing_p and "cost" in existing_p:
+                        entry["cost"] = existing_p["cost"]
+                        
+                    paragraph_item["prompts"].append(entry)
                 total_images += 1
             
             all_prompts_data["items"].append(paragraph_item)
@@ -386,6 +415,8 @@ async def regenerate_image(
     paragraph_id: int, 
     image_id: int, 
     custom_prompt: str = None,
+    model_id: str = None,
+    generation_mode: str = "QUALITY",
     db: Session = Depends(get_db)
 ):
     video = db.query(Video).filter(Video.id == video_id).first()
@@ -431,12 +462,24 @@ async def regenerate_image(
     
     # Check if a specific model was requested (passed as a query param or from somewhere)
     # For now, we'll allow an optional model_id in the regenerate call too if we want
-    engine.generate_leonardo_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg)
+    cost_info = engine.generate_leonardo_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, model_id=model_id, mode=generation_mode)
+    
+    # Update cost in JSON
+    for item in data.get("items", []):
+        if item["paragraph_id"] == paragraph_id:
+            for p_info in item.get("prompts", []):
+                if p_info["id"] == image_id:
+                    if cost_info:
+                        p_info["cost"] = cost_info
+                    break
+    
+    # Save JSON with prompt and cost update
+    images_json.write_text(json.dumps(data, indent=2))
     
     return {"ok": True, "url": f"/{video.base_dir}/images/{out_path.name}?t={int(datetime.now().timestamp())}"}
 
 @router.post("/{video_id}/add-image")
-async def add_image(video_id: int, paragraph_id: int, style_name: str = None, db: Session = Depends(get_db)):
+async def add_image(video_id: int, paragraph_id: int, style_name: str = None, generation_mode: str = "QUALITY", db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -482,14 +525,18 @@ async def add_image(video_id: int, paragraph_id: int, style_name: str = None, db
     style = StyleService.get_style(effective_style)
     neg = style.get("negative_prompt")
     
-    engine.generate_leonardo_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id)
+    cost_info = engine.generate_leonardo_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id, mode=generation_mode)
 
     # 4. Update JSON
-    target_para["prompts"].append({
+    new_entry = {
         "id": new_img_id,
         "prompt": new_prompt,
         "url": f"/{video.base_dir}/images/p{paragraph_id:03d}_{new_img_id:02d}.png"
-    })
+    }
+    if cost_info:
+        new_entry["cost"] = cost_info
+        
+    target_para["prompts"].append(new_entry)
     target_para["images_count"] = len(target_para["prompts"])
     target_para["seconds_per_image"] = target_para["seconds"] / target_para["images_count"]
     data["total_images"] += 1

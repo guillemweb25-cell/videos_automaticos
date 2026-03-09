@@ -120,13 +120,13 @@ class ImageEngine:
         
         return image_id
 
-    def generate_leonardo_image(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, model_id: Optional[str] = None, init_image_id: Optional[str] = None) -> None:
+    def generate_leonardo_image(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, model_id: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY") -> Optional[Dict[str, Any]]:
         """Generates an image using Leonardo.ai with optional model selection and image guidance. Defaults to V2."""
         # Check if we should use V2 (default) or V1
         use_v2 = os.getenv("LEONARDO_API_VERSION", "v2").lower() == "v2"
         
-        if use_v2 and not model_id: # V2 is optimized for gpt-image-1.5
-            return self.generate_leonardo_v2(prompt, out_path, size=size, init_image_id=init_image_id)
+        if (use_v2 and not model_id) or model_id == "gpt-image-1.5": # V2 is optimized for gpt-image-1.5
+            return self.generate_leonardo_v2(prompt, out_path, size=size, init_image_id=init_image_id, mode=mode)
             
         # V1 logic
         if not self.leonardo_api_key:
@@ -159,8 +159,24 @@ class ImageEngine:
             payload["init_image_id"] = init_image_id
             payload["imagePrompts"] = [init_image_id]
         
-        # Alchemy is a paid feature. Allow disabling it via env var if needed.
+        # Alchemy and Prompt Magic logic for V1
         use_alchemy = os.getenv("LEONARDO_ALCHEMY", "true").lower() == "true"
+        # Newer models like Kino 2.1 (Lucid) or XL don't support Prompt Magic
+        incompatible_with_prompt_magic = [
+            "7b592283-e8a7-4c5a-9ba6-d18c31f258b9", 
+            "b24e16ff-06e3-43eb-8d33-4416c2d75876",
+            "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3"
+        ]
+        
+        if mode == "FAST":
+            use_alchemy = False
+            payload["promptMagic"] = False
+            cost_amount = 0.012
+        else:
+            # QUALITY / ULTRA
+            payload["promptMagic"] = target_model not in incompatible_with_prompt_magic
+            cost_amount = 0.0852
+            
         payload["alchemy"] = use_alchemy
         
         resp = requests.post(f"{self.leonardo_v1_url}/generations", headers=headers, json=payload)
@@ -175,8 +191,10 @@ class ImageEngine:
         
         # 3. Download
         self._download_image(img_url, out_path)
+        
+        return {"amount": cost_amount}
 
-    def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", init_image_id: Optional[str] = None) -> None:
+    def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", init_image_id: Optional[str] = None, mode: str = "QUALITY") -> Optional[Dict[str, Any]]:
         """Generates an image using Leonardo.ai V2 API with GPT Image-1.5 model."""
         if not self.leonardo_api_key:
             raise RuntimeError("LEONARDO_API_KEY not configured")
@@ -196,7 +214,7 @@ class ImageEngine:
                 "width": width,
                 "height": height,
                 "quantity": 1,
-                "mode": "QUALITY",
+                "mode": mode if mode in ["FAST", "QUALITY", "ULTRA"] else "QUALITY",
                 "prompt_enhance": "OFF"
             },
             "public": False
@@ -220,16 +238,34 @@ class ImageEngine:
             print(f"Leonardo V2 API Error ({resp.status_code}): {resp.text}")
             resp.raise_for_status()
         
-        data = resp.json().get("generations", {})
-        gen_id = data.get("id")
+        resp_data = resp.json()
+        # V2 can return structure: {"generate": {"generationId": "..."}}
+        # or {"generations": {"id": "..."}} depending on specific endpoint/version variations
+        gen_id = None
+        if "generate" in resp_data:
+            gen_id = resp_data["generate"].get("generationId")
+        elif "generations" in resp_data:
+            gen_id = resp_data["generations"].get("id")
+            
         if not gen_id:
             raise RuntimeError(f"Leonardo V2 failed to return a generation ID: {resp.text}")
+        
+        cost_info = resp_data.get("generate", {}).get("cost") or resp_data.get("generations", {}).get("cost")
         
         # 2. Poll for completion (V2 polling might be slightly different but usually same endpoint structure)
         img_url = self._poll_leonardo_v2(gen_id, headers)
         
         # 3. Download
         self._download_image(img_url, out_path)
+        
+        # Define costs for V2 based on mode
+        v2_costs = {
+            "FAST": 0.012,
+            "QUALITY": 0.0852,
+            "ULTRA": 0.0852 # Or whatever the user provided
+        }
+        
+        return {"amount": v2_costs.get(mode, 0.0852)}
 
     def _normalize_size(self, size: str):
         if size == "1792x1024": return 1536, 1024

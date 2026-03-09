@@ -26,6 +26,10 @@ export interface ParagraphPrompt {
     id: number;
     prompt: string;
     url: string;
+    cost?: {
+      amount: number;
+      currency?: string;
+    };
   }[];
 }
 
@@ -257,8 +261,12 @@ class ApiClient {
     return res.json();
   }
 
-  async generateImages(videoId: number, style: string, maxImages: number): Promise<{ ok: boolean; count: number }> {
-    const res = await fetch(`${this.baseUrl}/videos/${videoId}/images?style_name=${style}&max_images_per_paragraph=${maxImages}`, {
+  async generateImages(videoId: number, style: string, maxImages: number, modelId?: string, generationMode?: string): Promise<{ ok: boolean; count: number }> {
+    let url = `${this.baseUrl}/videos/${videoId}/images?style_name=${style}&max_images_per_paragraph=${maxImages}`;
+    if (modelId) url += `&model_id=${encodeURIComponent(modelId)}`;
+    if (generationMode) url += `&generation_mode=${encodeURIComponent(generationMode)}`;
+    
+    const res = await fetch(url, {
       method: 'POST',
       headers: this.getHeaders(true),
     });
@@ -297,9 +305,10 @@ class ApiClient {
     return res.json();
   }
 
-  async addImage(videoId: number, paragraphId: number, style?: string): Promise<{ok: boolean, image: any}> {
+  async addImage(videoId: number, paragraphId: number, style?: string, generationMode?: string): Promise<{ok: boolean, image: any}> {
     let url = `${this.baseUrl}/videos/${videoId}/add-image?paragraph_id=${paragraphId}`;
     if (style) url += `&style_name=${encodeURIComponent(style)}`;
+    if (generationMode) url += `&generation_mode=${encodeURIComponent(generationMode)}`;
     
     const response = await fetch(url, {
       method: "POST",
@@ -318,10 +327,11 @@ class ApiClient {
     return response.json();
   }
 
-  async regenerateImage(videoId: number, paragraphId: number, imageId: number, customPrompt?: string, modelId?: string): Promise<{ ok: boolean, url: string }> {
+  async regenerateImage(videoId: number, paragraphId: number, imageId: number, customPrompt?: string, modelId?: string, generationMode?: string): Promise<{ ok: boolean, url: string }> {
     let url = `${this.baseUrl}/videos/${videoId}/regenerate-image?paragraph_id=${paragraphId}&image_id=${imageId}`;
     if (customPrompt) url += `&custom_prompt=${encodeURIComponent(customPrompt)}`;
     if (modelId) url += `&model_id=${encodeURIComponent(modelId)}`;
+    if (generationMode) url += `&generation_mode=${encodeURIComponent(generationMode)}`;
 
     const res = await fetch(url, {
       method: 'POST',
@@ -344,7 +354,8 @@ class ApiClient {
   async getConfig(): Promise<{ 
     voices: { tiktok: { id: string, name: string }[], elevenlabs: { id: string, name: string }[] },
     styles: { id: string, name: string }[],
-    leonardo_models: { id: string, name: string }[]
+    leonardo_models: { id: string, name: string }[],
+    generation_modes: { id: string, name: string, cost: number }[]
   }> {
     const res = await fetch(`${this.baseUrl}/videos/config`, {
       headers: this.getHeaders(true),

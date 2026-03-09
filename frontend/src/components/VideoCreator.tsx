@@ -29,6 +29,10 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
   const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('vertical');
   const [maxImagesPerParagraph, setMaxImagesPerParagraph] = useState(2);
   const [shouldAutoRender, setShouldAutoRender] = useState(false);
+  const [leonardoModels, setLeonardoModels] = useState<{ id: string, name: string }[]>([]);
+  const [selectedModel, setSelectedModel] = useState('7b592283-e8a7-4c5a-9ba6-d18c31f258b9'); // Default to Lucid Origin
+  const [generationModes, setGenerationModes] = useState<{ id: string, name: string, cost: number }[]>([]);
+  const [generationMode, setGenerationMode] = useState('QUALITY');
   const stopRequested = useRef(false);
 
   const addLog = (msg: string) => setLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
@@ -39,6 +43,12 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         const config = await api.getConfig();
         setAvailableVoices(config.voices);
         setAvailableStyles(config.styles);
+        setLeonardoModels(config.leonardo_models || []);
+        setGenerationModes(config.generation_modes || []);
+        
+        if (config.generation_modes?.length > 0 && !initialVideo) {
+          setGenerationMode('QUALITY'); // Default
+        }
         
         if (!initialVideo) {
           setTitle('');
@@ -200,10 +210,10 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
       if (!skipImages) {
         if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
         setStatus('images');
-        addLog('Generando imágenes para cada párrafo...');
+        addLog(`Generando imágenes (${maxImagesPerParagraph} por párrafo) usando modelo: ${selectedModel} (${generationMode})...`);
         setStatus('generating_images');
-        await api.generateImages(currentId, style, maxImagesPerParagraph);
-        addLog('Imágenes generadas correctamente.');
+        await api.generateImages(currentId!, style, maxImagesPerParagraph, selectedModel, generationMode);
+        addLog('Imágenes generadas con éxito.');
       } else {
         addLog('Saltando: Imágenes ya generadas.');
       }
@@ -300,13 +310,47 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
               ))}
             </select>
           </div>
-          <div className="form-group">
-            <label>Estilo Visual</label>
-            <select value={style} onChange={(e: ChangeEvent<HTMLSelectElement>) => setStyle(e.target.value)} disabled={isBusy || isLocked}>
-              {availableStyles.map((s: any) => (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-300">Estilo Visual</label>
+            <select
+              value={style}
+              onChange={(e) => setStyle(e.target.value)}
+              className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isBusy || isLocked}
+            >
+              {availableStyles.map(s => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-300">Modelo Leonardo</label>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isBusy || isLocked}
+            >
+              {leonardoModels.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400">Selecciona el modelo para la generación inicial.</p>
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-300">Calidad / Coste</label>
+            <select
+              value={generationMode}
+              onChange={(e) => setGenerationMode(e.target.value)}
+              className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isBusy || isLocked}
+            >
+              {generationModes.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400">Elige entre rapidez o máxima fidelidad visual.</p>
           </div>
           <div className="form-group">
             <label className="block text-sm font-medium text-gray-400 mb-2">Máx. Imágenes por Párrafo</label>
