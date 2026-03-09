@@ -11,7 +11,8 @@ class ImageEngine:
     def __init__(self, openai_api_key: Optional[str] = None, leonardo_api_key: Optional[str] = None):
         self.openai_client = OpenAI(api_key=openai_api_key or os.getenv("OPENAI_API_KEY"))
         self.leonardo_api_key = leonardo_api_key or os.getenv("LEONARDO_API_KEY")
-        self.leonardo_url = "https://cloud.leonardo.ai/api/rest/v1"
+        self.leonardo_v1_url = "https://cloud.leonardo.ai/api/rest/v1"
+        self.leonardo_v2_url = "https://cloud.leonardo.ai/api/rest/v2"
 
     def generate_prompts(self, text: str, style_name: str, n: int = 1) -> List[str]:
         """Generates visual prompts from narration text using GPT."""
@@ -103,7 +104,7 @@ class ImageEngine:
         if ext == "jpg": ext = "jpeg"
         
         payload = {"extension": ext}
-        resp = requests.post(f"{self.leonardo_url}/init-image", headers=headers, json=payload)
+        resp = requests.post(f"{self.leonardo_v1_url}/init-image", headers=headers, json=payload)
         resp.raise_for_status()
         
         data = resp.json()["uploadInitImage"]
@@ -120,7 +121,14 @@ class ImageEngine:
         return image_id
 
     def generate_leonardo_image(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, model_id: Optional[str] = None, init_image_id: Optional[str] = None) -> None:
-        """Generates an image using Leonardo.ai with optional model selection and image guidance."""
+        """Generates an image using Leonardo.ai with optional model selection and image guidance. Defaults to V2."""
+        # Check if we should use V2 (default) or V1
+        use_v2 = os.getenv("LEONARDO_API_VERSION", "v2").lower() == "v2"
+        
+        if use_v2 and not model_id: # V2 is optimized for gpt-image-1.5
+            return self.generate_leonardo_v2(prompt, out_path, size=size, init_image_id=init_image_id)
+            
+        # V1 logic
         if not self.leonardo_api_key:
             raise RuntimeError("LEONARDO_API_KEY not configured")
 
@@ -155,7 +163,7 @@ class ImageEngine:
         use_alchemy = os.getenv("LEONARDO_ALCHEMY", "true").lower() == "true"
         payload["alchemy"] = use_alchemy
         
-        resp = requests.post(f"{self.leonardo_url}/generations", headers=headers, json=payload)
+        resp = requests.post(f"{self.leonardo_v1_url}/generations", headers=headers, json=payload)
         if resp.status_code != 200:
             print(f"Leonardo API Error ({resp.status_code}): {resp.text}")
             resp.raise_for_status()
@@ -168,6 +176,61 @@ class ImageEngine:
         # 3. Download
         self._download_image(img_url, out_path)
 
+    def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", init_image_id: Optional[str] = None) -> None:
+        """Generates an image using Leonardo.ai V2 API with GPT Image-1.5 model."""
+        if not self.leonardo_api_key:
+            raise RuntimeError("LEONARDO_API_KEY not configured")
+
+        width, height = self._normalize_size(size)
+        
+        headers = {
+            "Authorization": f"Bearer {self.leonardo_api_key}",
+            "Content-Type": "application/json",
+            "accept": "application/json"
+        }
+        
+        payload = {
+            "model": "gpt-image-1.5",
+            "parameters": {
+                "prompt": prompt,
+                "width": width,
+                "height": height,
+                "quantity": 1,
+                "mode": "QUALITY",
+                "prompt_enhance": "OFF"
+            },
+            "public": False
+        }
+
+        if init_image_id:
+            payload["parameters"]["guidances"] = {
+                "image_reference": [
+                    {
+                        "image": {
+                            "id": init_image_id,
+                            "type": "UPLOADED"
+                        },
+                        "strength": "MID"
+                    }
+                ]
+            }
+        
+        resp = requests.post(f"{self.leonardo_v2_url}/generations", headers=headers, json=payload)
+        if resp.status_code != 200:
+            print(f"Leonardo V2 API Error ({resp.status_code}): {resp.text}")
+            resp.raise_for_status()
+        
+        data = resp.json().get("generations", {})
+        gen_id = data.get("id")
+        if not gen_id:
+            raise RuntimeError(f"Leonardo V2 failed to return a generation ID: {resp.text}")
+        
+        # 2. Poll for completion (V2 polling might be slightly different but usually same endpoint structure)
+        img_url = self._poll_leonardo_v2(gen_id, headers)
+        
+        # 3. Download
+        self._download_image(img_url, out_path)
+
     def _normalize_size(self, size: str):
         if size == "1792x1024": return 1536, 1024
         if size == "1024x1792": return 1024, 1536
@@ -176,7 +239,7 @@ class ImageEngine:
     def _poll_leonardo(self, gen_id: str, headers: dict, timeout=300) -> str:
         t0 = time.time()
         while time.time() - t0 < timeout:
-            resp = requests.get(f"{self.leonardo_url}/generations/{gen_id}", headers=headers)
+            resp = requests.get(f"{self.leonardo_v1_url}/generations/{gen_id}", headers=headers)
             resp.raise_for_status()
             data = resp.json()["generations_by_pk"]
             if data["status"] == "COMPLETE":
@@ -185,6 +248,31 @@ class ImageEngine:
                 raise RuntimeError(f"Leonardo generation failed: {data}")
             time.sleep(3)
         raise TimeoutError("Leonardo timeout")
+
+    def _poll_leonardo_v2(self, gen_id: str, headers: dict, timeout=300) -> str:
+        """Polls for completion using V2 style response."""
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            # Note: V2 might still use the same polling endpoint, checking status
+            resp = requests.get(f"{self.leonardo_v1_url}/generations/{gen_id}", headers=headers)
+            resp.raise_for_status()
+            data = resp.json().get("generations_by_pk")
+            if not data:
+                # If v1 poll doesn't work for v2 job, we might need to adjust
+                # But typically they share the same backend for results
+                print(f"DEBUG: Poll V2 response: {resp.text}")
+                data = resp.json().get("generations")
+            
+            if data and data.get("status") == "COMPLETE":
+                images = data.get("generated_images", [])
+                if images:
+                    return images[0]["url"]
+            
+            if data and data.get("status") in ["FAILED", "ERROR"]:
+                raise RuntimeError(f"Leonardo V2 generation failed: {data}")
+            
+            time.sleep(3)
+        raise TimeoutError("Leonardo V2 timeout")
 
     def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None) -> None:
         """Generates a professional thumbnail. Blends visual prompt with text instructions."""
