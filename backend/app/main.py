@@ -13,8 +13,6 @@ app = FastAPI(
     version="0.1.0",
 )
 
-print(f"DEBUG: CORS_ORIGINS loaded: {settings.CORS_ORIGINS}")
-
 # Static files for cache
 app.mount("/cache", StaticFiles(directory="cache"), name="cache")
 
