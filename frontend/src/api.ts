@@ -66,7 +66,7 @@ export interface YouTubeVideo {
   view_count?: string;
 }
 
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+export const API_URL = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8500`;
 
 class ApiClient {
   private baseUrl = API_URL;
