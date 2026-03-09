@@ -24,7 +24,7 @@ echo "--- Starting Sync: Server -> Laptop ---"
 
 # 1. Sync Cache
 echo "Step 1: Synchronizing cache from server..."
-rsync -avz -e "ssh -p $REMOTE_PORT_SSH" $REMOTE_SSH:$REMOTE_BASE_PATH/cache/ cache/
+rsync -avz --exclude="*.mp4" -e "ssh -p $REMOTE_PORT_SSH" $REMOTE_SSH:$REMOTE_BASE_PATH/cache/ cache/
 
 # 2. Sync Database
 echo "Step 2: Synchronizing database from server..."
