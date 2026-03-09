@@ -30,8 +30,18 @@ class YouTubeService:
         
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-                self.token_path.write_text(creds.to_json())
+                try:
+                    from google.auth.exceptions import RefreshError
+                    creds.refresh(Request())
+                    self.token_path.write_text(creds.to_json())
+                except RefreshError:
+                    print(f"Token expired or revoked for {self.creds_dir}. Deleting invalid token.")
+                    if self.token_path.exists():
+                        self.token_path.unlink()
+                    return None
+                except Exception as e:
+                    print(f"Error refreshing token: {e}")
+                    return None
             else:
                 return None
         return creds
