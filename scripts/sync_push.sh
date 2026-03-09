@@ -27,8 +27,12 @@ echo "Step 1: Synchronizing cache..."
 # Use --no-o --no-g to avoid permission errors on remote
 rsync -avz --no-o --no-g --exclude="*.mp4" -e "ssh -p $REMOTE_PORT_SSH" cache/ $REMOTE_SSH:$REMOTE_BASE_PATH/cache/
 
-# 2. Sync Database
-echo "Step 2: Synchronizing database..."
+# 2. Sync YouTube Credentials
+echo "Step 2: Synchronizing YouTube credentials..."
+rsync -avz --no-o --no-g -e "ssh -p $REMOTE_PORT_SSH" youtube_creds/ $REMOTE_SSH:$REMOTE_BASE_PATH/youtube_creds/
+
+# 3. Sync Database
+echo "Step 3: Synchronizing database..."
 # Check if local DB is running
 if ! docker ps | grep -q "videos_automaticos-db-1"; then
     echo "Error: Local database container (videos_automaticos-db-1) is not running!"
