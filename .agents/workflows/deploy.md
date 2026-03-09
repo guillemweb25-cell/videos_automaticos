@@ -33,4 +33,7 @@ Your server always stays on the `main` branch.
 
 If you changed environment variables or the `docker-compose.yml`, restart the services on the server:
 1. SSH into the server: `ssh -p 5622 guillem@enguillem.es`
-2. Restart: `docker compose up -d --build`
+2. Restart using the helper script:
+   ```bash
+   ./scripts/start.sh
+   ```
