@@ -1,6 +1,7 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import List
+from typing import List, Union
 
 class Settings(BaseSettings):
     # Database
@@ -18,6 +19,13 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:8500",
     ]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",")]
+        return v
 
     # External APIs
     OPENAI_API_KEY: str | None = None
