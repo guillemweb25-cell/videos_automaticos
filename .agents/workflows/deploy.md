@@ -1,0 +1,36 @@
+---
+description: how to sync and deploy to production
+---
+
+This workflow guides you through synchronizing your local laptop development with the production server at `5622enguillem.es`.
+
+### 1. Synchronize Data (Cache & DB)
+
+Use these commands to keep your data in sync.
+
+#### Push to Server:
+Use this when you have generated content (audio/images) or updated database records on your laptop and want them on the server.
+// turbo
+1. Run `./scripts/sync_push.sh`
+
+#### Pull from Server:
+Use this when you have generated content on the server and want to bring it back to your laptop for further development.
+// turbo
+1. Run `./scripts/sync_pull.sh`
+
+### 2. Update Code (Git)
+
+Your server always stays on the `main` branch.
+
+1. On your laptop, merge your feature branch into `main`.
+2. Push `main` to the remote repository (e.g., GitHub).
+3. On the server, pull the latest changes:
+   ```bash
+   git pull origin main
+   ```
+
+### 3. Restart Production Services
+
+If you changed environment variables or the `docker-compose.yml`, restart the services on the server:
+1. SSH into the server: `ssh -p 5622 guillem@enguillem.es`
+2. Restart: `docker compose up -d --build`

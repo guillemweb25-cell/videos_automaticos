@@ -23,7 +23,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "8001:8000"
+      - "${BACKEND_PORT:-8500}:8000"
     volumes:
       - ./backend:/app
       - ./cache:/app/cache
@@ -41,7 +41,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT:-8501}:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
