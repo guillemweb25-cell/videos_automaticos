@@ -13,6 +13,7 @@ function App() {
 
   // Selected Channel State
   const [selectedChannel, setSelectedChannel] = useState<ChannelResponse | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Channel Form State
   const [channelName, setChannelName] = useState('')
@@ -146,8 +147,13 @@ function App() {
 
   return (
     <div className="app-layout">
+      {/* Mobile Backdrop */}
+      {sidebarOpen && (
+        <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
+      )}
+
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <h1>🎬 VideoBot</h1>
         </div>
@@ -158,7 +164,7 @@ function App() {
             <div 
               key={channel.id} 
               className={`channel-link ${selectedChannel?.id === channel.id ? 'active' : ''}`}
-              onClick={() => setSelectedChannel(channel)}
+              onClick={() => { setSelectedChannel(channel); setSidebarOpen(false); }}
             >
               <div className="channel-icon">{channel.name[0].toUpperCase()}</div>
               <span>{channel.name}</span>
@@ -196,6 +202,9 @@ function App() {
       {/* Main Content */}
       <main className="main-wrapper">
         <header className="top-header">
+          <button className="menu-toggle" onClick={() => setSidebarOpen(true)}>
+            ☰
+          </button>
           <div style={{ fontWeight: 600 }}>
             {selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
           </div>
