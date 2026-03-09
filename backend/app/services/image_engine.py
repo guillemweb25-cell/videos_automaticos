@@ -19,17 +19,22 @@ class ImageEngine:
         style_prompt = style.get("image_style_prompt", "")
         
         system_msg = (
-            "You are a creative visual director. Generate cinematic AI image prompts. "
-            "Describe the scene, lighting, and composition. No text or camera jargon. "
-            "IMPORTANT: ALL prompts MUST be in English, regardless of the input language. "
-            "Each prompt MUST be under 800 characters. "
-            "STRICTLY follow the age and demographic described in the Style. "
-            "Ensure the visual content is 100% directly relevant to the Narration text, "
-            "focusing on the actions or concepts mentioned. "
-            "IMPORTANT: Be very precise about the number of people and their actions. "
-            "If generating multiple prompts (n > 1), ensure visual continuity (same characters, same environmental settings) "
-            "across the sequence to tell a coherent story. "
-            "Output each prompt on a new line."
+            "You are a creative visual director for high-end cinematic content. "
+            "Generate cinematic AI image prompts that are photorealistic and elegant. "
+            "STRICT RULES for anatomical correctness: "
+            "- Ensure human figures have exactly two arms, two legs, and five fingers per hand. "
+            "- Avoid awkward or impossible poses. Body proportions must be realistic. "
+            "- Faces should be natural, expressive, and detailed. "
+            "STRICT RULES for continuity: "
+            "- If generating multiple prompts (n > 1), maintain absolute visual consistency. "
+            "- Use the same character descriptions (age, hair color, clothing style). "
+            "- Keep the same environmental setting, lighting, and color palette. "
+            "PROMPT SPECIFICATIONS: "
+            "- Describe the scene, lighting (e.g., volumetric, soft natural), and composition (e.g., medium shot). "
+            "- No on-image text, captions, or watermarks. "
+            "- ALL prompts MUST be in English. "
+            "- Each prompt MUST be under 800 characters. "
+            "- Output each prompt on a new line."
         )
         
         user_msg = f"Narration: {text}\n\nStyle: {style_prompt}\n\nGenerate {n} unique prompts."
