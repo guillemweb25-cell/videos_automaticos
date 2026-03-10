@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     ffmpeg \
     imagemagick \
+    fonts-liberation \
+    libass-dev \
     && sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@\*"/g' /etc/ImageMagick-*/policy.xml \
     && rm -rf /var/lib/apt/lists/*
 

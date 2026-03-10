@@ -29,6 +29,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
   const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('vertical');
   const [maxImagesPerParagraph, setMaxImagesPerParagraph] = useState(2);
   const [shouldAutoRender, setShouldAutoRender] = useState(false);
+  const [enableSubtitles, setEnableSubtitles] = useState(false);
   const [leonardoModels, setLeonardoModels] = useState<{ id: string, name: string }[]>([]);
   const [selectedModel, setSelectedModel] = useState('7b592283-e8a7-4c5a-9ba6-d18c31f258b9'); // Default to Lucid Origin
   const [generationModes, setGenerationModes] = useState<{ id: string, name: string, cost: number }[]>([]);
@@ -233,7 +234,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
         setStatus('rendering');
         addLog('Iniciando renderizado del vídeo final (esto puede tardar)...');
-        const renderRes = await api.renderVideo(currentId);
+        const renderRes = await api.renderVideo(currentId, enableSubtitles);
         addLog('¡Renderizado completado!');
         setFinalVideo(renderRes.output);
         setStatus('completed');
@@ -381,6 +382,16 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
               disabled={isBusy}
             />
             <label htmlFor="autoRender" style={{ margin: 0, cursor: 'pointer' }}>Auto-Renderizar</label>
+          </div>
+          <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '28px' }}>
+            <input 
+              type="checkbox" 
+              id="enableSubtitles" 
+              checked={enableSubtitles} 
+              onChange={(e) => setEnableSubtitles(e.target.checked)} 
+              disabled={isBusy}
+            />
+            <label htmlFor="enableSubtitles" style={{ margin: 0, cursor: 'pointer' }}>Subtítulos Karaoke</label>
           </div>
         </div>
 

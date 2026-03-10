@@ -865,7 +865,7 @@ async def generate_seo(video_id: int, db: Session = Depends(get_db)):
     return {"ok": True, "description": description, "hashtags": hashtags}
 
 @router.post("/{video_id}/render")
-def render_video(video_id: int, db: Session = Depends(get_db)):
+def render_video(video_id: int, subtitles: bool = False, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -925,12 +925,39 @@ def render_video(video_id: int, db: Session = Depends(get_db)):
             voice_volume=1.6
         )
         
+        # ── Karaoke Subtitles ──
+        if subtitles:
+            try:
+                from app.services.subtitle_engine import SubtitleEngine
+                sub_engine = SubtitleEngine()
+                
+                # Combine all audio chunks into a single file for transcription
+                combined_audio = base_dir / "output/combined_audio.mp3"
+                if not combined_audio.exists():
+                    from pydub import AudioSegment
+                    combined = AudioSegment.empty()
+                    for ap in audio_paths:
+                        combined += AudioSegment.from_mp3(str(ap))
+                    combined.export(str(combined_audio), format="mp3")
+                
+                sub_engine.add_subtitles_to_video(
+                    video_path=out_path,
+                    audio_path=combined_audio,
+                    video_size=out_size,
+                    cache_dir=base_dir / "output"
+                )
+                print(f"[render] Karaoke subtitles applied successfully!", flush=True)
+            except Exception as e:
+                print(f"[render] WARNING: Subtitle generation failed: {e}", flush=True)
+                # Don't fail the entire render if subtitles fail
+        
         video.status = "ready"
         db.commit()
         
-        return {"ok": True, "output": str(out_path), "bg_music": str(bg_music_path) if bg_music_path else None}
+        return {"ok": True, "output": str(out_path), "bg_music": str(bg_music_path) if bg_music_path else None, "subtitles": subtitles}
     except Exception as e:
         video.status = "failed"
         video.last_error = str(e)
         db.commit()
         raise HTTPException(status_code=500, detail=str(e))
+

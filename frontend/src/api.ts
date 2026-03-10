@@ -318,8 +318,10 @@ class ApiClient {
     return res.json();
   }
 
-  async renderVideo(videoId: number): Promise<{ ok: boolean; output: string }> {
-    const res = await fetch(`${this.baseUrl}/videos/${videoId}/render`, {
+  async renderVideo(videoId: number, subtitles: boolean = false): Promise<{ ok: boolean; output: string }> {
+    let url = `${this.baseUrl}/videos/${videoId}/render`;
+    if (subtitles) url += '?subtitles=true';
+    const res = await fetch(url, {
       method: 'POST',
       headers: this.getHeaders(true),
     });
