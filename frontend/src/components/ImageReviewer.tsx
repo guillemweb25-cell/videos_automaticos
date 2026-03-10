@@ -24,6 +24,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [generationModes, setGenerationModes] = useState<any[]>([]);
   const [generationMode, setGenerationMode] = useState('QUALITY');
   const [uploading, setUploading] = useState(false);
+  const [enableSubtitles, setEnableSubtitles] = useState(false);
 
   const loadData = async () => {
     try {
@@ -142,7 +143,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleRender = async () => {
     try {
       setRendering(true);
-      await api.renderVideo(videoId);
+      await api.renderVideo(videoId, enableSubtitles);
       alert("Vídeo renderizado correctamente con las nuevas imágenes.");
       onClose();
     } catch (err) {
@@ -320,6 +321,15 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
             >
               {rendering ? 'Renderizando...' : 'Finalizar y Renderizar'}
             </button>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'white', cursor: 'pointer', fontSize: '13px' }}>
+              <input 
+                type="checkbox" 
+                checked={enableSubtitles} 
+                onChange={(e) => setEnableSubtitles(e.target.checked)} 
+                disabled={rendering}
+              />
+              Subtítulos Karaoke
+            </label>
             <button 
               onClick={onClose}
               style={{
