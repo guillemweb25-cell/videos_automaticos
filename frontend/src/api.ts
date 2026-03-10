@@ -271,7 +271,37 @@ class ApiClient {
       headers: this.getHeaders(true),
     });
     if (!res.ok) throw new Error('Error al generar imágenes');
+    const data = await res.json();
+    
+    // If background processing, poll for completion
+    if (data.background) {
+      return this.pollVideoStatus(videoId);
+    }
+    return data;
+  }
+
+  async getVideoStatus(videoId: number): Promise<{ status: string; last_error?: string }> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/status`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener estado del vídeo');
     return res.json();
+  }
+
+  private async pollVideoStatus(videoId: number, maxWaitMs = 600000): Promise<{ ok: boolean; count: number }> {
+    const start = Date.now();
+    while (Date.now() - start < maxWaitMs) {
+      await new Promise(r => setTimeout(r, 5000)); // Poll every 5 seconds
+      const status = await this.getVideoStatus(videoId);
+      if (status.status === 'images_ready') {
+        return { ok: true, count: 0 };
+      }
+      if (status.status === 'failed') {
+        throw new Error(status.last_error || 'Image generation failed');
+      }
+      // Still generating, continue polling
+    }
+    throw new Error('Image generation timed out after 10 minutes');
   }
 
   async getImagesData(videoId: number): Promise<{ 

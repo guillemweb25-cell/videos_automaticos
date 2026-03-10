@@ -217,164 +217,193 @@ async def generate_images(video_id: int, style_name: str = "realistic", max_imag
     video.max_images_per_paragraph = max_images_per_paragraph
     db.commit()
     
-    try:
-        base_dir = Path(video.base_dir)
-        plan_path = base_dir / "plan.json"
-        if not plan_path.exists():
-            raise HTTPException(status_code=400, detail="Script not uploaded")
-        
-        durations_path = base_dir / "paragraphs_durations.json"
-        durations = []
-        if durations_path.exists():
-            durations = json.loads(durations_path.read_text())
-        dur_map = {d["id"]: d["seconds"] for d in durations}
+    # Run image generation in background thread to avoid proxy timeouts
+    import threading
+    from app.database import SessionLocal
+    
+    def _generate_images_background(vid_id, sty, max_imgs, m_id, gen_mode):
+        db_bg = SessionLocal()
+        try:
+            vid = db_bg.query(Video).filter(Video.id == vid_id).first()
+            if not vid:
+                return
+            
+            base_dir = Path(vid.base_dir)
+            plan_path = base_dir / "plan.json"
+            if not plan_path.exists():
+                vid.status = "failed"
+                vid.last_error = "Script not uploaded"
+                db_bg.commit()
+                return
+            
+            durations_path = base_dir / "paragraphs_durations.json"
+            durations = []
+            if durations_path.exists():
+                durations = json.loads(durations_path.read_text())
+            dur_map = {d["id"]: d["seconds"] for d in durations}
 
-        plan = json.loads(plan_path.read_text())
-        engine = ImageEngine()
-        
-        seconds_per_image = 10.0
-        all_prompts_data = {
-            "video_id": video_id,
-            "style": style_name,
-            "model": "gpt-4o-mini",
-            "seconds_per_image": seconds_per_image,
-            "max_images_per_paragraph": max_images_per_paragraph,
-            "total_paragraphs": len(plan),
-            "processed_paragraphs": 0,
-            "total_images": 0,
-            "items": [],
-            "generation_mode": generation_mode
-        }
-
-        # Caching: Load existing prompts if possible
-        existing_prompts_all = {}
-        all_prompts_all_path = base_dir / "image_prompts_all.json"
-        if all_prompts_all_path.exists():
-            try:
-                old_data = json.loads(all_prompts_all_path.read_text())
-                # Only reuse if style and max_images are the same
-                if old_data.get("style") == style_name and old_data.get("max_images_per_paragraph") == max_images_per_paragraph:
-                    for item in old_data.get("items", []):
-                        # Store both prompts and the spoken text they were based on
-                        existing_prompts_all[item["paragraph_id"]] = {
-                            "prompts": item["prompts"], # Store objects, not just strings
-                            "spoken": item.get("spoken", "")
-                        }
-            except:
-                pass
-
-        script_full = "\n".join([item.get("spoken", "") for item in plan])
-        total_images = 0
-        for item in plan:
-            idx = item["idx"]
-            text = item["spoken"]
-            duration = dur_map.get(idx, 0)
+            plan = json.loads(plan_path.read_text())
+            engine = ImageEngine()
             
-            # Logic: If duration < 10.0, max 1 image. Else, use the formula.
-            if duration < seconds_per_image:
-                images_count = 1
-            else:
-                import math
-                images_count = min(max_images_per_paragraph, math.ceil(duration / seconds_per_image))
-            
-            # 1. Generate prompts (or reuse if text matches)
-            cached = existing_prompts_all.get(idx)
-            if cached and cached["spoken"] == text and len(cached["prompts"]) == images_count:
-                # cached["prompts"] is a list of objects now
-                prompts = [p["prompt"] for p in cached["prompts"]]
-                # We also need to preserve the cost if possible
-                cached_prompts_objs = cached["prompts"]
-            else:
-                prompts = engine.generate_prompts(text, style_name, n=images_count, full_context=script_full)
-                cached_prompts_objs = []
-            
-            if not prompts: continue
-            
-            paragraph_item = {
-                "paragraph_id": idx,
-                "seconds": duration,
-                "spoken": text,
-                "images_count": len(prompts),
-                "seconds_per_image": duration / len(prompts) if prompts else 0,
-                "prompts": []
+            seconds_per_image = 10.0
+            all_prompts_data = {
+                "video_id": vid_id,
+                "style": sty,
+                "model": "gpt-4o-mini",
+                "seconds_per_image": seconds_per_image,
+                "max_images_per_paragraph": max_imgs,
+                "total_paragraphs": len(plan),
+                "processed_paragraphs": 0,
+                "total_images": 0,
+                "items": [],
+                "generation_mode": gen_mode
             }
-            
-            # 2. Generate images (skip if exists)
-            paragraph_item["prompts"] = []
-            for i, p_text in enumerate(prompts):
-                img_idx = i + 1
-                out_path = base_dir / "images" / f"p{idx:03d}_{img_idx:02d}.png"
-                
-                if not out_path.exists():
-                    style = StyleService.get_style(style_name)
-                    neg = style.get("negative_prompt")
-                    
-                    # Guidance logic for sequential images
-                    init_image_id = None
-                    if i > 0:
-                        prev_img_path = base_dir / "images" / f"p{idx:03d}_{i:02d}.png"
-                        if prev_img_path.exists():
-                            try:
-                                init_image_id = engine.upload_init_image(prev_img_path)
-                            except Exception as e:
-                                print(f"Warning: Failed to upload reference image for paragraph {idx} image {img_idx}: {e}")
-                    
-                    cost_info = engine.generate_leonardo_image(p_text, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=model_id, mode=generation_mode)
-                    p_info_entry = {
-                        "id": img_idx,
-                        "prompt": p_text
-                    }
-                    if cost_info:
-                        p_info_entry["cost"] = cost_info
-                    paragraph_item["prompts"].append(p_info_entry)
-                else:
-                    # Restore from cache including cost
-                    existing_p = None
-                    if cached_prompts_objs and i < len(cached_prompts_objs):
-                        existing_p = cached_prompts_objs[i]
-                    
-                    entry = {
-                        "id": img_idx,
-                        "prompt": p_text
-                    }
-                    if existing_p and "cost" in existing_p:
-                        entry["cost"] = existing_p["cost"]
-                        
-                    paragraph_item["prompts"].append(entry)
-                total_images += 1
-            
-            all_prompts_data["items"].append(paragraph_item)
-            all_prompts_data["processed_paragraphs"] += 1
-        
-        all_prompts_data["total_images"] = total_images
-        all_prompts_all_path.write_text(json.dumps(all_prompts_data, indent=2))
-        
-        # 3. Generate Thumbnail with Hook
-        thumbnail_path = base_dir / "output" / "thumbnail.png"
-        if not thumbnail_path.exists():
-            try:
-                seo = SEOEngine()
-                script_full = "\n".join([item.get("spoken", "") for item in plan])
-                hook = seo.generate_thumbnail_hook(script_full[:2000])
-                visual_prompt = seo.generate_thumbnail_visual_prompt(script_full[:2000], style_name, thumbnail_hook=hook)
-                
-                if "thumbnail" not in all_prompts_data:
-                    all_prompts_data["thumbnail"] = {}
-                all_prompts_data["thumbnail"]["hook"] = hook
-                all_prompts_data["thumbnail"]["visual_prompt"] = visual_prompt
-                
-                engine.generate_thumbnail(hook, visual_prompt, thumbnail_path, size=f"{video.width}x{video.height}")
-            except Exception as e:
-                print(f"Warning: Thumbnail generation failed: {e}")
 
-        video.status = "images_ready"
-        db.commit()
-        return {"ok": True, "count": total_images}
-    except Exception as e:
-        video.status = "failed"
-        video.last_error = str(e)
-        db.commit()
-        raise HTTPException(status_code=500, detail=str(e))
+            # Caching: Load existing prompts if possible
+            existing_prompts_all = {}
+            all_prompts_all_path = base_dir / "image_prompts_all.json"
+            if all_prompts_all_path.exists():
+                try:
+                    old_data = json.loads(all_prompts_all_path.read_text())
+                    if old_data.get("style") == sty and old_data.get("max_images_per_paragraph") == max_imgs:
+                        for item in old_data.get("items", []):
+                            existing_prompts_all[item["paragraph_id"]] = {
+                                "prompts": item["prompts"],
+                                "spoken": item.get("spoken", "")
+                            }
+                except:
+                    pass
+
+            script_full = "\n".join([item.get("spoken", "") for item in plan])
+            total_images = 0
+            for item in plan:
+                idx = item["idx"]
+                text = item["spoken"]
+                duration = dur_map.get(idx, 0)
+                
+                if duration < seconds_per_image:
+                    images_count = 1
+                else:
+                    import math
+                    images_count = min(max_imgs, math.ceil(duration / seconds_per_image))
+                
+                # 1. Generate prompts (or reuse if text matches)
+                cached = existing_prompts_all.get(idx)
+                if cached and cached["spoken"] == text and len(cached["prompts"]) == images_count:
+                    prompts = [p["prompt"] for p in cached["prompts"]]
+                    cached_prompts_objs = cached["prompts"]
+                else:
+                    prompts = engine.generate_prompts(text, sty, n=images_count, full_context=script_full)
+                    cached_prompts_objs = []
+                
+                if not prompts: continue
+                
+                paragraph_item = {
+                    "paragraph_id": idx,
+                    "seconds": duration,
+                    "spoken": text,
+                    "images_count": len(prompts),
+                    "seconds_per_image": duration / len(prompts) if prompts else 0,
+                    "prompts": []
+                }
+                
+                # 2. Generate images (skip if exists)
+                paragraph_item["prompts"] = []
+                for i, p_text in enumerate(prompts):
+                    img_idx = i + 1
+                    out_path = base_dir / "images" / f"p{idx:03d}_{img_idx:02d}.png"
+                    
+                    if not out_path.exists():
+                        style = StyleService.get_style(sty)
+                        neg = style.get("negative_prompt")
+                        
+                        init_image_id = None
+                        if i > 0:
+                            prev_img_path = base_dir / "images" / f"p{idx:03d}_{i:02d}.png"
+                            if prev_img_path.exists():
+                                try:
+                                    init_image_id = engine.upload_init_image(prev_img_path)
+                                except Exception as e:
+                                    print(f"Warning: Failed to upload reference image for paragraph {idx} image {img_idx}: {e}")
+                        
+                        cost_info = engine.generate_leonardo_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=m_id, mode=gen_mode)
+                        p_info_entry = {
+                            "id": img_idx,
+                            "prompt": p_text
+                        }
+                        if cost_info:
+                            p_info_entry["cost"] = cost_info
+                        paragraph_item["prompts"].append(p_info_entry)
+                    else:
+                        existing_p = None
+                        if cached_prompts_objs and i < len(cached_prompts_objs):
+                            existing_p = cached_prompts_objs[i]
+                        
+                        entry = {
+                            "id": img_idx,
+                            "prompt": p_text
+                        }
+                        if existing_p and "cost" in existing_p:
+                            entry["cost"] = existing_p["cost"]
+                            
+                        paragraph_item["prompts"].append(entry)
+                    total_images += 1
+                
+                all_prompts_data["items"].append(paragraph_item)
+                all_prompts_data["processed_paragraphs"] += 1
+                # Save progress after each paragraph
+                all_prompts_data["total_images"] = total_images
+                all_prompts_all_path.write_text(json.dumps(all_prompts_data, indent=2))
+            
+            all_prompts_data["total_images"] = total_images
+            all_prompts_all_path.write_text(json.dumps(all_prompts_data, indent=2))
+            
+            # 3. Generate Thumbnail with Hook
+            thumbnail_path = base_dir / "output" / "thumbnail.png"
+            if not thumbnail_path.exists():
+                try:
+                    seo = SEOEngine()
+                    script_snippet = "\n".join([item.get("spoken", "") for item in plan])
+                    hook = seo.generate_thumbnail_hook(script_snippet[:2000])
+                    visual_prompt = seo.generate_thumbnail_visual_prompt(script_snippet[:2000], sty, thumbnail_hook=hook)
+                    
+                    if "thumbnail" not in all_prompts_data:
+                        all_prompts_data["thumbnail"] = {}
+                    all_prompts_data["thumbnail"]["hook"] = hook
+                    all_prompts_data["thumbnail"]["visual_prompt"] = visual_prompt
+                    
+                    engine.generate_thumbnail(hook, visual_prompt, thumbnail_path, size=f"{vid.width}x{vid.height}")
+                except Exception as e:
+                    print(f"Warning: Thumbnail generation failed: {e}")
+
+            vid.status = "images_ready"
+            db_bg.commit()
+            print(f"[BG] Image generation complete for video {vid_id}. Total images: {total_images}")
+        except Exception as e:
+            print(f"[BG] Image generation FAILED for video {vid_id}: {e}")
+            vid = db_bg.query(Video).filter(Video.id == vid_id).first()
+            if vid:
+                vid.status = "failed"
+                vid.last_error = str(e)
+                db_bg.commit()
+        finally:
+            db_bg.close()
+    
+    thread = threading.Thread(
+        target=_generate_images_background,
+        args=(video_id, style_name, max_images_per_paragraph, model_id, generation_mode),
+        daemon=True
+    )
+    thread.start()
+    
+    return {"ok": True, "background": True, "count": 0}
+
+@router.get("/{video_id}/status")
+def get_video_status(video_id: int, db: Session = Depends(get_db)):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    return {"status": video.status, "last_error": video.last_error}
 
 @router.get("/{video_id}/images_data")
 def get_images_data(video_id: int, db: Session = Depends(get_db)):
