@@ -263,6 +263,7 @@ async def generate_images(video_id: int, style_name: str = "realistic", max_imag
             except:
                 pass
 
+        script_full = "\n".join([item.get("spoken", "") for item in plan])
         total_images = 0
         for item in plan:
             idx = item["idx"]
@@ -284,7 +285,7 @@ async def generate_images(video_id: int, style_name: str = "realistic", max_imag
                 # We also need to preserve the cost if possible
                 cached_prompts_objs = cached["prompts"]
             else:
-                prompts = engine.generate_prompts(text, style_name, n=images_count)
+                prompts = engine.generate_prompts(text, style_name, n=images_count, full_context=script_full)
                 cached_prompts_objs = []
             
             if not prompts: continue
@@ -647,7 +648,8 @@ async def regenerate_prompt_api(
     
     # 3. Generate 1 new prompt
     engine = ImageEngine()
-    prompts = engine.generate_prompts(para_text, style_name, n=1)
+    script_full = "\n".join([item.get("spoken", "") for item in plan])
+    prompts = engine.generate_prompts(para_text, style_name, n=1, full_context=script_full)
     
     if not prompts:
         raise HTTPException(status_code=500, detail="Failed to generate new prompt via AI")

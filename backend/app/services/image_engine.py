@@ -14,8 +14,8 @@ class ImageEngine:
         self.leonardo_v1_url = "https://cloud.leonardo.ai/api/rest/v1"
         self.leonardo_v2_url = "https://cloud.leonardo.ai/api/rest/v2"
 
-    def generate_prompts(self, text: str, style_name: str, n: int = 1) -> List[str]:
-        """Generates visual prompts from narration text using GPT."""
+    def generate_prompts(self, text: str, style_name: str, n: int = 1, full_context: str = "") -> List[str]:
+        """Generates visual prompts from narration text using GPT, with optional full video context."""
         style = StyleService.get_style(style_name)
         style_prompt = style.get("image_style_prompt", "")
         
@@ -38,7 +38,8 @@ class ImageEngine:
             "- Output each prompt on a new line."
         )
         
-        user_msg = f"Narration: {text}\n\nStyle: {style_prompt}\n\nGenerate {n} unique prompts."
+        context_msg = f"\nOverall Video Context:\n{full_context}" if full_context else ""
+        user_msg = f"Narration: {text}{context_msg}\n\nStyle: {style_prompt}\n\nGenerate {n} unique prompts that are relevant to the narration while respecting the overall video context."
         
         response = self.openai_client.chat.completions.create(
             model="gpt-4o-mini",
