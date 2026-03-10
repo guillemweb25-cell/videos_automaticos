@@ -143,16 +143,44 @@ class ImageEngine:
         
         target_model = model_id or "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3"
         
-        payload = {
-            "prompt": prompt,
-            "modelId": target_model, 
-            "width": width,
-            "height": height,
-            "num_images": 1,
-            "public": False,
-            "alchemy": True,
-            "contrast": 3.5
-        }
+        # Lucid Origin has a special payload format per Leonardo docs:
+        # alchemy=false, ultra=false, contrast=3.5, styleUUID required, no promptMagic
+        LUCID_ORIGIN_ID = "7b592283-e8a7-4c5a-9ba6-d18c31f258b9"
+        is_lucid = target_model == LUCID_ORIGIN_ID
+        
+        if is_lucid:
+            payload = {
+                "prompt": prompt,
+                "modelId": target_model,
+                "width": width,
+                "height": height,
+                "num_images": 1,
+                "public": False,
+                "alchemy": False,
+                "ultra": False,
+                "contrast": 3.5,
+                "styleUUID": "111dc692-d470-4eec-b791-3475abac4c46"  # Photography style
+            }
+            cost_amount = 0.012  # Lucid Origin is cheaper without alchemy
+        else:
+            payload = {
+                "prompt": prompt,
+                "modelId": target_model, 
+                "width": width,
+                "height": height,
+                "num_images": 1,
+                "public": False,
+                "alchemy": True,
+                "contrast": 3.5
+            }
+            
+            if mode == "FAST":
+                payload["alchemy"] = False
+                payload["promptMagic"] = False
+                cost_amount = 0.012
+            else:
+                payload["promptMagic"] = True
+                cost_amount = 0.0852
         
         if negative_prompt:
             payload["negative_prompt"] = negative_prompt
@@ -161,30 +189,7 @@ class ImageEngine:
             payload["init_image_id"] = init_image_id
             payload["imagePrompts"] = [init_image_id]
         
-        # Alchemy and Prompt Magic logic for V1
-        use_alchemy = os.getenv("LEONARDO_ALCHEMY", "true").lower() == "true"
-        incompatible_with_prompt_magic = [
-            "7b592283-e8a7-4c5a-9ba6-d18c31f258b9", # Lucid Origin
-            "b24e16ff-06e3-43eb-8d33-4416c2d75876", # Kino 2.1
-            "1e60ad30-5ca1-4470-9134-97210667d40f"  # Vision XL (example ID)
-        ]
-        
-        if mode == "FAST":
-            use_alchemy = False
-            payload["promptMagic"] = False
-            cost_amount = 0.012
-        else:
-            # QUALITY / ULTRA
-            payload["promptMagic"] = target_model not in incompatible_with_prompt_magic
-            cost_amount = 0.0852
-            
-        payload["alchemy"] = use_alchemy
-        if use_alchemy:
-            # For some models in V1 Alchemy, contrast is problematic or has strict ranges
-            # Defaulting to a safe behavior
-            if target_model in incompatible_with_prompt_magic:
-                payload.pop("contrast", None)
-        
+        print(f"Leonardo V1 Request: model={target_model}, is_lucid={is_lucid}")
         resp = requests.post(f"{self.leonardo_v1_url}/generations", headers=headers, json=payload)
         if resp.status_code != 200:
             print(f"!!! LEONARDO V1 ERROR ({resp.status_code}) !!!")
