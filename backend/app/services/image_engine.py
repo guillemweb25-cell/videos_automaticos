@@ -123,10 +123,11 @@ class ImageEngine:
 
     def generate_leonardo_image(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, model_id: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY") -> Optional[Dict[str, Any]]:
         """Generates an image using Leonardo.ai with optional model selection and image guidance. Defaults to V2."""
-        # Check if we should use V2 (default) or V1
         use_v2 = os.getenv("LEONARDO_API_VERSION", "v2").lower() == "v2"
         
-        if (use_v2 and not model_id) or model_id == "gpt-image-1.5": # V2 is optimized for gpt-image-1.5
+        # Determine if we should use V2
+        is_v2_model = model_id == "gpt-image-1.5"
+        if (use_v2 and not model_id) or is_v2_model:
             return self.generate_leonardo_v2(prompt, out_path, size=size, init_image_id=init_image_id, mode=mode)
             
         # V1 logic
@@ -162,11 +163,10 @@ class ImageEngine:
         
         # Alchemy and Prompt Magic logic for V1
         use_alchemy = os.getenv("LEONARDO_ALCHEMY", "true").lower() == "true"
-        # Newer models like Kino 2.1 (Lucid) or XL don't support Prompt Magic
         incompatible_with_prompt_magic = [
-            "7b592283-e8a7-4c5a-9ba6-d18c31f258b9", 
-            "b24e16ff-06e3-43eb-8d33-4416c2d75876",
-            "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3"
+            "7b592283-e8a7-4c5a-9ba6-d18c31f258b9", # Lucid Origin
+            "b24e16ff-06e3-43eb-8d33-4416c2d75876", # Kino 2.1
+            "1e60ad30-5ca1-4470-9134-97210667d40f"  # Vision XL (example ID)
         ]
         
         if mode == "FAST":
@@ -179,10 +179,18 @@ class ImageEngine:
             cost_amount = 0.0852
             
         payload["alchemy"] = use_alchemy
+        if use_alchemy:
+            # For some models in V1 Alchemy, contrast is problematic or has strict ranges
+            # Defaulting to a safe behavior
+            if target_model in incompatible_with_prompt_magic:
+                payload.pop("contrast", None)
         
         resp = requests.post(f"{self.leonardo_v1_url}/generations", headers=headers, json=payload)
         if resp.status_code != 200:
-            print(f"Leonardo API Error ({resp.status_code}): {resp.text}")
+            print(f"!!! LEONARDO V1 ERROR ({resp.status_code}) !!!")
+            print(f"URL: {self.leonardo_v1_url}/generations")
+            print(f"Payload: {json.dumps(payload, indent=2)}")
+            print(f"Response: {resp.text}")
             resp.raise_for_status()
         
         gen_id = resp.json()["sdGenerationJob"]["generationId"]

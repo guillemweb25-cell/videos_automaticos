@@ -480,7 +480,7 @@ async def regenerate_image(
     return {"ok": True, "url": f"/{video.base_dir}/images/{out_path.name}?t={int(datetime.now().timestamp())}"}
 
 @router.post("/{video_id}/add-image")
-async def add_image(video_id: int, paragraph_id: int, style_name: str = None, generation_mode: str = "QUALITY", db: Session = Depends(get_db)):
+async def add_image(video_id: int, paragraph_id: int, style_name: str = None, model_id: str = None, generation_mode: str = "QUALITY", db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -526,7 +526,7 @@ async def add_image(video_id: int, paragraph_id: int, style_name: str = None, ge
     style = StyleService.get_style(effective_style)
     neg = style.get("negative_prompt")
     
-    cost_info = engine.generate_leonardo_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id, mode=generation_mode)
+    cost_info = engine.generate_leonardo_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=model_id, mode=generation_mode)
 
     # 4. Update JSON
     new_entry = {

@@ -305,9 +305,10 @@ class ApiClient {
     return res.json();
   }
 
-  async addImage(videoId: number, paragraphId: number, style?: string, generationMode?: string): Promise<{ok: boolean, image: any}> {
-    let url = `${this.baseUrl}/videos/${videoId}/add-image?paragraph_id=${paragraphId}`;
+  async addImage(videoId: number, paragraph_id: number, style?: string, modelId?: string, generationMode?: string): Promise<{ok: boolean, image: any}> {
+    let url = `${this.baseUrl}/videos/${videoId}/add-image?paragraph_id=${paragraph_id}`;
     if (style) url += `&style_name=${encodeURIComponent(style)}`;
+    if (modelId) url += `&model_id=${encodeURIComponent(modelId)}`;
     if (generationMode) url += `&generation_mode=${encodeURIComponent(generationMode)}`;
     
     const response = await fetch(url, {

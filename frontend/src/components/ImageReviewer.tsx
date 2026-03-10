@@ -109,7 +109,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleAddImage = async (paraId: number) => {
     setAddingImage(paraId);
     try {
-      const res = await api.addImage(videoId, paraId, selectedStyle, generationMode);
+      const res = await api.addImage(videoId, paraId, selectedStyle, selectedModel, generationMode);
       if (res.ok) {
         // Refresh data or update locally
         await loadData();
