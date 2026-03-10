@@ -236,9 +236,10 @@ class ApiClient {
   }
 
   async uploadScript(videoId: number, script: string): Promise<{ ok: boolean; paragraphs: number }> {
-    const res = await fetch(`${this.baseUrl}/videos/${videoId}/script?script=${encodeURIComponent(script)}`, {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/script`, {
       method: 'POST',
-      headers: this.getHeaders(true),
+      headers: { ...this.getHeaders(true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script }),
     });
     if (!res.ok) throw new Error('Error al subir guion');
     return res.json();

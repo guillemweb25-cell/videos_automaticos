@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, File, UploadFile, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pathlib import Path
@@ -127,16 +127,28 @@ def delete_video(video_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 @router.post("/{video_id}/script")
-def upload_script(video_id: int, script: str, db: Session = Depends(get_db)):
+async def upload_script(video_id: int, request: Request, script: str = None, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
+    # Support both query parameter (short scripts) and JSON body (long scripts)
+    script_text = script
+    if not script_text:
+        try:
+            body = await request.json()
+            script_text = body.get("script", "")
+        except:
+            pass
+    
+    if not script_text:
+        raise HTTPException(status_code=400, detail="No script provided")
+    
     base_dir = Path(video.base_dir)
-    (base_dir / "script.txt").write_text(script, encoding="utf-8")
+    (base_dir / "script.txt").write_text(script_text, encoding="utf-8")
     
     # Simple split into paragraphs for now
-    paragraphs = [p.strip() for p in script.split("\n\n") if p.strip()]
+    paragraphs = [p.strip() for p in script_text.split("\n\n") if p.strip()]
     (base_dir / "plan.json").write_text(json.dumps([{"idx": i+1, "spoken": p} for i, p in enumerate(paragraphs)], indent=2), encoding="utf-8")
     
     return {"ok": True, "paragraphs": len(paragraphs)}
