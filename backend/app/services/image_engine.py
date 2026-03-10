@@ -185,7 +185,7 @@ class ImageEngine:
         if negative_prompt:
             payload["negative_prompt"] = negative_prompt
 
-        if init_image_id:
+        if init_image_id and not is_lucid:
             payload["init_image_id"] = init_image_id
             payload["imagePrompts"] = [init_image_id]
         
@@ -248,6 +248,10 @@ class ImageEngine:
             }
         
         resp = requests.post(f"{self.leonardo_v2_url}/generations", headers=headers, json=payload)
+        if resp.status_code != 200 and init_image_id and "guidances" in payload.get("parameters", {}):
+            print(f"Leonardo V2: guidance rejected ({resp.status_code}), retrying without image reference...")
+            del payload["parameters"]["guidances"]
+            resp = requests.post(f"{self.leonardo_v2_url}/generations", headers=headers, json=payload)
         if resp.status_code != 200:
             print(f"Leonardo V2 API Error ({resp.status_code}): {resp.text}")
             resp.raise_for_status()
