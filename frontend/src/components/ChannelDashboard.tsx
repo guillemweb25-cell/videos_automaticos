@@ -9,8 +9,17 @@ interface ChannelDashboardProps {
   onBack: () => void;
 }
 
+type TabType = 'overview' | 'videos' | 'shorts' | 'create' | 'youtube' | 'transcribe' | 'generations';
+
 const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'videos' | 'shorts' | 'create' | 'youtube' | 'transcribe' | 'generations'>('overview');
+  const [activeTab, _setActiveTab] = useState<TabType>(() => {
+    const saved = sessionStorage.getItem('activeTab');
+    return (saved as TabType) || 'overview';
+  });
+  const setActiveTab = (tab: TabType) => {
+    sessionStorage.setItem('activeTab', tab);
+    _setActiveTab(tab);
+  };
   const [ytInfo, setYtInfo] = useState<YouTubeChannelInfo | null>(null);
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [shorts, setShorts] = useState<YouTubeVideo[]>([]);
