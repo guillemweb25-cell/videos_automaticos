@@ -121,7 +121,13 @@ class ApiClient {
     const res = await fetch(`${this.baseUrl}/auth/me`, {
       headers: this.getHeaders(true),
     });
-    if (!res.ok) throw new Error('No autenticado');
+    if (!res.ok) {
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        throw new Error('TOKEN_EXPIRED');
+      }
+      throw new Error('NETWORK_ERROR');
+    }
     return res.json();
   }
 

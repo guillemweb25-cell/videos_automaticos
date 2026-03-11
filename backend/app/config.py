@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     # JWT
     JWT_SECRET_KEY: str = "change-me-to-a-random-secret-key"
     JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days
 
     # CORS
     CORS_ORIGINS: Any = [

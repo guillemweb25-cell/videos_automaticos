@@ -24,7 +24,13 @@ function App() {
     if (token) {
       api.getMe()
         .then(setUser)
-        .catch(() => localStorage.removeItem('token'))
+        .catch((err) => {
+          // Only clear token if it's actually expired/invalid (401)
+          // For network errors, keep the token so the session survives
+          if (err.message !== 'TOKEN_EXPIRED') {
+            console.warn('Network error checking auth, keeping token:', err.message)
+          }
+        })
         .finally(() => setLoading(false))
     } else {
       setLoading(false)
