@@ -138,16 +138,30 @@ ALIASES = {
     "stock9x16": "stock_photo",
     "stockthumb": "stock_photo",
     "celtico": "celtico_oscuro",
+    "canal_personalizado": "canal_personalizado",
 }
+
 
 class StyleService:
     @staticmethod
-    def get_style(name: str) -> dict:
+    def get_style(name: str, channel=None) -> dict:
+        if name.lower() == "canal_personalizado":
+            if channel and channel.image_style_prompt:
+                return {
+                    "display_name": f"Estilo del Canal ({channel.name})",
+                    "image_style_prompt": channel.image_style_prompt,
+                    "negative_prompt": channel.negative_prompt or NEGATIVE_BASE,
+                    "post_note": "",
+                }
+            name = "epic_cinema"
+            
         key = ALIASES.get(name.lower(), name.lower())
         try:
             return StyleService._resolve(key)
         except:
             return StyleService._resolve("epic_cinema")
+
+
 
     @staticmethod
     def _resolve(name: str, seen=None) -> dict:
@@ -176,6 +190,7 @@ class StyleService:
     @staticmethod
     def list_styles() -> List[str]:
         return sorted(list(STYLES.keys()) + list(ALIASES.keys()))
+
 
     @staticmethod
     def get_channel_style(channel, fallback_name: str = "epic_cinema") -> dict:

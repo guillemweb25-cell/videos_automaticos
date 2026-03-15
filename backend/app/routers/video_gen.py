@@ -12,7 +12,12 @@ from typing import List
 from app.database import get_db
 from app.models.video import Video
 from app.models.channel import Channel
-from app.schemas.video import VideoCreate, VideoResponse, VideoUpdate
+from app.schemas.video import (
+    VideoCreate, VideoResponse, VideoUpdate, 
+    ImageGenerationRequest, RegenerateImageRequest, 
+    AddImageRequest, ThumbnailGenerationRequest
+)
+
 from app.services.audio_engine import AudioEngine
 from app.services.image_engine import ImageEngine
 from app.services.rendering_engine import RenderingEngine
@@ -39,7 +44,8 @@ def get_available_config():
     eleven_voices = [{"id": name, "name": name} for name in ELEVEN_VOICES.keys()]
     
     # Styles
-    styles = [{"id": alias, "name": alias.capitalize()} for alias in ALIASES.keys()]
+    styles = [{"id": alias, "name": alias.replace("_", " ").capitalize()} for alias in ALIASES.keys()]
+
 
     # Leonardo Models
     leonardo_models = [
@@ -219,14 +225,14 @@ async def generate_audio(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{video_id}/images")
-async def generate_images(video_id: int, style_name: str = "realistic", max_images_per_paragraph: int = 2, model_id: str = None, generation_mode: str = "QUALITY", db: Session = Depends(get_db)):
+async def generate_images(video_id: int, req: ImageGenerationRequest, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
     video.status = "generating_images"
-    video.style = style_name
-    video.max_images_per_paragraph = max_images_per_paragraph
+    video.style = req.style_name
+    video.max_images_per_paragraph = req.max_images_per_paragraph
     db.commit()
     
     # Run image generation in background thread to avoid proxy timeouts
@@ -234,6 +240,7 @@ async def generate_images(video_id: int, style_name: str = "realistic", max_imag
     from app.database import SessionLocal
     
     def _generate_images_background(vid_id, sty, max_imgs, m_id, gen_mode):
+
         db_bg = SessionLocal()
         try:
             vid = db_bg.query(Video).filter(Video.id == vid_id).first()
@@ -407,9 +414,10 @@ async def generate_images(video_id: int, style_name: str = "realistic", max_imag
     
     thread = threading.Thread(
         target=_generate_images_background,
-        args=(video_id, style_name, max_images_per_paragraph, model_id, generation_mode),
+        args=(video_id, req.style_name, req.max_images_per_paragraph, req.model_id, req.generation_mode),
         daemon=True
     )
+
     thread.start()
     
     return {"ok": True, "background": True, "count": 0}
@@ -458,13 +466,15 @@ def get_images_data(video_id: int, db: Session = Depends(get_db)):
 @router.post("/{video_id}/regenerate-image")
 async def regenerate_image(
     video_id: int, 
-    paragraph_id: int, 
-    image_id: int, 
-    custom_prompt: str = None,
-    model_id: str = None,
-    generation_mode: str = "QUALITY",
+    req: RegenerateImageRequest,
     db: Session = Depends(get_db)
 ):
+    paragraph_id = req.paragraph_id
+    image_id = req.image_id
+    custom_prompt = req.custom_prompt
+    model_id = req.model_id
+    generation_mode = req.generation_mode
+
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -526,7 +536,12 @@ async def regenerate_image(
     return {"ok": True, "url": f"/{video.base_dir}/images/{out_path.name}?t={int(datetime.now().timestamp())}"}
 
 @router.post("/{video_id}/add-image")
-async def add_image(video_id: int, paragraph_id: int, style_name: str = None, model_id: str = None, generation_mode: str = "QUALITY", db: Session = Depends(get_db)):
+async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(get_db)):
+    paragraph_id = req.paragraph_id
+    style_name = req.style_name
+    model_id = req.model_id
+    generation_mode = req.generation_mode
+
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -796,11 +811,13 @@ async def upload_thumbnail(video_id: int, file: UploadFile = File(...), db: Sess
 @router.post("/{video_id}/generate-thumbnail")
 async def generate_thumbnail_api(
     video_id: int, 
-    hook: str = None, 
-    visual_prompt: str = None,
-    model_id: str = None,
+    req: ThumbnailGenerationRequest,
     db: Session = Depends(get_db)
 ):
+    hook = req.hook
+    visual_prompt = req.visual_prompt
+    model_id = req.model_id
+
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")

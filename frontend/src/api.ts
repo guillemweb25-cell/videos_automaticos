@@ -271,16 +271,20 @@ class ApiClient {
   }
 
   async generateImages(videoId: number, style: string, maxImages: number, modelId?: string, generationMode?: string): Promise<{ ok: boolean; count: number }> {
-    let url = `${this.baseUrl}/videos/${videoId}/images?style_name=${style}&max_images_per_paragraph=${maxImages}`;
-    if (modelId) url += `&model_id=${encodeURIComponent(modelId)}`;
-    if (generationMode) url += `&generation_mode=${encodeURIComponent(generationMode)}`;
-    
-    const res = await fetch(url, {
+    const response = await fetch(`${this.baseUrl}/videos/${videoId}/images`, {
       method: 'POST',
       headers: this.getHeaders(true),
+      body: JSON.stringify({
+        style_name: style,
+        max_images_per_paragraph: maxImages,
+        model_id: modelId,
+        generation_mode: generationMode
+      })
     });
-    if (!res.ok) throw new Error('Error al generar imágenes');
-    const data = await res.json();
+
+    if (!response.ok) throw new Error('Error al generar imágenes');
+    const data = await response.json();
+
     
     // If background processing, poll for completion
     if (data.background) {
@@ -347,15 +351,17 @@ class ApiClient {
   }
 
   async addImage(videoId: number, paragraph_id: number, style?: string, modelId?: string, generationMode?: string): Promise<{ok: boolean, image: any}> {
-    let url = `${this.baseUrl}/videos/${videoId}/add-image?paragraph_id=${paragraph_id}`;
-    if (style) url += `&style_name=${encodeURIComponent(style)}`;
-    if (modelId) url += `&model_id=${encodeURIComponent(modelId)}`;
-    if (generationMode) url += `&generation_mode=${encodeURIComponent(generationMode)}`;
-    
-    const response = await fetch(url, {
+    const response = await fetch(`${this.baseUrl}/videos/${videoId}/add-image`, {
       method: "POST",
       headers: this.getHeaders(true),
+      body: JSON.stringify({
+        paragraph_id,
+        style_name: style,
+        model_id: modelId,
+        generation_mode: generationMode
+      })
     });
+
     if (!response.ok) throw new Error("Failed to add image");
     return response.json();
   }
@@ -370,14 +376,16 @@ class ApiClient {
   }
 
   async regenerateImage(videoId: number, paragraphId: number, imageId: number, customPrompt?: string, modelId?: string, generationMode?: string): Promise<{ ok: boolean, url: string }> {
-    let url = `${this.baseUrl}/videos/${videoId}/regenerate-image?paragraph_id=${paragraphId}&image_id=${imageId}`;
-    if (customPrompt) url += `&custom_prompt=${encodeURIComponent(customPrompt)}`;
-    if (modelId) url += `&model_id=${encodeURIComponent(modelId)}`;
-    if (generationMode) url += `&generation_mode=${encodeURIComponent(generationMode)}`;
-
-    const res = await fetch(url, {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/regenerate-image`, {
       method: 'POST',
       headers: this.getHeaders(true),
+      body: JSON.stringify({
+        paragraph_id: paragraphId,
+        image_id: imageId,
+        custom_prompt: customPrompt,
+        model_id: modelId,
+        generation_mode: generationMode
+      })
     });
     if (!res.ok) throw new Error('Error al regenerar imagen');
     return res.json();
@@ -444,15 +452,16 @@ class ApiClient {
   }
 
   async generateThumbnail(videoId: number, hook?: string, visualPrompt?: string, modelId?: string): Promise<{ ok: boolean, url: string }> {
-    let url = `${this.baseUrl}/videos/${videoId}/generate-thumbnail?`;
-    if (hook) url += `hook=${encodeURIComponent(hook)}&`;
-    if (visualPrompt) url += `visual_prompt=${encodeURIComponent(visualPrompt)}&`;
-    if (modelId) url += `model_id=${encodeURIComponent(modelId)}&`;
-    
-    const res = await fetch(url, {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/generate-thumbnail`, {
       method: 'POST',
       headers: this.getHeaders(true),
+      body: JSON.stringify({
+        hook,
+        visual_prompt: visualPrompt,
+        model_id: modelId
+      })
     });
+
     if (!res.ok) throw new Error('Error al generar miniatura');
     return res.json();
   }

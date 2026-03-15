@@ -47,3 +47,28 @@ class ParagraphDurations(BaseModel):
     extract: str
     seconds: float
     file: str
+
+class ImageGenerationRequest(BaseModel):
+    style_name: str = "realistic"
+    max_images_per_paragraph: int = 2
+    model_id: Optional[str] = None
+    generation_mode: str = "QUALITY"
+
+class RegenerateImageRequest(BaseModel):
+    paragraph_id: int
+    image_id: int
+    custom_prompt: Optional[str] = None
+    model_id: Optional[str] = None
+    generation_mode: str = "QUALITY"
+
+class AddImageRequest(BaseModel):
+    paragraph_id: int
+    style_name: Optional[str] = None
+    model_id: Optional[str] = None
+    generation_mode: str = "QUALITY"
+
+class ThumbnailGenerationRequest(BaseModel):
+    hook: Optional[str] = None
+    visual_prompt: Optional[str] = None
+    model_id: Optional[str] = None
+

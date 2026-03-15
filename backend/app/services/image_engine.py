@@ -22,10 +22,14 @@ class ImageEngine:
         system_msg = (
             "You are a creative visual director for high-end cinematic content. "
             "Generate cinematic AI image prompts that are photorealistic and elegant. "
-            "STRICT RULES for anatomical correctness: "
+            "STRICT RULES for anatomical correctness and realism: "
             "- Ensure human figures have exactly two arms, two legs, and five fingers per hand. "
             "- Avoid awkward or impossible poses. Body proportions must be realistic. "
+            "- For elderly characters, PRIORITIZE slow, gentle, and stable movements (e.g., seated flexion, slow walking). "
+            "- ABSOLUTELY AVOID: jumping, running, high-impact movements, extreme athleticism, strenuous exercise, or any unrealistic agility for seniors. "
+
             "- Faces should be natural, expressive, and detailed. "
+
             "STRICT RULES for continuity: "
             "- If generating multiple prompts (n > 1), maintain absolute visual consistency. "
             "- Use the same character descriptions (age, hair color, clothing style). "
@@ -69,7 +73,9 @@ class ImageEngine:
             "IMPORTANT: Maintain absolute visual continuity with the previous scene. "
             "Keep the same characters, same clothing, and same environmental settings. "
             "STRICTLY follow the age and demographic described in the Style. "
+            "- For elderly characters, ensure movements are calm, slow, and realistic. No jumping or acrobatic poses. "
             "Output ONLY the prompt text in English."
+
         )
         
         user_msg = (
@@ -128,7 +134,8 @@ class ImageEngine:
         # Determine if we should use V2
         is_v2_model = model_id == "gpt-image-1.5"
         if (use_v2 and not model_id) or is_v2_model:
-            return self.generate_leonardo_v2(prompt, out_path, size=size, init_image_id=init_image_id, mode=mode)
+            return self.generate_leonardo_v2(prompt, out_path, size=size, negative_prompt=negative_prompt, init_image_id=init_image_id, mode=mode)
+
             
         # V1 logic
         if not self.leonardo_api_key:
@@ -208,7 +215,8 @@ class ImageEngine:
         
         return {"amount": cost_amount}
 
-    def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", init_image_id: Optional[str] = None, mode: str = "QUALITY") -> Optional[Dict[str, Any]]:
+    def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY") -> Optional[Dict[str, Any]]:
+
         """Generates an image using Leonardo.ai V2 API with GPT Image-1.5 model."""
         if not self.leonardo_api_key:
             raise RuntimeError("LEONARDO_API_KEY not configured")
@@ -225,6 +233,7 @@ class ImageEngine:
             "model": "gpt-image-1.5",
             "parameters": {
                 "prompt": prompt,
+                "negative_prompt": negative_prompt if negative_prompt else "",
                 "width": width,
                 "height": height,
                 "quantity": 1,
@@ -233,6 +242,7 @@ class ImageEngine:
             },
             "public": False
         }
+
 
         if init_image_id:
             payload["parameters"]["guidances"] = {
