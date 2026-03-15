@@ -44,6 +44,8 @@ export interface ChannelResponse {
   name: string;
   handle?: string;
   creds_dir?: string;
+  image_style_prompt?: string;
+  negative_prompt?: string;
 }
 
 export interface YouTubeChannelInfo {

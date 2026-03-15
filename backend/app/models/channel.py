@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -12,6 +12,8 @@ class Channel(Base):
     name = Column(String(255), nullable=False)
     youtube_handle = Column(String(255), nullable=True)  # Ej: @MiCanal
     creds_dir = Column(String(255), nullable=True)  # Carpeta en /app/youtube_creds
+    image_style_prompt = Column(Text, nullable=True)  # Custom style for image generation
+    negative_prompt = Column(Text, nullable=True)  # Custom negative prompt
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
@@ -23,3 +25,4 @@ class Channel(Base):
 
     def __repr__(self) -> str:
         return f"<Channel(id={self.id}, name={self.name})>"
+

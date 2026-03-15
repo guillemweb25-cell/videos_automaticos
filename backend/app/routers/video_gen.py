@@ -257,6 +257,9 @@ async def generate_images(video_id: int, style_name: str = "realistic", max_imag
             plan = json.loads(plan_path.read_text())
             engine = ImageEngine()
             
+            # Load channel for custom style
+            channel = db_bg.query(Channel).filter(Channel.id == vid.channel_id).first()
+            
             seconds_per_image = 10.0
             all_prompts_data = {
                 "video_id": vid_id,
@@ -305,7 +308,8 @@ async def generate_images(video_id: int, style_name: str = "realistic", max_imag
                     prompts = [p["prompt"] for p in cached["prompts"]]
                     cached_prompts_objs = cached["prompts"]
                 else:
-                    prompts = engine.generate_prompts(text, sty, n=images_count, full_context=script_full)
+                    channel_style = StyleService.get_channel_style(channel, sty)
+                    prompts = engine.generate_prompts(text, sty, n=images_count, full_context=script_full, style_override=channel_style)
                     cached_prompts_objs = []
                 
                 if not prompts: continue
@@ -326,7 +330,7 @@ async def generate_images(video_id: int, style_name: str = "realistic", max_imag
                     out_path = base_dir / "images" / f"p{idx:03d}_{img_idx:02d}.png"
                     
                     if not out_path.exists():
-                        style = StyleService.get_style(sty)
+                        style = StyleService.get_channel_style(channel, sty)
                         neg = style.get("negative_prompt")
                         
                         init_image_id = None
@@ -499,7 +503,8 @@ async def regenerate_image(
     
     engine = ImageEngine()
     style_name = data.get("style", "stocksenior")
-    style = StyleService.get_style(style_name)
+    channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
+    style = StyleService.get_channel_style(channel, style_name)
     neg = style.get("negative_prompt")
     
     # Check if a specific model was requested (passed as a query param or from somewhere)
@@ -558,13 +563,15 @@ async def add_image(video_id: int, paragraph_id: int, style_name: str = None, mo
 
     # Use style_name if provided, else fall back to JSON
     effective_style = style_name or data.get("style", "stocksenior")
-    new_prompt = engine.generate_continuation_prompt(target_para["spoken"], last_prompt, effective_style)
+    channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
+    channel_style = StyleService.get_channel_style(channel, effective_style)
+    new_prompt = engine.generate_continuation_prompt(target_para["spoken"], last_prompt, effective_style, style_override=channel_style)
     
     # 3. Generate New Image
     new_img_id = last_img_id + 1
     out_path = base_dir / "images" / f"p{paragraph_id:03d}_{new_img_id:02d}.png"
     
-    style = StyleService.get_style(effective_style)
+    style = StyleService.get_channel_style(channel, effective_style)
     neg = style.get("negative_prompt")
     
     cost_info = engine.generate_leonardo_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=model_id, mode=generation_mode)
@@ -684,13 +691,15 @@ async def regenerate_prompt_api(
     if not para_text:
         raise HTTPException(status_code=404, detail="Paragraph text not found")
     
-    # 2. Get style
+    # 2. Get style (with channel override)
     style_name = data.get("style", "stocksenior")
+    channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
+    channel_style = StyleService.get_channel_style(channel, style_name)
     
     # 3. Generate 1 new prompt
     engine = ImageEngine()
     script_full = "\n".join([item.get("spoken", "") for item in plan])
-    prompts = engine.generate_prompts(para_text, style_name, n=1, full_context=script_full)
+    prompts = engine.generate_prompts(para_text, style_name, n=1, full_context=script_full, style_override=channel_style)
     
     if not prompts:
         raise HTTPException(status_code=500, detail="Failed to generate new prompt via AI")

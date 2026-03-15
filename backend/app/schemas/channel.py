@@ -6,6 +6,8 @@ class ChannelBase(BaseModel):
     name: str
     youtube_handle: str | None = None
     creds_dir: str | None = None
+    image_style_prompt: str | None = None
+    negative_prompt: str | None = None
 
 
 class ChannelCreate(ChannelBase):
@@ -16,6 +18,8 @@ class ChannelUpdate(BaseModel):
     name: str | None = None
     youtube_handle: str | None = None
     creds_dir: str | None = None
+    image_style_prompt: str | None = None
+    negative_prompt: str | None = None
 
 
 class ChannelResponse(ChannelBase):

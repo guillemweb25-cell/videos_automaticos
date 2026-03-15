@@ -34,6 +34,9 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
   const [uploadingVideoId, setUploadingVideoId] = useState<number | null>(null);
 
   const [editCredsDir, setEditCredsDir] = useState(channel.creds_dir || '');
+  const [editStylePrompt, setEditStylePrompt] = useState(channel.image_style_prompt || '');
+  const [editNegativePrompt, setEditNegativePrompt] = useState(channel.negative_prompt || '');
+
 
   useEffect(() => {
     if (channel.creds_dir) {
@@ -44,10 +47,13 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
       setShorts([]);
     }
     setEditCredsDir(channel.creds_dir || '');
+    setEditStylePrompt(channel.image_style_prompt || '');
+    setEditNegativePrompt(channel.negative_prompt || '');
     loadDownloads();
     loadGenerations();
     setSelectedVideo(null);
   }, [channel]);
+
 
   const loadYouTubeData = async () => {
     setLoading(true);
@@ -97,18 +103,25 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
     }
   };
 
-  const handleUpdateCreds = async () => {
+  const handleUpdateChannel = async () => {
     setLoading(true);
     try {
-      await api.updateChannel(channel.id, { creds_dir: editCredsDir });
-      await loadYouTubeData();
-      alert('Credenciales activadas correctamente');
+      await api.updateChannel(channel.id, { 
+        creds_dir: editCredsDir,
+        image_style_prompt: editStylePrompt,
+        negative_prompt: editNegativePrompt
+      });
+      if (editCredsDir && editCredsDir !== channel.creds_dir) {
+        await loadYouTubeData();
+      }
+      alert('Configuración actualizada correctamente');
     } catch (err: any) {
       alert('Error al actualizar: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
+
 
   const handleDownload = async () => {
     if (!ytUrl) return;
@@ -192,10 +205,42 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
                   onChange={(e) => setEditCredsDir(e.target.value)}
                   placeholder="Ej: 0012-saludseniorpodcast"
                 />
-                <button className="btn btn-secondary" onClick={handleUpdateCreds} disabled={loading}>
-                  {loading ? 'Guardando...' : 'Activar Credenciales'}
+              </div>
+
+              <div style={{ marginTop: '24px' }}>
+                <h4 style={{ marginBottom: '8px' }}>Estilo Visual del Canal</h4>
+                <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '12px' }}>
+                  Define el prompt visual base que se usará para todas las imágenes de este canal. 
+                  Si se deja vacío, se usará el estilo por defecto del vídeo.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '4px' }}>Style Prompt</label>
+                    <textarea 
+                      style={{ width: '100%', minHeight: '80px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', color: 'white', resize: 'vertical' }}
+                      value={editStylePrompt}
+                      onChange={(e) => setEditStylePrompt(e.target.value)}
+                      placeholder="Ej: Cinematic photography, soft lighting, high detail..."
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '4px' }}>Negative Prompt</label>
+                    <textarea 
+                      style={{ width: '100%', minHeight: '60px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', color: 'white', resize: 'vertical' }}
+                      value={editNegativePrompt}
+                      onChange={(e) => setEditNegativePrompt(e.target.value)}
+                      placeholder="Ej: blurry, low quality, distorted hands..."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '24px' }}>
+                <button className="btn btn-secondary" onClick={handleUpdateChannel} disabled={loading} style={{ width: '100%' }}>
+                  {loading ? 'Guardando...' : 'Guardar Configuración'}
                 </button>
               </div>
+
               {ytInfo && (
                 <div style={{ marginTop: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
                   <img src={ytInfo.snippet.thumbnails.default.url} style={{ borderRadius: '50%' }} alt="avatar" />

@@ -14,9 +14,9 @@ class ImageEngine:
         self.leonardo_v1_url = "https://cloud.leonardo.ai/api/rest/v1"
         self.leonardo_v2_url = "https://cloud.leonardo.ai/api/rest/v2"
 
-    def generate_prompts(self, text: str, style_name: str, n: int = 1, full_context: str = "") -> List[str]:
+    def generate_prompts(self, text: str, style_name: str, n: int = 1, full_context: str = "", style_override: dict = None) -> List[str]:
         """Generates visual prompts from narration text using GPT, with optional full video context."""
-        style = StyleService.get_style(style_name)
+        style = style_override or StyleService.get_style(style_name)
         style_prompt = style.get("image_style_prompt", "")
         
         system_msg = (
@@ -59,9 +59,9 @@ class ImageEngine:
                 prompts.append(p[:800])
         return prompts[:n]
 
-    def generate_continuation_prompt(self, text: str, previous_prompt: str, style_name: str) -> str:
+    def generate_continuation_prompt(self, text: str, previous_prompt: str, style_name: str, style_override: dict = None) -> str:
         """Generates a visual continuation prompt based on the previous scene."""
-        style = StyleService.get_style(style_name)
+        style = style_override or StyleService.get_style(style_name)
         style_prompt = style.get("image_style_prompt", "")
         
         system_msg = (

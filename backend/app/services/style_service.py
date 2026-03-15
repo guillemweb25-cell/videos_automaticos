@@ -176,3 +176,15 @@ class StyleService:
     @staticmethod
     def list_styles() -> List[str]:
         return sorted(list(STYLES.keys()) + list(ALIASES.keys()))
+
+    @staticmethod
+    def get_channel_style(channel, fallback_name: str = "epic_cinema") -> dict:
+        """Returns channel-specific style if configured, otherwise falls back to named style."""
+        if channel and getattr(channel, "image_style_prompt", None):
+            return {
+                "display_name": f"Custom ({channel.name})",
+                "image_style_prompt": channel.image_style_prompt,
+                "negative_prompt": channel.negative_prompt or NEGATIVE_BASE,
+                "post_note": "",
+            }
+        return StyleService.get_style(fallback_name)
