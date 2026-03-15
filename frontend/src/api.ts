@@ -301,7 +301,7 @@ class ApiClient {
     return res.json();
   }
 
-  private async pollVideoStatus(videoId: number, maxWaitMs = 600000): Promise<{ ok: boolean; count: number }> {
+  private async pollVideoStatus(videoId: number, maxWaitMs = 1800000): Promise<{ ok: boolean; count: number }> {
     const start = Date.now();
     while (Date.now() - start < maxWaitMs) {
       await new Promise(r => setTimeout(r, 5000)); // Poll every 5 seconds
@@ -314,7 +314,8 @@ class ApiClient {
       }
       // Still generating, continue polling
     }
-    throw new Error('Image generation timed out after 10 minutes');
+    throw new Error('Image generation timed out after 30 minutes');
+
   }
 
   async getImagesData(videoId: number): Promise<{ 

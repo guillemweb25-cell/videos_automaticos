@@ -13,8 +13,9 @@ NEGATIVE_BASE = (
     "anime, cartoon, plastic CGI, neon oversaturation, low quality, heavy HDR, "
     "deformed anatomy, extra limbs, extra arms, deformed hands, mutated hands, "
     "fused fingers, extra fingers, missing limbs, cross-eyed, ugly, morbid, "
-    "mutation, gross proportions"
+    "mutation, gross proportions, backwards feet, inverted limbs, floating limbs"
 )
+
 
 DEFAULT_STYLE: StyleSpec = {
     "display_name": "Default Epic Cinema",

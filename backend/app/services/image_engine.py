@@ -14,36 +14,39 @@ class ImageEngine:
         self.leonardo_v1_url = "https://cloud.leonardo.ai/api/rest/v1"
         self.leonardo_v2_url = "https://cloud.leonardo.ai/api/rest/v2"
 
-    def generate_prompts(self, text: str, style_name: str, n: int = 1, full_context: str = "", style_override: dict = None) -> List[str]:
-        """Generates visual prompts from narration text using GPT, with optional full video context."""
+    def generate_prompts(self, text: str, style_name: str, n: int = 1, full_context: str = "", style_override: dict = None, recent_history: List[str] = []) -> List[str]:
+        """Generates visual prompts from narration text using GPT, with optional full video context and recent prompt history."""
         style = style_override or StyleService.get_style(style_name)
         style_prompt = style.get("image_style_prompt", "")
         
         system_msg = (
             "You are a creative visual director for high-end cinematic content. "
             "Generate cinematic AI image prompts that are photorealistic and elegant. "
-            "STRICT RULES for anatomical correctness and realism: "
+            "STRICT RULES for chronological progression: "
+            "- DISCARD generic scenes. Focus ONLY on the specific action and moment described in the Narration. "
+            "- If the narration describes a specific event (e.g., 'fleeing to Egypt', 'working wood'), DO NOT show a generic summary scene. "
+            "- Maintain character consistency (age, face, clothes) but CHANGE the composition, angle, and specific interaction for every prompt. "
+            "- VARIETY is mandatory. If you see in the 'Recent History' that a setting has been used, MOVE the camera or CHANGE the scene elements. "
+            
+            "STRICT RULES for anatomical correctness: "
             "- Ensure human figures have exactly two arms, two legs, and five fingers per hand. "
-            "- Avoid awkward or impossible poses. Body proportions must be realistic. "
-            "- For elderly characters, PRIORITIZE slow, gentle, and stable movements (e.g., seated flexion, slow walking). "
-            "- ABSOLUTELY AVOID: jumping, running, high-impact movements, extreme athleticism, strenuous exercise, or any unrealistic agility for seniors. "
+            "- ORIENTATION: Pay extreme attention to feet and hands. Feet must point in a natural direction. ABSOLUTELY NO inverted or backwards feet. "
+            "- JOINTS: Limbs must connect naturally to the torso. Body proportions must be photorealistic. "
+            "- For elderly characters, PRIORITIZE slow, gentle, and stable movements. "
+            "- ABSOLUTELY AVOID: jumping, running, high-impact movements, acrobatics for seniors. "
 
-            "- Faces should be natural, expressive, and detailed. "
 
-            "STRICT RULES for continuity: "
-            "- If generating multiple prompts (n > 1), maintain absolute visual consistency. "
-            "- Use the same character descriptions (age, hair color, clothing style). "
-            "- Keep the same environmental setting, lighting, and color palette. "
             "PROMPT SPECIFICATIONS: "
-            "- Describe the scene, lighting (e.g., volumetric, soft natural), and composition (e.g., medium shot). "
-            "- No on-image text, captions, or watermarks. "
+            "- Describe the scene, lighting, and composition (e.g., close-up, wide shot, bird's eye view). "
             "- ALL prompts MUST be in English. "
             "- Each prompt MUST be under 800 characters. "
             "- Output each prompt on a new line."
         )
         
-        context_msg = f"\nOverall Video Context:\n{full_context}" if full_context else ""
-        user_msg = f"Narration: {text}{context_msg}\n\nStyle: {style_prompt}\n\nGenerate {n} unique prompts that are relevant to the narration while respecting the overall video context."
+        history_msg = f"\nRecent History (Avoid repeating these scenes):\n" + "\n".join(recent_history[:5]) if recent_history else ""
+        context_msg = f"\nOverall Video Concept (For mood/style only):\n{full_context[:1000]}..." if full_context else ""
+        user_msg = f"Narration to visualize: {text}\n{history_msg}{context_msg}\n\nStyle: {style_prompt}\n\nGenerate {n} unique and specific prompts for this EXACT narration."
+
         
         response = self.openai_client.chat.completions.create(
             model="gpt-4o-mini",

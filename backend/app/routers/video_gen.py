@@ -298,6 +298,8 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
 
             script_full = "\n".join([item.get("spoken", "") for item in plan])
             total_images = 0
+            recent_prompts = []
+            
             for item in plan:
                 idx = item["idx"]
                 text = item["spoken"]
@@ -314,12 +316,22 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                 if cached and cached["spoken"] == text and len(cached["prompts"]) == images_count:
                     prompts = [p["prompt"] for p in cached["prompts"]]
                     cached_prompts_objs = cached["prompts"]
+                    # Add cached prompts to history for next paragraphs
+                    recent_prompts.extend(prompts)
                 else:
                     channel_style = StyleService.get_channel_style(channel, sty)
-                    prompts = engine.generate_prompts(text, sty, n=images_count, full_context=script_full, style_override=channel_style)
+                    prompts = engine.generate_prompts(
+                        text, sty, 
+                        n=images_count, 
+                        full_context=script_full, 
+                        style_override=channel_style,
+                        recent_history=recent_prompts[-8:] # Pass last 8 prompts as history
+                    )
+                    recent_prompts.extend(prompts)
                     cached_prompts_objs = []
                 
                 if not prompts: continue
+
                 
                 paragraph_item = {
                     "paragraph_id": idx,
