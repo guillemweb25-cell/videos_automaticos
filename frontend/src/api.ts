@@ -235,6 +235,16 @@ class ApiClient {
     return res.json();
   }
 
+  async updateVideo(videoId: number, data: Partial<VideoResponse>): Promise<VideoResponse> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}`, {
+      method: 'PATCH',
+      headers: this.getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al actualizar vídeo');
+    return res.json();
+  }
+
   async deleteVideo(videoId: number): Promise<void> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}`, {
       method: 'DELETE',

@@ -171,6 +171,18 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         addLog(`Registro creado con ID: ${currentId}`);
       } else {
         addLog(`Usando registro existente ID: ${currentId}`);
+        // Update existing record with current UI settings
+        const width = orientation === 'horizontal' ? 1792 : 1024;
+        const height = orientation === 'horizontal' ? 1024 : 1792;
+        await api.updateVideo(currentId, {
+            title,
+            width,
+            height,
+            voice,
+            style,
+            max_images_per_paragraph: maxImagesPerParagraph
+        });
+        addLog('Registro actualizado con los ajustes actuales.');
       }
  
       if (stopRequested.current) throw new Error('Generación detenida por el usuario.');

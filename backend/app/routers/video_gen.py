@@ -105,6 +105,20 @@ def create_video(video_in: VideoCreate, db: Session = Depends(get_db)):
     
     return video
 
+@router.patch("/{video_id}", response_model=VideoResponse)
+def update_video(video_id: int, video_in: VideoUpdate, db: Session = Depends(get_db)):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    update_data = video_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(video, field, value)
+    
+    db.commit()
+    db.refresh(video)
+    return video
+
 @router.get("/channel/{channel_id}", response_model=List[VideoResponse])
 def get_channel_videos(channel_id: int, db: Session = Depends(get_db)):
     return db.query(Video).filter(Video.channel_id == channel_id).order_by(Video.created_at.desc()).all()

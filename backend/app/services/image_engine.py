@@ -137,6 +137,7 @@ class ImageEngine:
         # Determine if we should use V2
         is_v2_model = model_id == "gpt-image-1.5"
         if (use_v2 and not model_id) or is_v2_model:
+            # If model_id is None but use_v2 is True, generate_leonardo_v2 will use gpt-image-1.5
             return self.generate_leonardo_v2(prompt, out_path, size=size, negative_prompt=negative_prompt, init_image_id=init_image_id, mode=mode)
 
             
@@ -299,8 +300,14 @@ class ImageEngine:
         return {"amount": v2_costs.get(mode, 0.0852)}
 
     def _normalize_size(self, size: str):
-        if size == "1792x1024": return 1536, 1024
-        if size == "1024x1792": return 1024, 1536
+        """Normalizes common video resolutions to Leonardo GPT 1.5 compatible sizes."""
+        # 16:9 (Longs)
+        if "1920x1080" in size or "1792x1024" in size or "1536x864" in size:
+            return 1536, 1024
+        # 9:16 (Shorts)
+        if "1080x1920" in size or "1024x1792" in size or "864x1536" in size:
+            return 1024, 1536
+        # Default to square
         return 1024, 1024
 
     def _poll_leonardo(self, gen_id: str, headers: dict, timeout=300) -> str:
@@ -342,7 +349,10 @@ class ImageEngine:
         raise TimeoutError("Leonardo V2 timeout")
 
     def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None) -> None:
-        """Generates a professional thumbnail. Blends visual prompt with text instructions."""
+        """Generates a professional thumbnail. Blends visual prompt with text instructions. 
+        Defaults to gpt-image-1.5 for better text rendering.
+        """
+
         # If the visual prompt already mentions 'text', 'font', or 'hook', we use it as the base.
         # Otherwise, we append a standard text placement instruction.
         base_prompt = visual_prompt
@@ -358,7 +368,9 @@ class ImageEngine:
         if "8k" not in base_prompt.lower():
             base_prompt += " Extreme detail, 8k resolution, cinematic lighting."
 
-        self.generate_leonardo_image(base_prompt, out_path, size=size, model_id=model_id)
+        # Force GPT Image 1.5 for thumbnails if not specified
+        target_model = model_id or "gpt-image-1.5"
+        self.generate_leonardo_image(base_prompt, out_path, size=size, model_id=target_model)
 
     def _download_image(self, url: str, out_path: Path):
         resp = requests.get(url, stream=True)

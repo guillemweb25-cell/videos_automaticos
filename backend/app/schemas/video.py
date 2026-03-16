@@ -26,6 +26,8 @@ class VideoUpdate(BaseModel):
     duration_seconds: Optional[float] = None
     voice: Optional[str] = None
     style: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
     max_images_per_paragraph: Optional[int] = None
 
 class VideoResponse(VideoBase):
