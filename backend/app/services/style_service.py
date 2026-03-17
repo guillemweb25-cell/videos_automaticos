@@ -121,6 +121,18 @@ STYLES: Dict[str, StyleSpec] = {
             "cinematic moody atmosphere; photorealistic, raw"
         ),
         "negative_prompt": NEGATIVE_BASE + ", modern buildings, electricity, bright colors, happy tone",
+    },
+    "cabala_legacy_master": {
+        "extends": "biblical_base",
+        "display_name": "Cabala Legacy Master",
+        "image_style_prompt": (
+            "Masterpiece cinematic vision, hyper-realistic mystical atmosphere; "
+            "ancient sandstone sanctuaries with intricate hand-carved spiritual engravings; "
+            "blinding ethereal light emanations, shimmering crystalline diffraction, and divine cosmic dust particles; "
+            "glowing Hebrew letters of liquid fire floating in a dramatic chiaroscuro composition; "
+            "interconnected golden threads of reality; Unreal Engine 5 render style, 8k, "
+            "extremely detailed textures, epic high-end legacy film grading; profound spiritual immersion; no on-image text"
+        ),
     }
 }
 
@@ -139,6 +151,8 @@ ALIASES = {
     "stock9x16": "stock_photo",
     "stockthumb": "stock_photo",
     "celtico": "celtico_oscuro",
+    "cabalalegacy": "cabala_legacy_master",
+    "legacy": "cabala_legacy_master",
     "canal_personalizado": "canal_personalizado",
 }
 
