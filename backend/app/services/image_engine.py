@@ -289,8 +289,8 @@ class ImageEngine:
         
         cost_info = resp_data.get("generate", {}).get("cost") or resp_data.get("generations", {}).get("cost")
         
-        # 2. Poll for completion (V2 uses same retrieval endpoint but different URL base)
-        img_url = self._poll_leonardo(gen_id, headers, url_base=self.leonardo_v2_url)
+        # 2. Poll for completion (Leonardo retrieval endpoint is always in V1)
+        img_url = self._poll_leonardo(gen_id, headers)
         
         # 3. Download
         self._download_image(img_url, out_path)
