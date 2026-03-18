@@ -417,12 +417,14 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                 try:
                     seo = SEOEngine()
                     script_snippet = "\n".join([item.get("spoken", "") for item in plan])
-                    hook = seo.generate_thumbnail_hook(script_snippet[:2000])
+                    # NEW: use custom rules from guide for hook
+                    custom_title_rules = StyleService.get_custom_title_rules(base_dir)
+                    hook = seo.generate_thumbnail_hook(script_full, custom_rules=custom_title_rules)
                     
                     # Look for custom thumbnail rules in style-guide.md
                     custom_thumb_rules = StyleService.get_custom_thumbnail_rules(base_dir)
                     visual_prompt = seo.generate_thumbnail_visual_prompt(
-                        script_snippet[:2000], sty, 
+                        script_full, sty, 
                         thumbnail_hook=hook, 
                         custom_rules=custom_thumb_rules
                     )
@@ -617,7 +619,17 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
     effective_style = style_name or data.get("style", "stocksenior")
     channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
     channel_style = StyleService.get_channel_style(channel, effective_style)
-    new_prompt = engine.generate_continuation_prompt(target_para["spoken"], last_prompt, effective_style, style_override=channel_style)
+    
+    # NEW: Load custom niche rules for continuity
+    custom_niche_rules = StyleService.get_custom_niche_rules(base_dir)
+    
+    new_prompt = engine.generate_continuation_prompt(
+        target_para["spoken"], 
+        last_prompt, 
+        effective_style, 
+        style_override=channel_style,
+        custom_rules=custom_niche_rules
+    )
     
     # 3. Generate New Image
     new_img_id = last_img_id + 1
@@ -751,7 +763,18 @@ async def regenerate_prompt_api(
     # 3. Generate 1 new prompt
     engine = ImageEngine()
     script_full = "\n".join([item.get("spoken", "") for item in plan])
-    prompts = engine.generate_prompts(para_text, style_name, n=1, full_context=script_full, style_override=channel_style)
+    
+    # NEW: Load custom niche rules
+    custom_niche_rules = StyleService.get_custom_niche_rules(base_dir)
+    
+    prompts = engine.generate_prompts(
+        para_text, 
+        style_name, 
+        n=1, 
+        full_context=script_full, 
+        style_override=channel_style,
+        custom_rules=custom_niche_rules
+    )
     
     if not prompts:
         raise HTTPException(status_code=500, detail="Failed to generate new prompt via AI")
@@ -793,7 +816,9 @@ async def regenerate_thumbnail_hook(video_id: int, db: Session = Depends(get_db)
     
     script_full = "\n".join([item.get("spoken", "") for item in plan])
     seo = SEOEngine()
-    hook = seo.generate_thumbnail_hook(script_full[:2000])
+    # NEW: use custom rules from guide for hook
+    custom_title_rules = StyleService.get_custom_title_rules(base_dir)
+    hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules)
     
     if "thumbnail" not in data:
         data["thumbnail"] = {}
