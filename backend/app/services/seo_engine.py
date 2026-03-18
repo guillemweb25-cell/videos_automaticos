@@ -7,14 +7,14 @@ class SEOEngine:
     def __init__(self, api_key: Optional[str] = None):
         self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
 
-    def generate_description(self, script_snippet: str, lang: str = "es") -> str:
-        """Generates SEO description with key points from the script."""
+    def generate_description(self, script_snippet: str, lang: str = "es", custom_rules: Optional[str] = None) -> str:
+        """Generates a rich video description."""
+        rules_text = f"\nFOLLOW THESE CHANNEL-SPECIFIC DESCRIPTION RULES AND STRUCTURE:\n{custom_rules}\n" if custom_rules else ""
         system_msg = (
-            "You are an expert in SEO and YouTube copywriting. Write a persuasive video description. "
-            "IMPORTANT: Start with a powerful hook. Then, include a section 'Puntos clave tratados:' "
-            "with 3-5 bullet points summarizing the most important advice or facts from the script. "
-            "Finally, add a call to action. No emojis. Output only the text. "
-            "The total length MUST NOT exceed 5000 characters."
+            "You are a YouTube SEO expert. Generate a long, high-quality video description. "
+            f"{rules_text}"
+            "Include a hook, a detailed summary, and key takeaways. "
+            "The total length MUST NOT exceed 5000 characters. No emojis unless rules specify them."
         )
         user_msg = f"Language: {lang}\nScript snippet:\n{script_snippet}\n\nWrite an SEO description with key points."
         
@@ -29,10 +29,13 @@ class SEOEngine:
         response_txt = response.choices[0].message.content or ""
         return response_txt.strip()[:5000]
 
-    def generate_video_title(self, script_snippet: str, lang: str = "es") -> str:
-        """Generates a high-CTR SEO title."""
+    def generate_video_title(self, script_snippet: str, lang: str = "es", custom_rules: Optional[str] = None) -> str:
+        """Generates a high-CTR video title."""
+        rules_text = f"\nAPPLY THESE CHANNEL-SPECIFIC TITLE FORMULAS AND RULES:\n{custom_rules}\n" if custom_rules else ""
         system_msg = (
-            "You are a YouTube SEO expert. Generate a single, high-CTR, and impactful video title. "
+            "You are a YouTube SEO expert specializing in high-click-through-rate (CTR) titles. "
+            f"{rules_text}"
+            "Generate one single compelling video title. "
             "Use psychological triggers (curiosity, fear of missing out, direct benefit). "
             "Max 100 characters. Output ONLY the text, no quotes or emojis."
         )
@@ -48,11 +51,13 @@ class SEOEngine:
         )
         return (response.choices[0].message.content or "").strip()[:100]
 
-    def generate_video_questions_tags(self, script_snippet: str, count: int = 10, lang: str = "es") -> str:
-        """Generates tags as common questions (max 500 chars total)."""
+    def generate_video_questions_tags(self, script_snippet: str, count: int = 10, lang: str = "es", custom_rules: Optional[str] = None) -> str:
+        """Generates question-based tags for YouTube."""
+        rules_text = f"\nFOLLOW THESE CHANNEL-SPECIFIC TAG RULES:\n{custom_rules}\n" if custom_rules else ""
         system_msg = (
-            "You are a YouTube SEO expert. Generate a list of search-optimized tags "
-            "formatted as common questions people ask about this topic. "
+            "You are a YouTube SEO expert. Generate a long string of tags separated by commas. "
+            f"{rules_text}"
+            "The tags should be the 15 most common questions people ask that this video answers. "
             "Separate questions with commas. Total length MUST be under 500 characters. "
             "Output ONLY the comma-separated questions."
         )
@@ -68,10 +73,15 @@ class SEOEngine:
         )
         return (response.choices[0].message.content or "").strip()[:500]
 
-    def generate_hashtags(self, text: str, count: int = 5, lang: str = "es") -> List[str]:
+    def generate_hashtags(self, script_snippet: str, count: int = 5, lang: str = "es", custom_rules: Optional[str] = None) -> List[str]:
         """Generates a list of hashtags."""
-        system_msg = "Generate relevant hashtags for a YouTube video. Output only the hashtags separated by spaces."
-        user_msg = f"Language: {lang}\nCount: {count}\nContext:\n{text}"
+        rules_text = f"\nFOLLOW THESE CHANNEL-SPECIFIC HASHTAG RULES:\n{custom_rules}\n" if custom_rules else ""
+        system_msg = (
+            "You are a YouTube expert. Generate relevant hashtags for a YouTube video. "
+            f"{rules_text}"
+            "Output ONLY the hashtags separated by spaces."
+        )
+        user_msg = f"Language: {lang}\nCount: {count}\nContext:\n{script_snippet}"
         
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",

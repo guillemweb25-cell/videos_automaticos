@@ -926,18 +926,31 @@ async def generate_seo(video_id: int, db: Session = Depends(get_db)):
     script = script_path.read_text()
     engine = SEOEngine()
     
-    description = engine.generate_description(script[:1000])
-    hashtags = engine.generate_hashtags(script[:1000])
+    # Fetch custom rules
+    desc_rules = StyleService.get_custom_description_rules(base_dir)
+    tag_rules = StyleService.get_custom_tag_rules(base_dir)
+    lang_rules = StyleService.get_custom_language_rules(base_dir)
+    
+    # Combine description rules with language rules for better context
+    combined_desc_rules = f"{desc_rules or ''}\n{lang_rules or ''}".strip()
+    
+    description = engine.generate_description(script[:3000], custom_rules=combined_desc_rules)
+    hashtags_list = engine.generate_hashtags(script[:2000], custom_rules=tag_rules)
+    hashtags = " ".join(hashtags_list)
+    
+    # Also generate the question tags
+    question_tags = engine.generate_video_questions_tags(script[:2000], custom_rules=tag_rules)
     
     video.description = description
     db.commit()
     
     (base_dir / "seo/metadata.json").write_text(json.dumps({
         "description": description,
-        "hashtags": hashtags
+        "hashtags": hashtags,
+        "tags": question_tags
     }, indent=2))
     
-    return {"ok": True, "description": description, "hashtags": hashtags}
+    return {"ok": True, "description": description, "hashtags": hashtags, "tags": question_tags}
 
 @router.post("/{video_id}/render")
 def render_video(video_id: int, subtitles: bool = False, db: Session = Depends(get_db)):

@@ -261,3 +261,40 @@ class StyleService:
             pass
         
         return None
+
+    @staticmethod
+    def _extract_section(content: str, header: str) -> Optional[str]:
+        """Helper to extract content after a header until the next same-level header or double-line break."""
+        level = 0
+        while level < len(header) and header[level] == '#': level += 1
+        # Find exact header then everything until next header of same or higher level
+        # Pattern: header ... next header with same or fewer # (higher or equal level)
+        next_header_pattern = f"\\n#{{1,{level}}}\\s"
+        import re
+        pattern = f"{re.escape(header)}(.*?)(?={next_header_pattern}|$)"
+        match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+        return match.group(1).strip() if match else None
+
+    @staticmethod
+    def get_custom_title_rules(base_dir: Path) -> Optional[str]:
+        guide_path = base_dir.parent.parent / "style-guide.md"
+        if not guide_path.exists(): return None
+        return StyleService._extract_section(guide_path.read_text(encoding="utf-8"), "## 🎯 FÓRMULAS DE TÍTULOS PROBADAS")
+
+    @staticmethod
+    def get_custom_description_rules(base_dir: Path) -> Optional[str]:
+        guide_path = base_dir.parent.parent / "style-guide.md"
+        if not guide_path.exists(): return None
+        return StyleService._extract_section(guide_path.read_text(encoding="utf-8"), "### CHATGPT/CLAUDE - Generación de Descripciones")
+
+    @staticmethod
+    def get_custom_tag_rules(base_dir: Path) -> Optional[str]:
+        guide_path = base_dir.parent.parent / "style-guide.md"
+        if not guide_path.exists(): return None
+        return StyleService._extract_section(guide_path.read_text(encoding="utf-8"), "### CHATGPT/CLAUDE - Generación de Tags")
+
+    @staticmethod
+    def get_custom_language_rules(base_dir: Path) -> Optional[str]:
+        guide_path = base_dir.parent.parent / "style-guide.md"
+        if not guide_path.exists(): return None
+        return StyleService._extract_section(guide_path.read_text(encoding="utf-8"), "## 🗣️ TERMINOLOGÍA Y LENGUAJE")
