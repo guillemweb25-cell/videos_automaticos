@@ -246,11 +246,17 @@ class ImageEngine:
         # Ensure model is valid for V2. If it's a UUID, it might be V1.
         # But we'll trust the caller for now, default to gpt-image-1.5
         v2_model = model_id if model_id and "-" not in model_id else "gpt-image-1.5"
+        
+        # SANITIZE PROMPT: Leonardo V2 strongly rejects prompts longer than 1000 chars or containing line breaks
+        clean_prompt = prompt.replace("\n", " ")
+        if len(clean_prompt) > 900:
+            clean_prompt = clean_prompt[:897] + "..."
+            
         # ALIGN WITH OFFICIAL GPT-1.5 DOCUMENTATION
         payload = {
             "model": v2_model,
             "parameters": {
-                "prompt": prompt,
+                "prompt": clean_prompt,
                 "width": width,
                 "height": height,
                 "quantity": 1,

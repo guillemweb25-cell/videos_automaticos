@@ -133,12 +133,13 @@ class SEOEngine:
             "IMPORTANT: Explicitly describe the EXACT text to be included as 'The text \"HOOK_HERE\" is written in...'. "
             "Use double quotes for the text itself. Mention it should be 'large, bold, and modern font'. "
             "Describe the font color, outline, and placement based on the provided style rules if available. "
-            "Output ONLY the final AI visual prompt in English."
+            "CRITICAL RULES: Output ONLY the final AI visual prompt. Do NOT use any line breaks or paragraphs (single block of text). "
+            "The prompt MUST BE UNDER 800 CHARACTERS in total length."
         )
         user_msg = (
             f"Style/Niche: {style_desc}\n"
             f"Thumbnail Hook (MUST INCLUDE THIS TEXT): {thumbnail_hook}\n"
-            f"Video Script context:\n{script_snippet}\n\n"
+            f"Context Snippet:\n{script_snippet}\n"
             f"Generate an expert visual prompt for a professional thumbnail."
         )
         
