@@ -14,14 +14,16 @@ class ImageEngine:
         self.leonardo_v1_url = "https://cloud.leonardo.ai/api/rest/v1"
         self.leonardo_v2_url = "https://cloud.leonardo.ai/api/rest/v2"
 
-    def generate_prompts(self, text: str, style_name: str, n: int = 1, full_context: str = "", style_override: dict = None, recent_history: List[str] = []) -> List[str]:
+    def generate_prompts(self, text: str, style_name: str, n: int = 1, full_context: str = "", style_override: dict = None, recent_history: List[str] = [], custom_rules: Optional[str] = None) -> List[str]:
         """Generates visual prompts from narration text using GPT, with optional full video context and recent prompt history."""
         style = style_override or StyleService.get_style(style_name)
         style_prompt = style.get("image_style_prompt", "")
+        rules_text = f"\nFOLLOW THESE SPECIFIC CHANNEL STYLE RULES:\n{custom_rules}\n" if custom_rules else ""
         
         system_msg = (
             "You are a creative visual director for high-end cinematic content. "
             "Generate cinematic AI image prompts that are photorealistic and elegant. "
+            f"{rules_text}"
             "STRICT RULES for chronological progression: "
             "- DISCARD generic scenes. Focus ONLY on the specific action and moment described in the Narration. "
             "- If the narration describes a specific event (e.g., 'fleeing to Egypt', 'working wood'), DO NOT show a generic summary scene. "
@@ -66,13 +68,15 @@ class ImageEngine:
                 prompts.append(p[:800])
         return prompts[:n]
 
-    def generate_continuation_prompt(self, text: str, previous_prompt: str, style_name: str, style_override: dict = None) -> str:
+    def generate_continuation_prompt(self, text: str, previous_prompt: str, style_name: str, style_override: dict = None, custom_rules: Optional[str] = None) -> str:
         """Generates a visual continuation prompt based on the previous scene."""
         style = style_override or StyleService.get_style(style_name)
         style_prompt = style.get("image_style_prompt", "")
+        rules_text = f"\nFOLLOW THESE SPECIFIC CHANNEL STYLE RULES:\n{custom_rules}\n" if custom_rules else ""
         
         system_msg = (
             "You are a creative visual director. Generate a cinematic AI image prompt that continues a sequence. "
+            f"{rules_text}"
             "IMPORTANT: Maintain absolute visual continuity with the previous scene. "
             "Keep the same characters, same clothing, and same environmental settings. "
             "STRICTLY follow the age and demographic described in the Style. "

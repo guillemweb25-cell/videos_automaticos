@@ -1,4 +1,6 @@
-from typing import Dict, List, TypedDict, Optional
+from typing import Dict, List, TypedDict, Optional, Any
+from pathlib import Path
+import re
 
 class StyleSpec(TypedDict, total=False):
     display_name: str
@@ -218,3 +220,44 @@ class StyleService:
                 "post_note": "",
             }
         return StyleService.get_style(fallback_name)
+
+    @staticmethod
+    def get_custom_thumbnail_rules(base_dir: Path) -> Optional[str]:
+        """Reads style-guide.md from channel base dir and extracts the thumbnail section."""
+        # base_dir is usually cache/000X-channel-name/YYYY-MM-DD-video-slug
+        # style-guide.md is usually in cache/000X-channel-name/style-guide.md
+        guide_path = base_dir.parent.parent / "style-guide.md"
+        if not guide_path.exists():
+            return None
+        
+        try:
+            content = guide_path.read_text(encoding="utf-8")
+            # Extract section between "## 🎨 SISTEMA DE THUMBNAILS" and the next "##"
+            pattern = r"##.*?SISTEMA DE THUMBNAILS(.*?)(?=##|$)"
+            match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        except Exception as e:
+            print(f"Warning: Failed to read style-guide.md: {e}")
+        
+        return None
+
+    @staticmethod
+    def get_custom_niche_rules(base_dir: Path) -> Optional[str]:
+        """Reads style-guide.md from channel base dir and extracts the top niche/objective info. (everything before first ##)"""
+        guide_path = base_dir.parent.parent / "style-guide.md"
+        if not guide_path.exists():
+            return None
+        
+        try:
+            content = guide_path.read_text(encoding="utf-8")
+            # Usually the first few lines contain niche, objective, etc.
+            # We'll take everything before the first "##"
+            pattern = r"^(.*?)(?=##)"
+            match = re.search(pattern, content, re.DOTALL)
+            if match:
+                return match.group(1).strip()
+        except:
+            pass
+        
+        return None

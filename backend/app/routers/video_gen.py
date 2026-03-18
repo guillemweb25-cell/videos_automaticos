@@ -314,6 +314,9 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             total_images = 0
             recent_prompts = []
             
+            # Fetch custom niche rules from style-guide.md
+            custom_niche_rules = StyleService.get_custom_niche_rules(base_dir)
+            
             for item in plan:
                 idx = item["idx"]
                 text = item["spoken"]
@@ -339,7 +342,8 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                         n=images_count, 
                         full_context=script_full, 
                         style_override=channel_style,
-                        recent_history=recent_prompts[-8:] # Pass last 8 prompts as history
+                        recent_history=recent_prompts[-8:], # Pass last 8 prompts as history
+                        custom_rules=custom_niche_rules
                     )
                     recent_prompts.extend(prompts)
                     cached_prompts_objs = []
@@ -414,7 +418,14 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                     seo = SEOEngine()
                     script_snippet = "\n".join([item.get("spoken", "") for item in plan])
                     hook = seo.generate_thumbnail_hook(script_snippet[:2000])
-                    visual_prompt = seo.generate_thumbnail_visual_prompt(script_snippet[:2000], sty, thumbnail_hook=hook)
+                    
+                    # Look for custom thumbnail rules in style-guide.md
+                    custom_thumb_rules = StyleService.get_custom_thumbnail_rules(base_dir)
+                    visual_prompt = seo.generate_thumbnail_visual_prompt(
+                        script_snippet[:2000], sty, 
+                        thumbnail_hook=hook, 
+                        custom_rules=custom_thumb_rules
+                    )
                     
                     if "thumbnail" not in all_prompts_data:
                         all_prompts_data["thumbnail"] = {}
@@ -811,7 +822,14 @@ async def regenerate_thumbnail_visual_prompt(video_id: int, db: Session = Depend
     style_name = data.get("style", "stocksenior")
     seo = SEOEngine()
     hook = data.get("thumbnail", {}).get("hook", "")
-    visual_prompt = seo.generate_thumbnail_visual_prompt(script_full[:2000], style_name, thumbnail_hook=hook)
+    
+    # Use custom thumbnail rules if available
+    custom_thumb_rules = StyleService.get_custom_thumbnail_rules(base_dir)
+    visual_prompt = seo.generate_thumbnail_visual_prompt(
+        script_full[:2000], style_name, 
+        thumbnail_hook=hook,
+        custom_rules=custom_thumb_rules
+    )
     
     if "thumbnail" not in data:
         data["thumbnail"] = {}
@@ -876,9 +894,14 @@ async def generate_thumbnail_api(
             if not current_hook:
                 current_hook = seo.generate_thumbnail_hook(script_full[:2000])
                 data["thumbnail"]["hook"] = current_hook
-            if not current_visual:
-                current_visual = seo.generate_thumbnail_visual_prompt(script_full[:2000], data.get("style", "stocksenior"), thumbnail_hook=current_hook)
-                data["thumbnail"]["visual_prompt"] = current_visual
+                if not current_visual:
+                    custom_thumb_rules = StyleService.get_custom_thumbnail_rules(base_dir)
+                    current_visual = seo.generate_thumbnail_visual_prompt(
+                        script_full[:2000], data.get("style", "stocksenior"), 
+                        thumbnail_hook=current_hook,
+                        custom_rules=custom_thumb_rules
+                    )
+                    data["thumbnail"]["visual_prompt"] = current_visual
 
     thumbnail_path = base_dir / "output" / "thumbnail.png"
     engine = ImageEngine()

@@ -110,24 +110,26 @@ class SEOEngine:
         )
         return (response.choices[0].message.content or "").strip()[:50]
 
-    def generate_thumbnail_visual_prompt(self, script_snippet: str, style_desc: str, thumbnail_hook: str = "") -> str:
-        """Generates a highly descriptive visual prompt for Leonardo.ai (Phoenix 1.0)."""
+    def generate_thumbnail_visual_prompt(self, script_snippet: str, style_desc: str, thumbnail_hook: str = "", custom_rules: Optional[str] = None) -> str:
+        """Generates a highly descriptive visual prompt for Leonardo.ai (Phoenix 1.0 or GPT-1.5)."""
+        rules_text = f"\nFOLLOW THESE SPECIFIC STYLE RULES:\n{custom_rules}\n" if custom_rules else ""
+        
         system_msg = (
             "You are a creative visual director for high-impact YouTube thumbnails. "
-            "Generate a highly descriptive visual prompt in English. "
+            "Generate a highly descriptive visual prompt in English for an AI image generator. "
             "The prompt should describe a cinematic, professional composition. "
-            "Use techniques like 'Split composition' (comparing before/after or problem/solution) "
-            "or 'Extreme close-up' if appropriate. "
             "Describe central characters with specific emotions, dramatic lighting, and vibrant colors. "
-            "IMPORTANT: Describe the EXACT text to be included as 'The text \"HOOK_HERE\" is written in...'. "
+            f"{rules_text}"
+            "IMPORTANT: Explicitly describe the EXACT text to be included as 'The text \"HOOK_HERE\" is written in...'. "
             "Use double quotes for the text itself. Mention it should be 'large, bold, and modern font'. "
-            "Output ONLY the visual prompt in English."
+            "Describe the font color, outline, and placement based on the provided style rules if available. "
+            "Output ONLY the final AI visual prompt in English."
         )
         user_msg = (
-            f"Style: {style_desc}\n"
+            f"Style/Niche: {style_desc}\n"
             f"Thumbnail Hook (MUST INCLUDE THIS TEXT): {thumbnail_hook}\n"
-            f"Script context:\n{script_snippet}\n\n"
-            f"Generate a visual prompt for a professional thumbnail with large text."
+            f"Video Script context:\n{script_snippet}\n\n"
+            f"Generate an expert visual prompt for a professional thumbnail."
         )
         
         response = self.client.chat.completions.create(
