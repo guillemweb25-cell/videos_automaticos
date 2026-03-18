@@ -280,7 +280,8 @@ class ImageEngine:
                 ]
             }
         
-        resp = requests.post(f"{self.leonardo_v2_url}/generations", headers=headers, json=payload)
+        gen_url = f"{self.leonardo_v2_url}/generations"
+        resp = requests.post(gen_url, headers=headers, json=payload)
         if resp.status_code != 200 and init_image_id and "guidances" in payload.get("parameters", {}):
             print(f"Leonardo V2: guidance rejected ({resp.status_code}), retrying without image reference...")
             del payload["parameters"]["guidances"]
@@ -303,8 +304,8 @@ class ImageEngine:
         
         cost_info = resp_data.get("generate", {}).get("cost") or resp_data.get("generations", {}).get("cost")
         
-        # 2. Poll for completion (V2 polling might be slightly different but usually same endpoint structure)
-        img_url = self._poll_leonardo_v2(gen_id, headers)
+        # 2. Poll for completion (V2 uses same retrieval endpoint but different URL base)
+        img_url = self._poll_leonardo(gen_id, headers, url_base=self.leonardo_v2_url)
         
         # 3. Download
         self._download_image(img_url, out_path)
@@ -318,23 +319,30 @@ class ImageEngine:
         
         return {"amount": v2_costs.get(mode, 0.0852)}
 
-    def _normalize_size(self, size: str):
-        """Normalizes common video resolutions to Leonardo GPT 1.5 compatible sizes."""
-        # 16:9 (Horizontal)
-        if "1920x1080" in size or "1792x1024" in size or "1536x864" in size:
-            # Maximum 16:9 for GPT-1.5 is 1792x1024 or 1536x1024
-            return 1792, 1024
-        # 9:16 (Vertical/Shorts)
-        if "1080x1920" in size or "1024x1792" in size or "864x1536" in size:
-            # Maximum 9:16 for GPT-1.5 is 1024x1792 or 1024x1536
-            return 1024, 1792
-        # Default to 1:1
-        return 1024, 1024
+    def _normalize_size(self, size: str) -> tuple[int, int]:
+        """Normalizes dimensions to Leonardo compatible sizes (multiples of 8)."""
+        try:
+            w, h = map(int, size.split("x"))
+            
+            # Leonardo requires multiples of 8.
+            # However, for GPT-1.5, we should stay within certain limits for best quality.
+            # Max dimensions are usually around 1792 for one side.
+            w = (w // 8) * 8
+            h = (h // 8) * 8
+            
+            # Ensure within limits (Leonardo V2 supports up to 1024x1792 or 1792x1024)
+            if w > 1792: w = 1792
+            if h > 1792: h = 1792
+            
+            return w, h
+        except:
+            return 1024, 1024
 
-    def _poll_leonardo(self, gen_id: str, headers: dict, timeout=300) -> str:
+    def _poll_leonardo(self, gen_id: str, headers: dict, timeout=300, url_base: Optional[str] = None) -> str:
+        base = url_base or self.leonardo_v1_url
         t0 = time.time()
         while time.time() - t0 < timeout:
-            resp = requests.get(f"{self.leonardo_v1_url}/generations/{gen_id}", headers=headers)
+            resp = requests.get(f"{base}/generations/{gen_id}", headers=headers)
             resp.raise_for_status()
             data = resp.json()["generations_by_pk"]
             if data["status"] == "COMPLETE":
