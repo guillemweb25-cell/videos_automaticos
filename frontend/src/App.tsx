@@ -40,6 +40,10 @@ function App() {
   useEffect(() => {
     if (user) {
       loadChannels()
+      const savedChannelId = localStorage.getItem('selectedChannelId')
+      if (savedChannelId) {
+        // We'll set it once channels are loaded or if they are already there
+      }
     }
   }, [user])
 
@@ -47,9 +51,25 @@ function App() {
     try {
       const data = await api.getChannels()
       setChannels(data)
+      
+      const savedChannelId = localStorage.getItem('selectedChannelId')
+      if (savedChannelId) {
+        const found = data.find(c => c.id === parseInt(savedChannelId))
+        if (found) setSelectedChannel(found)
+      }
     } catch (err) {
       console.error('Error loading channels:', err)
     }
+  }
+
+  const handleSelectChannel = (channel: ChannelResponse | null) => {
+    setSelectedChannel(channel)
+    if (channel) {
+      localStorage.setItem('selectedChannelId', channel.id.toString())
+    } else {
+      localStorage.removeItem('selectedChannelId')
+    }
+    setSidebarOpen(false)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -170,7 +190,7 @@ function App() {
             <div 
               key={channel.id} 
               className={`channel-link ${selectedChannel?.id === channel.id ? 'active' : ''}`}
-              onClick={() => { setSelectedChannel(channel); setSidebarOpen(false); }}
+              onClick={() => handleSelectChannel(channel)}
             >
               <div className="channel-icon">{channel.name[0].toUpperCase()}</div>
               <span>{channel.name}</span>

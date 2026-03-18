@@ -29,6 +29,19 @@ body {
   height: 100%;
 }
 
+.mobile-only {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .mobile-only {
+    display: block !important;
+  }
+  .desktop-only {
+    display: none !important;
+  }
+}
+
 /* Layout Structure */
 .app-layout {
   display: flex;
@@ -678,4 +691,103 @@ h2 {
 .log-console::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
+}
+/* Modal Overlays for Mobile */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background-color: rgba(0, 0, 0, 0.95);
+  padding: 40px;
+  overflow-y: auto;
+  color: white;
+}
+
+@media (max-width: 768px) {
+  .modal-overlay {
+    padding: 16px 12px;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  position: sticky;
+  top: 0;
+  background-color: rgba(0, 0, 0, 0.9);
+  z-index: 10;
+}
+
+@media (max-width: 768px) {
+  .modal-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding-bottom: 24px;
+    position: relative; /* Sticky is annoying on mobile if header is tall */
+  }
+  .modal-header h2 {
+    font-size: 1.1rem !important;
+  }
+  .header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr);
+    width: 100%;
+    gap: 8px !important;
+  }
+  .header-actions > * {
+    width: 100% !important;
+  }
+  .header-actions button {
+    font-size: 0.8rem !important;
+    padding: 10px 4px !important;
+  }
+}
+
+.responsive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  gap: 32px;
+}
+
+@media (max-width: 768px) {
+  .responsive-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+.paragraph-header {
+  display: flex; 
+  justify-content: space-between; 
+  align-items: flex-start; 
+  margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+  .paragraph-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .paragraph-header > div:last-child {
+    margin: 0 !important;
+    width: 100%;
+  }
+}
+
+.thumbnail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+
+@media (max-width: 1024px) {
+  .thumbnail-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
 }

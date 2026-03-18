@@ -220,31 +220,11 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   if (loading) return <div style={{ padding: '80px', textAlign: 'center', color: 'white' }}>Cargando imágenes...</div>;
 
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 100,
-      backgroundColor: 'rgba(0,0,0,0.95)',
-      padding: '40px',
-      overflowY: 'auto',
-      color: 'white',
-      fontFamily: 'sans-serif'
-    }}>
+    <div className="modal-overlay">
       <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '32px',
-          paddingBottom: '16px',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          position: 'sticky',
-          top: 0,
-          backgroundColor: 'rgba(0,0,0,0.9)',
-          zIndex: 10
-        }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Revisión de Imágenes - Vídeo #{videoId}</h2>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div className="modal-header">
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>Revisión de Imágenes - Vídeo #{videoId}</h2>
+          <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold' }}>MODELO LEONARDO</label>
               <select 
@@ -349,7 +329,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
 
         {data?.items?.map((item: any) => (
           <div key={item.paragraph_id} style={{ marginBottom: '64px', paddingBottom: '32px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+            <div className="paragraph-header">
               <div>
                 <h3 style={{ fontSize: '1.5rem', color: '#d8b4fe', margin: '0 0 8px 0' }}>📦 Párrafo {item.paragraph_id}</h3>
                 <span style={{ fontSize: '0.9rem', color: '#9ca3af', backgroundColor: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '4px' }}>
@@ -376,7 +356,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '32px' }}>
+            <div className="responsive-grid">
               {item.prompts?.map((p: any) => {
                 const key = `${item.paragraph_id}_${p.id}`;
                 return (
@@ -565,7 +545,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
             <span style={{ fontSize: '0.875rem', color: '#9ca3af' }}>Se usará como pantalla final y para Shorts</span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
+          <div className="thumbnail-grid">
             <div style={{ 
               backgroundColor: '#1f2937', 
               borderRadius: '12px', 

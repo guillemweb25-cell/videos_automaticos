@@ -13,13 +13,35 @@ type TabType = 'overview' | 'videos' | 'shorts' | 'create' | 'youtube' | 'transc
 
 const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
   const [activeTab, _setActiveTab] = useState<TabType>(() => {
-    const saved = sessionStorage.getItem('activeTab');
+    const saved = localStorage.getItem('activeTab');
     return (saved as TabType) || 'overview';
   });
   const setActiveTab = (tab: TabType) => {
-    sessionStorage.setItem('activeTab', tab);
+    localStorage.setItem('activeTab', tab);
     _setActiveTab(tab);
   };
+
+  const [reviewingVideoId, _setReviewingVideoId] = useState<number | null>(() => {
+    const saved = localStorage.getItem('reviewingVideoId');
+    return saved ? parseInt(saved) : null;
+  });
+  const setReviewingVideoId = (id: number | null) => {
+    if (id) localStorage.setItem('reviewingVideoId', id.toString());
+    else localStorage.removeItem('reviewingVideoId');
+    _setReviewingVideoId(id);
+  };
+
+  const [selectedVideo, _setSelectedVideo] = useState<VideoResponse | null>(() => {
+    const saved = localStorage.getItem('selectedVideo');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const setSelectedVideo = (v: VideoResponse | null) => {
+    if (v) localStorage.setItem('selectedVideo', JSON.stringify(v));
+    else localStorage.removeItem('selectedVideo');
+    _setSelectedVideo(v);
+  };
+
+  const [uploadingVideoId, setUploadingVideoId] = useState<number | null>(null);
   const [ytInfo, setYtInfo] = useState<YouTubeChannelInfo | null>(null);
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [shorts, setShorts] = useState<YouTubeVideo[]>([]);
@@ -29,9 +51,6 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
   const [downloading, setDownloading] = useState(false);
   const [ytUrl, setYtUrl] = useState('');
   const [error, setError] = useState('');
-  const [selectedVideo, setSelectedVideo] = useState<VideoResponse | null>(null);
-  const [reviewingVideoId, setReviewingVideoId] = useState<number | null>(null);
-  const [uploadingVideoId, setUploadingVideoId] = useState<number | null>(null);
 
   const [editCredsDir, setEditCredsDir] = useState(channel.creds_dir || '');
   const [editStylePrompt, setEditStylePrompt] = useState(channel.image_style_prompt || '');
