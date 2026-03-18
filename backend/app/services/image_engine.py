@@ -139,9 +139,16 @@ class ImageEngine:
         use_v2 = os.getenv("LEONARDO_API_VERSION", "v2").lower() == "v2"
         
         # Determine if we should use V2
-        is_v2_model = model_id == "gpt-image-1.5"
-        if (use_v2 and not model_id) or is_v2_model:
-            # If model_id is None but use_v2 is True, generate_leonardo_v2 will use gpt-image-1.5
+        # Clean model_id in case it has trailing spaces
+        mid = (model_id or "").strip()
+        v2_model_names = ["gpt-image-1.5", "phoenix", "phoenix-v2"]
+        # Phoenix UUID de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3 can be used in V1 sometimes,
+        # but Leonardo is pushing for V2 on newer models.
+        
+        is_explicit_v2 = mid in v2_model_names
+        
+        if (use_v2 and not mid) or is_explicit_v2:
+            print(f"Routing to Leonardo V2: model={mid or 'default'}")
             return self.generate_leonardo_v2(prompt, out_path, size=size, negative_prompt=negative_prompt, init_image_id=init_image_id, mode=mode)
 
             
