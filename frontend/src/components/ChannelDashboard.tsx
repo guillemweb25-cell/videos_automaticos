@@ -392,10 +392,10 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
                                       onClick={async () => {
                                         if(confirm('¿Seguro que quieres restablecer el estado para volver a subirlo?')) {
                                           try {
-                                            await fetch(`/api/youtube/${g.id}/reset-upload`, { method: 'POST' });
+                                            await api.resetUploadState(g.id);
                                             if (typeof window !== 'undefined') window.location.reload();
-                                          } catch (e) {
-                                            alert('Error al restablecer');
+                                          } catch (e: any) {
+                                            alert(e.message || 'Error al restablecer');
                                           }
                                         }
                                       }}

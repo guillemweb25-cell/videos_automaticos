@@ -546,6 +546,18 @@ class ApiClient {
     if (!res.ok) throw new Error('Error al regenerar etiquetas');
     return res.json();
   }
+
+  async resetUploadState(videoId: number): Promise<{ status: string }> {
+    const res = await fetch(`${this.baseUrl}/youtube/${videoId}/reset-upload`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Error al restablecer estado de subida');
+    }
+    return res.json();
+  }
 }
 
 export const api = new ApiClient();
