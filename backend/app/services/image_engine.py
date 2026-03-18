@@ -249,6 +249,7 @@ class ImageEngine:
         if model_id == "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3":
             v2_model = "phoenix"
 
+        # EXTREME SIMPLICITY FOR V2 - No guidance, no fancy things first.
         payload = {
             "model": v2_model,
             "parameters": {
@@ -260,34 +261,18 @@ class ImageEngine:
             "public": False
         }
         
-        # Add negative prompt only if not empty
+        # Only add negative if not empty
         if negative_prompt and negative_prompt.strip():
             payload["parameters"]["negative_prompt"] = negative_prompt
             
-        print(f"Leonardo V2 Request Payload: {json.dumps(payload, indent=2)}")
+        print(f"!!! LEONARDO V2 DEBUG !!! -> URL: {self.leonardo_v2_url}/generations")
+        print(f"!!! LEONARDO V2 DEBUG !!! -> Payload: {json.dumps(payload, indent=2)}")
 
-
-        if init_image_id:
-            payload["parameters"]["guidances"] = {
-                "image_reference": [
-                    {
-                        "image": {
-                            "id": init_image_id,
-                            "type": "UPLOADED"
-                        },
-                        "strength": "MID"
-                    }
-                ]
-            }
+        resp = requests.post(f"{self.leonardo_v2_url}/generations", headers=headers, json=payload)
         
-        gen_url = f"{self.leonardo_v2_url}/generations"
-        resp = requests.post(gen_url, headers=headers, json=payload)
-        if resp.status_code != 200 and init_image_id and "guidances" in payload.get("parameters", {}):
-            print(f"Leonardo V2: guidance rejected ({resp.status_code}), retrying without image reference...")
-            del payload["parameters"]["guidances"]
-            resp = requests.post(f"{self.leonardo_v2_url}/generations", headers=headers, json=payload)
         if resp.status_code != 200:
-            print(f"Leonardo V2 API Error ({resp.status_code}): {resp.text}")
+            print(f"!!! LEONARDO V2 ERROR ({resp.status_code}) !!!")
+            print(f"!!! RESPONSE TEXT: {resp.text}")
             resp.raise_for_status()
         
         resp_data = resp.json()
@@ -300,7 +285,8 @@ class ImageEngine:
             gen_id = resp_data["generations"].get("id")
             
         if not gen_id:
-            raise RuntimeError(f"Leonardo V2 failed to return a generation ID: {resp.text}")
+            print(f"!!! NO GENERATION ID IN RESPONSE: {resp_data}")
+            raise RuntimeError(f"Leonardo V2 failed to return a generation ID: {resp_data}")
         
         cost_info = resp_data.get("generate", {}).get("cost") or resp_data.get("generations", {}).get("cost")
         
@@ -399,7 +385,13 @@ class ImageEngine:
 
         # Force GPT Image 1.5 for thumbnails if not specified
         target_model = model_id or "gpt-image-1.5"
-        self.generate_leonardo_image(base_prompt, out_path, size=size, model_id=target_model, negative_prompt=negative_prompt, mode=mode)
+        
+        # For survival: Force a safe size for thumbnail if we don't trust the incoming one
+        thumb_size = size
+        if "x" not in size or not size:
+            thumb_size = "1024x1024"
+            
+        self.generate_leonardo_image(base_prompt, out_path, size=thumb_size, model_id=target_model, negative_prompt=negative_prompt, mode=mode)
 
     def _download_image(self, url: str, out_path: Path):
         resp = requests.get(url, stream=True)
