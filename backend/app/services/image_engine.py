@@ -305,21 +305,27 @@ class ImageEngine:
         return {"amount": v2_costs.get(mode, 0.0852)}
 
     def _normalize_size(self, size: str) -> tuple[int, int]:
-        """Normalizes dimensions to Leonardo compatible sizes (multiples of 8)."""
+        """Normalizes dimensions to Leonardo compatible sizes.
+        V2 models (GPT-1.5) support specific resolutions: 
+        1:1 (1024x1024), 2:3 (1024x1536), 3:2 (1536x1024)
+        """
         try:
             w, h = map(int, size.split("x"))
+            ratio = w / h
             
-            # Leonardo requires multiples of 8.
-            # However, for GPT-1.5, we should stay within certain limits for best quality.
-            # Max dimensions are usually around 1792 for one side.
+            # Standard rounding to multiple of 8
             w = (w // 8) * 8
             h = (h // 8) * 8
             
-            # Ensure within limits (Leonardo V2 supports up to 1024x1792 or 1792x1024)
-            if w > 1792: w = 1792
-            if h > 1792: h = 1792
-            
-            return w, h
+            # If it's a V2 compatible size (we assume we are calling it for V2 mostly now)
+            # 16:9 / 3:2 -> 1536x1024
+            if ratio > 1.3:
+                return 1536, 1024
+            # 9:16 / 2:3 -> 1024x1536
+            elif ratio < 0.8:
+                return 1024, 1536
+            else:
+                return 1024, 1024
         except:
             return 1024, 1024
 
