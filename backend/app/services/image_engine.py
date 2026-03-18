@@ -149,7 +149,7 @@ class ImageEngine:
         
         if (use_v2 and not mid) or is_explicit_v2:
             print(f"Routing to Leonardo V2: model={mid or 'default'}")
-            return self.generate_leonardo_v2(prompt, out_path, size=size, negative_prompt=negative_prompt, init_image_id=init_image_id, mode=mode)
+            return self.generate_leonardo_v2(prompt, out_path, size=size, negative_prompt=negative_prompt, init_image_id=init_image_id, mode=mode, model_id=mid)
 
             
         # V1 logic
@@ -230,7 +230,7 @@ class ImageEngine:
         
         return {"amount": cost_amount}
 
-    def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY") -> Optional[Dict[str, Any]]:
+    def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY", model_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
 
         """Generates an image using Leonardo.ai V2 API with GPT Image-1.5 model."""
         if not self.leonardo_api_key:
@@ -243,20 +243,28 @@ class ImageEngine:
             "Content-Type": "application/json",
             "accept": "application/json"
         }
-        
+        # Ensure model is valid for V2. If it's a UUID, it might be V1.
+        # But we'll trust the caller for now, default to gpt-image-1.5
+        v2_model = model_id if model_id and "-" not in model_id else "gpt-image-1.5"
+        if model_id == "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3":
+            v2_model = "phoenix"
+
         payload = {
-            "model": "gpt-image-1.5",
+            "model": v2_model,
             "parameters": {
                 "prompt": prompt,
-                "negative_prompt": negative_prompt if negative_prompt else "",
                 "width": width,
                 "height": height,
-                "quantity": 1,
-                "mode": mode if mode in ["FAST", "QUALITY", "ULTRA"] else "QUALITY",
-                "prompt_enhance": "OFF"
+                "num_images": 1
             },
             "public": False
         }
+        
+        # Add negative prompt only if not empty
+        if negative_prompt and negative_prompt.strip():
+            payload["parameters"]["negative_prompt"] = negative_prompt
+            
+        print(f"Leonardo V2 Request Payload: {json.dumps(payload, indent=2)}")
 
 
         if init_image_id:
@@ -312,13 +320,15 @@ class ImageEngine:
 
     def _normalize_size(self, size: str):
         """Normalizes common video resolutions to Leonardo GPT 1.5 compatible sizes."""
-        # 16:9 (Longs)
+        # 16:9 (Horizontal)
         if "1920x1080" in size or "1792x1024" in size or "1536x864" in size:
-            return 1536, 1024
-        # 9:16 (Shorts)
+            # Maximum 16:9 for GPT-1.5 is 1792x1024 or 1536x1024
+            return 1792, 1024
+        # 9:16 (Vertical/Shorts)
         if "1080x1920" in size or "1024x1792" in size or "864x1536" in size:
-            return 1024, 1536
-        # Default to square
+            # Maximum 9:16 for GPT-1.5 is 1024x1792 or 1024x1536
+            return 1024, 1792
+        # Default to 1:1
         return 1024, 1024
 
     def _poll_leonardo(self, gen_id: str, headers: dict, timeout=300) -> str:
