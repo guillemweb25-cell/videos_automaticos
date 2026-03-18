@@ -51,6 +51,7 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
   const [downloading, setDownloading] = useState(false);
   const [ytUrl, setYtUrl] = useState('');
   const [error, setError] = useState('');
+  const [updateStatus, setUpdateStatus] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
 
   const [editCredsDir, setEditCredsDir] = useState(channel.creds_dir || '');
   const [editStylePrompt, setEditStylePrompt] = useState(channel.image_style_prompt || '');
@@ -78,17 +79,29 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
     setLoading(true);
     setError('');
     try {
-      const [info, vids, shs] = await Promise.all([
+      // Add a timeout to prevent infinite loading on flaky mobile networks
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('TIMEOUT')), 15000)
+      );
+      
+      const loadPromise = Promise.all([
         api.getYouTubeChannelInfo(channel.id),
         api.getYouTubeVideos(channel.id),
         api.getYouTubeShorts(channel.id)
       ]);
+
+      const [info, vids, shs] = await Promise.race([loadPromise, timeoutPromise]) as any;
+      
       setYtInfo(info);
       setVideos(vids);
       setShorts(shs);
     } catch (err: any) {
       console.error(err);
-      setError('No se pudo cargar la información de YouTube. Verifica las credenciales.');
+      if (err.message === 'TIMEOUT') {
+        setError('La carga de YouTube está tardando demasiado. Verifica tu conexión.');
+      } else {
+        setError('No se pudo cargar la información de YouTube. Verifica las credenciales.');
+      }
     } finally {
       setLoading(false);
     }
@@ -124,18 +137,28 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
 
   const handleUpdateChannel = async () => {
     setLoading(true);
+    setUpdateStatus(null);
     try {
-      await api.updateChannel(channel.id, { 
+      // Add timeout for channel update as well as it might hang on mobile
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('TIMEOUT')), 15000)
+      );
+
+      const updatePromise = api.updateChannel(channel.id, { 
         creds_dir: editCredsDir,
         image_style_prompt: editStylePrompt,
         negative_prompt: editNegativePrompt
       });
+
+      await Promise.race([updatePromise, timeoutPromise]);
+
       if (editCredsDir && editCredsDir !== channel.creds_dir) {
         await loadYouTubeData();
       }
-      alert('Configuración actualizada correctamente');
+      setUpdateStatus({ msg: 'Configuración actualizada correctamente', type: 'success' });
+      setTimeout(() => setUpdateStatus(null), 3000);
     } catch (err: any) {
-      alert('Error al actualizar: ' + err.message);
+      setUpdateStatus({ msg: 'Error al actualizar: ' + err.message, type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -255,9 +278,23 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
               </div>
 
               <div style={{ marginTop: '24px' }}>
-                <button className="btn btn-secondary" onClick={handleUpdateChannel} disabled={loading} style={{ width: '100%' }}>
+                <button className="btn btn-secondary" onClick={handleUpdateChannel} disabled={loading} style={{ width: '100%', position: 'relative' }}>
                   {loading ? 'Guardando...' : 'Guardar Configuración'}
                 </button>
+                {updateStatus && (
+                  <div style={{ 
+                    marginTop: '12px', 
+                    padding: '8px', 
+                    borderRadius: '6px', 
+                    fontSize: '0.85rem',
+                    textAlign: 'center',
+                    backgroundColor: updateStatus.type === 'success' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                    color: updateStatus.type === 'success' ? '#4ade80' : '#f87171',
+                    border: `1px solid ${updateStatus.type === 'success' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`
+                  }}>
+                    {updateStatus.msg}
+                  </div>
+                )}
               </div>
 
               {ytInfo && (

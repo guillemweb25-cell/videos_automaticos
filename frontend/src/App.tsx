@@ -23,12 +23,27 @@ function App() {
     const token = localStorage.getItem('token')
     if (token) {
       api.getMe()
-        .then(setUser)
+        .then((data) => {
+          setUser(data)
+          localStorage.setItem('cached_user', JSON.stringify(data))
+        })
         .catch((err) => {
           // Only clear token if it's actually expired/invalid (401)
-          // For network errors, keep the token so the session survives
-          if (err.message !== 'TOKEN_EXPIRED') {
-            console.warn('Network error checking auth, keeping token:', err.message)
+          if (err.message === 'TOKEN_EXPIRED') {
+            setUser(null)
+            localStorage.removeItem('cached_user')
+            localStorage.removeItem('token')
+          } else {
+            // Network error or other, try to use cache so the app doesn't go back to login
+            console.warn('Network error checking auth, trying cache:', err.message)
+            const cached = localStorage.getItem('cached_user')
+            if (cached) {
+              try {
+                setUser(JSON.parse(cached))
+              } catch (e) {
+                console.error("Error parsing cached user", e)
+              }
+            }
           }
         })
         .finally(() => setLoading(false))

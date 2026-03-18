@@ -545,12 +545,14 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
             <span style={{ fontSize: '0.875rem', color: '#9ca3af' }}>Se usará como pantalla final y para Shorts</span>
           </div>
 
-          <div className="thumbnail-grid">
-            <div style={{ 
+          <div className="thumbnail-grid" style={{ marginBottom: '32px' }}>
+            <div style={{
               backgroundColor: '#1f2937', 
               borderRadius: '12px', 
               overflow: 'hidden', 
-              minHeight: '400px',
+              aspectRatio: data?.orientation === 'horizontal' ? '16/9' : '9/16',
+              maxWidth: '100%',
+              maxHeight: '70vh',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
