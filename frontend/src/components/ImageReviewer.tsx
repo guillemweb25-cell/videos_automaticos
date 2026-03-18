@@ -186,7 +186,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleGenerateThumbnailImage = async () => {
     setThumbnailRegenerating(true);
     try {
-      const res = await api.generateThumbnail(videoId, thumbnailHook, thumbnailVisualPrompt, selectedModel);
+      const res = await api.generateThumbnail(videoId, thumbnailHook, thumbnailVisualPrompt, selectedModel, generationMode);
       if (res.ok) {
         setThumbnailUrl(res.url);
       }

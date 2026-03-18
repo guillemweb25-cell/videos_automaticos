@@ -928,9 +928,23 @@ async def generate_thumbnail_api(
                     )
                     data["thumbnail"]["visual_prompt"] = current_visual
 
+    # Unify flow: Get negative prompt from channel style
+    channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
+    style_name = data.get("style", "stocksenior")
+    style_cfg = StyleService.get_channel_style(channel, style_name)
+    neg = style_cfg.get("negative_prompt", "")
+    
+    gen_mode = req.generation_mode or "QUALITY"
+
     thumbnail_path = base_dir / "output" / "thumbnail.png"
     engine = ImageEngine()
-    engine.generate_thumbnail(current_hook, current_visual, thumbnail_path, size=f"{video.width}x{video.height}", model_id=model_id)
+    engine.generate_thumbnail(
+        current_hook, current_visual, thumbnail_path, 
+        size=f"{video.width}x{video.height}", 
+        model_id=model_id,
+        negative_prompt=neg,
+        mode=gen_mode
+    )
     
     # Save updates
     images_json.write_text(json.dumps(data, indent=2))

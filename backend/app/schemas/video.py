@@ -73,4 +73,5 @@ class ThumbnailGenerationRequest(BaseModel):
     hook: Optional[str] = None
     visual_prompt: Optional[str] = None
     model_id: Optional[str] = None
+    generation_mode: Optional[str] = "QUALITY"
 

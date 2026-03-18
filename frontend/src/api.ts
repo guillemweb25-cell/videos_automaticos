@@ -462,14 +462,15 @@ class ApiClient {
     return res.json();
   }
 
-  async generateThumbnail(videoId: number, hook?: string, visualPrompt?: string, modelId?: string): Promise<{ ok: boolean, url: string }> {
+  async generateThumbnail(videoId: number, hook?: string, visualPrompt?: string, modelId?: string, generationMode?: string): Promise<{ ok: boolean, url: string }> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/generate-thumbnail`, {
       method: 'POST',
       headers: this.getHeaders(true),
       body: JSON.stringify({
         hook,
         visual_prompt: visualPrompt,
-        model_id: modelId
+        model_id: modelId,
+        generation_mode: generationMode
       })
     });
 

@@ -255,7 +255,7 @@ class ImageEngine:
                 "prompt": prompt,
                 "width": width,
                 "height": height,
-                "num_images": 1
+                "quantity": 1
             },
             "public": False
         }
@@ -369,7 +369,7 @@ class ImageEngine:
             time.sleep(3)
         raise TimeoutError("Leonardo V2 timeout")
 
-    def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None) -> None:
+    def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY") -> None:
         """Generates a professional thumbnail. Blends visual prompt with text instructions. 
         Defaults to gpt-image-1.5 for better text rendering.
         """
@@ -391,7 +391,7 @@ class ImageEngine:
 
         # Force GPT Image 1.5 for thumbnails if not specified
         target_model = model_id or "gpt-image-1.5"
-        self.generate_leonardo_image(base_prompt, out_path, size=size, model_id=target_model)
+        self.generate_leonardo_image(base_prompt, out_path, size=size, model_id=target_model, negative_prompt=negative_prompt, mode=mode)
 
     def _download_image(self, url: str, out_path: Path):
         resp = requests.get(url, stream=True)
