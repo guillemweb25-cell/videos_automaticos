@@ -246,17 +246,16 @@ class ImageEngine:
         # Ensure model is valid for V2. If it's a UUID, it might be V1.
         # But we'll trust the caller for now, default to gpt-image-1.5
         v2_model = model_id if model_id and "-" not in model_id else "gpt-image-1.5"
-        if model_id == "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3":
-            v2_model = "phoenix"
-
-        # EXTREME SIMPLICITY FOR V2 - No guidance, no fancy things first.
+        # ALIGN WITH OFFICIAL GPT-1.5 DOCUMENTATION
         payload = {
             "model": v2_model,
             "parameters": {
                 "prompt": prompt,
                 "width": width,
                 "height": height,
-                "quantity": 1
+                "quantity": 1,
+                "mode": mode,
+                "prompt_enhance": "OFF"
             },
             "public": False
         }
