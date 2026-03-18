@@ -375,18 +375,42 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
                             {['images_ready', 'rendering', 'ready', 'failed'].includes(g.status) && (
                               <button className="btn-link" style={{ color: '#a855f7' }} onClick={() => setReviewingVideoId(g.id)}>Imágenes</button>
                             )}
-                            {g.status === 'ready' ? (
-                              <>
+                                <>
+                                  <button 
+                                    className="btn-link" 
+                                    style={{ color: '#4ade80' }} 
+                                    onClick={() => setUploadingVideoId(g.id)}
+                                  >
+                                    Gestionar YouTube
+                                  </button>
+                                  <button 
+                                    className="btn-link" 
+                                    style={{ color: '#94a3b8', fontSize: '0.85em' }} 
+                                    onClick={async () => {
+                                      if(confirm('¿Seguro que quieres restablecer el estado para volver a subirlo?')) {
+                                        try {
+                                          await fetch(`/api/youtube/${g.id}/reset-upload`, { method: 'POST' });
+                                          fetchChannelData();
+                                        } catch (e) {
+                                          alert('Error al restablecer');
+                                        }
+                                      }
+                                    }}
+                                  >
+                                    Volver a subir
+                                  </button>
+                                  <button className="btn-link">Ver Carpeta</button>
+                                </>
+                              ) : (
                                 <button 
                                   className="btn-link" 
-                                  style={{ color: g.is_uploaded ? '#4ade80' : '#ff4444' }} 
+                                  style={{ color: '#ff4444' }} 
                                   onClick={() => setUploadingVideoId(g.id)}
                                 >
-                                  {g.is_uploaded ? 'Gestionar YouTube' : 'Subir a YouTube'}
+                                  Subir a YouTube
                                 </button>
-                                <button className="btn-link">Ver Carpeta</button>
-                              </>
-                            ) : (
+                              )}
+
                               <button className="btn-link" onClick={() => { setSelectedVideo(g); setActiveTab('create'); }}>Continuar</button>
                             )}
                             <button className="btn-link" style={{ color: '#ef4444' }} onClick={() => handleDeleteVideo(g.id)}>Eliminar</button>

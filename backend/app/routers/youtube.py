@@ -200,6 +200,22 @@ async def update_youtube_metadata(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/{video_id}/reset-upload")
+async def reset_youtube_upload(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    video = db.query(Video).join(Channel).filter(Video.id == video_id, Channel.user_id == current_user.id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Vídeo no encontrado")
+        
+    video.is_uploaded = False
+    video.youtube_video_id = None
+    db.commit()
+    
+    return {"status": "success"}
+
 @router.post("/{video_id}/regenerate/title")
 async def regenerate_youtube_title(
     video_id: int,
