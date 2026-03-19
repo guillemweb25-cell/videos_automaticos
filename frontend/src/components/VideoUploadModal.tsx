@@ -22,6 +22,12 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const [privacyStatus, setPrivacyStatus] = useState('private');
   const [publishAt, setPublishAt] = useState('');
 
+  // Thumbnail regeneration states
+  const [thumbPrompt, setThumbPrompt] = useState('');
+  const [thumbModel, setThumbModel] = useState('gpt-image-1.5');
+  const [models, setModels] = useState<any[]>([]);
+  const [regeneratingThumb, setRegeneratingThumb] = useState<'prompt' | 'image' | null>(null);
+
   const loadMetadata = async () => {
     try {
       setLoading(true);
@@ -31,6 +37,19 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
       setTitle(res.title || '');
       setDescription(res.description || '');
       setTags(res.tags || '');
+
+      if (res.thumbnail && res.thumbnail.visual_prompt) {
+        setThumbPrompt(res.thumbnail.visual_prompt);
+      }
+      
+      try {
+        const conf = await api.getConfig();
+        if (conf.leonardo_models) {
+          setModels(conf.leonardo_models);
+        }
+      } catch (e) {
+        console.error("Error loading config:", e);
+      }
     } catch (err: any) {
       console.error("Error loading video metadata:", err);
       setError("No se pudo cargar la información del vídeo. Asegúrate de que el vídeo esté renderizado.");
@@ -76,6 +95,37 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
       alert("Error al regenerar las etiquetas");
     } finally {
       setRegenerating(null);
+    }
+  };
+
+  const handleRegenerateThumbPrompt = async () => {
+    setRegeneratingThumb('prompt');
+    try {
+      const res = await api.regenerateThumbnailVisualPrompt(videoId);
+      setThumbPrompt(res.visual_prompt);
+    } catch (err: any) {
+      alert("Error al regenerar prompt de miniatura");
+    } finally {
+      setRegeneratingThumb(null);
+    }
+  };
+
+  const handleGenerateThumbnail = async () => {
+    setRegeneratingThumb('image');
+    try {
+      const res = await api.generateThumbnail(
+        videoId,
+        metadata?.thumbnail?.hook || '',
+        thumbPrompt,
+        thumbModel,
+        'QUALITY'
+      );
+      // Reload metadata to update thumbnail_url
+      loadMetadata();
+    } catch (err: any) {
+      alert(err.message || 'Error al regenerar miniatura');
+    } finally {
+      setRegeneratingThumb(null);
     }
   };
 
@@ -167,6 +217,49 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
                 <span className="yt-section-label">Miniatura Final</span>
                 <div className="yt-thumbnail-wrapper">
                   <img src={`${API_URL}${metadata.thumbnail_url}?t=${Date.now()}`} alt="Thumbnail" />
+                </div>
+                
+                {/* Thumbnail regeneration controls */}
+                <div style={{ marginTop: '16px', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+                    <span className="yt-section-label" style={{ fontSize: '0.75rem', marginBottom: 0 }}>Prompt Miniatura</span>
+                    <button 
+                      className={`yt-action-btn ${regeneratingThumb === 'prompt' ? 'loading' : ''}`}
+                      onClick={handleRegenerateThumbPrompt}
+                      disabled={!!regeneratingThumb}
+                      style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                    >
+                      {regeneratingThumb === 'prompt' ? '...' : '✨ Generar con IA'}
+                    </button>
+                  </div>
+                  <textarea
+                    className="yt-textarea"
+                    value={thumbPrompt}
+                    onChange={(e) => setThumbPrompt(e.target.value)}
+                    rows={3}
+                    style={{ fontSize: '0.8rem', minHeight: '60px', padding: '8px' }}
+                    placeholder="Describe la miniatura..."
+                  />
+                  <div style={{ marginTop: '12px' }}>
+                    <select
+                      className="yt-select"
+                      value={thumbModel}
+                      onChange={(e) => setThumbModel(e.target.value)}
+                      style={{ fontSize: '0.8rem', padding: '6px', marginBottom: '12px', width: '100%' }}
+                    >
+                      {models.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    <button 
+                      className="btn" 
+                      onClick={handleGenerateThumbnail}
+                      disabled={!!regeneratingThumb || !thumbPrompt}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.85rem' }}
+                    >
+                      {regeneratingThumb === 'image' ? 'Generando miniatura...' : '🎨 Renderizar Miniatura'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
