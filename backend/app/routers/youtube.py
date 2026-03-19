@@ -200,6 +200,32 @@ async def update_youtube_metadata(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/{video_id}/update-thumbnail")
+async def update_youtube_thumbnail_only(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    video = db.query(Video).join(Channel).filter(Video.id == video_id, Channel.user_id == current_user.id).first()
+    if not video or not video.is_uploaded or not video.youtube_video_id:
+        raise HTTPException(status_code=404, detail="Vídeo no encontrado o no ha sido subido a YouTube")
+    
+    channel = video.channel
+    if not channel or not channel.creds_dir:
+        raise HTTPException(status_code=400, detail="El canal no tiene YouTube configurado")
+        
+    thumb_path = Path(video.base_dir) / "output" / "thumbnail.png"
+    if not thumb_path.exists():
+        raise HTTPException(status_code=404, detail="No existe una miniatura generada para subir")
+        
+    service = YouTubeService(channel.creds_dir)
+    try:
+        service.set_thumbnail(video.youtube_video_id, thumb_path)
+        return {"status": "success"}
+    except Exception as e:
+        print(f"Error updating thumbnail: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/{video_id}/reset-upload")
 async def reset_youtube_upload(
     video_id: int,

@@ -129,6 +129,21 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
     }
   };
 
+  const handlePublishThumbnail = async () => {
+    setUploading(true);
+    setUploadStatus("Actualizando miniatura en YouTube...");
+    try {
+      await api.updateYouTubeThumbnail(videoId);
+      setUploadStatus("¡Miniatura actualizada en YouTube!");
+      setTimeout(() => setUploadStatus(null), 3000);
+    } catch (err: any) {
+      alert("Error al actualizar miniatura en YouTube");
+      setUploadStatus("Error al actualizar miniatura");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleUpload = async () => {
     setUploading(true);
     const isSync = metadata?.is_uploaded;
@@ -251,14 +266,26 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
                         <option key={m.id} value={m.id}>{m.name}</option>
                       ))}
                     </select>
-                    <button 
-                      className="btn" 
-                      onClick={handleGenerateThumbnail}
-                      disabled={!!regeneratingThumb || !thumbPrompt}
-                      style={{ width: '100%', padding: '8px', fontSize: '0.85rem' }}
-                    >
-                      {regeneratingThumb === 'image' ? 'Generando miniatura...' : '🎨 Renderizar Miniatura'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button 
+                        className="btn" 
+                        onClick={handleGenerateThumbnail}
+                        disabled={!!regeneratingThumb || !thumbPrompt}
+                        style={{ width: metadata?.is_uploaded ? '50%' : '100%', padding: '8px', fontSize: '0.85rem' }}
+                      >
+                        {regeneratingThumb === 'image' ? 'Generando...' : '🎨 Renderizar Miniatura'}
+                      </button>
+                      {metadata?.is_uploaded && (
+                        <button 
+                          className="btn btn-secondary" 
+                          onClick={handlePublishThumbnail}
+                          disabled={uploading}
+                          style={{ width: '50%', padding: '8px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+                        >
+                          {uploading ? '...' : '☁️ Publicar Miniatura'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
