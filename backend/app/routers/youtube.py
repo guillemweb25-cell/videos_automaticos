@@ -112,12 +112,32 @@ async def get_video_metadata(
     video = db.query(Video).join(Channel).filter(Video.id == video_id, Channel.user_id == current_user.id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Vídeo no encontrado")
-        
+    # Get thumbnail prompt if exists
+    thumb_prompt = ""
+    thumb_hook = ""
+    base_dir = Path(video.base_dir)
+    images_json = base_dir / "image_prompts_all.json"
+    if images_json.exists():
+        try:
+            import json
+            data = json.loads(images_json.read_text())
+            thumb = data.get("thumbnail", {})
+            thumb_prompt = thumb.get("visual_prompt", "")
+            thumb_hook = thumb.get("hook", "")
+        except:
+            pass
+
     return {
         "title": video.youtube_title or video.title,
         "description": video.youtube_description or "",
         "tags": video.youtube_tags or "",
-        "thumbnail_url": f"/videos/{video.id}/thumbnail.png"
+        "thumbnail_url": f"/videos/{video.id}/thumbnail.png",
+        "is_uploaded": video.is_uploaded,
+        "youtube_video_id": video.youtube_video_id,
+        "thumbnail": {
+            "hook": thumb_hook,
+            "visual_prompt": thumb_prompt
+        }
     }
 
 @router.post("/{video_id}/upload")
