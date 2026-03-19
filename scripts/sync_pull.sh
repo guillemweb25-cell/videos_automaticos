@@ -51,6 +51,9 @@ if ! ssh -p $REMOTE_PORT_SSH $REMOTE_SSH "docker exec videos_automaticos-db-1 ma
 fi
 
 # Import to local DB
+echo "Dropping and recreating local database to ensure exact mirror..."
+docker exec videos_automaticos-db-1 mariadb -u $MYSQL_USER -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS \`$MYSQL_DATABASE\`; CREATE DATABASE \`$MYSQL_DATABASE\`;"
+
 echo "Importing to local database..."
 if ! cat $DUMP_FILE | docker exec -i videos_automaticos-db-1 mariadb -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE; then
     echo "Error: Failed to import to local database!"
