@@ -20,7 +20,7 @@ class VideoUploadRequest(BaseModel):
     title: str
     description: str
     tags: str
-    privacy_status: str
+    privacy_status: Optional[str] = "public"
     publish_at: Optional[str] = None
 
 @router.get("/channel/{channel_id}")
