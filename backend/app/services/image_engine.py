@@ -156,14 +156,13 @@ class ImageEngine:
         if not self.leonardo_api_key:
             raise RuntimeError("LEONARDO_API_KEY not configured")
 
-        width, height = self._normalize_size(size)
+        target_model = model_id or "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3"
+        width, height = self._normalize_size(size, model_id=target_model)
         
         headers = {
             "Authorization": f"Bearer {self.leonardo_api_key}",
             "Content-Type": "application/json"
         }
-        
-        target_model = model_id or "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3"
         
         # Lucid Origin has a special payload format per Leonardo docs:
         # alchemy=false, ultra=false, contrast=3.5, styleUUID required, no promptMagic
@@ -236,16 +235,17 @@ class ImageEngine:
         if not self.leonardo_api_key:
             raise RuntimeError("LEONARDO_API_KEY not configured")
 
-        width, height = self._normalize_size(size)
+        # Ensure model is valid for V2. If it's a UUID, it might be V1.
+        valid_v2_models = ["gpt-image-1.5", "phoenix", "phoenix-v2", "gemini-image-2"]
+        v2_model = model_id if model_id in valid_v2_models else "gpt-image-1.5"
+
+        width, height = self._normalize_size(size, model_id=v2_model)
         
         headers = {
             "Authorization": f"Bearer {self.leonardo_api_key}",
             "Content-Type": "application/json",
             "accept": "application/json"
         }
-        # Ensure model is valid for V2. If it's a UUID, it might be V1.
-        valid_v2_models = ["gpt-image-1.5", "phoenix", "phoenix-v2", "gemini-image-2"]
-        v2_model = model_id if model_id in valid_v2_models else "gpt-image-1.5"
         
         # SANITIZE PROMPT: Leonardo V2 strongly rejects prompts longer than 1000 chars or containing line breaks
         clean_prompt = prompt.replace("\n", " ")
@@ -323,7 +323,7 @@ class ImageEngine:
         
         return {"amount": v2_costs.get(mode, 0.0852)}
 
-    def _normalize_size(self, size: str) -> tuple[int, int]:
+    def _normalize_size(self, size: str, model_id: Optional[str] = None) -> tuple[int, int]:
         """Normalizes dimensions to Leonardo compatible sizes.
         V2 models (GPT-1.5) support specific resolutions: 
         1:1 (1024x1024), 2:3 (1024x1536), 3:2 (1536x1024)
@@ -336,13 +336,15 @@ class ImageEngine:
             w = (w // 8) * 8
             h = (h // 8) * 8
             
+            is_nano = model_id == "gemini-image-2"
+            
             # If it's a V2 compatible size (we assume we are calling it for V2 mostly now)
             # 16:9 / 3:2 -> 1536x1024
             if ratio > 1.3:
-                return 1536, 1024
+                return (1344, 768) if is_nano else (1536, 1024)
             # 9:16 / 2:3 -> 1024x1536
             elif ratio < 0.8:
-                return 1024, 1536
+                return (768, 1344) if is_nano else (1024, 1536)
             else:
                 return 1024, 1024
         except:
