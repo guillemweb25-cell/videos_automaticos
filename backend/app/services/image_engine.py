@@ -327,6 +327,7 @@ class ImageEngine:
         """Normalizes dimensions to Leonardo compatible sizes.
         V2 models (GPT-1.5) support specific resolutions: 
         1:1 (1024x1024), 2:3 (1024x1536), 3:2 (1536x1024)
+        Nano Banana Pro strictly uses precise FLUX buckets like 848x1264 directly from UI.
         """
         try:
             w, h = map(int, size.split("x"))
@@ -339,12 +340,12 @@ class ImageEngine:
             is_nano = model_id == "gemini-image-2"
             
             # If it's a V2 compatible size (we assume we are calling it for V2 mostly now)
-            # 16:9 / 3:2 -> 1536x1024
+            # 16:9 / 3:2 exact UI buckets for Nano Banana Pro constraint
             if ratio > 1.3:
-                return (1344, 768) if is_nano else (1536, 1024)
-            # 9:16 / 2:3 -> 1024x1536
+                return (1376, 768) if is_nano else (1536, 1024)
+            # 9:16 / 2:3 exact UI buckets for Nano Banana Pro constraint 
             elif ratio < 0.8:
-                return (768, 1344) if is_nano else (1024, 1536)
+                return (848, 1264) if is_nano else (1024, 1536)
             else:
                 return 1024, 1024
         except:
