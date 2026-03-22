@@ -244,8 +244,8 @@ class ImageEngine:
             "accept": "application/json"
         }
         # Ensure model is valid for V2. If it's a UUID, it might be V1.
-        # But we'll trust the caller for now, default to gpt-image-1.5
-        v2_model = model_id if model_id and "-" not in model_id else "gpt-image-1.5"
+        valid_v2_models = ["gpt-image-1.5", "phoenix", "phoenix-v2", "gemini-image-2"]
+        v2_model = model_id if model_id in valid_v2_models else "gpt-image-1.5"
         
         # SANITIZE PROMPT: Leonardo V2 strongly rejects prompts longer than 1000 chars or containing line breaks
         clean_prompt = prompt.replace("\n", " ")
