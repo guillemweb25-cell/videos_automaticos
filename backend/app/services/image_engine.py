@@ -141,7 +141,7 @@ class ImageEngine:
         # Determine if we should use V2
         # Clean model_id in case it has trailing spaces
         mid = (model_id or "").strip()
-        v2_model_names = ["gpt-image-1.5", "phoenix", "phoenix-v2"]
+        v2_model_names = ["gpt-image-1.5", "phoenix", "phoenix-v2", "gemini-image-2"]
         # Phoenix UUID de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3 can be used in V1 sometimes,
         # but Leonardo is pushing for V2 on newer models.
         
@@ -269,6 +269,19 @@ class ImageEngine:
         # Only add negative if not empty
         if negative_prompt and negative_prompt.strip():
             payload["parameters"]["negative_prompt"] = negative_prompt
+            
+        if init_image_id:
+            payload["parameters"]["guidances"] = {
+                "image_reference": [
+                    {
+                        "image": {
+                            "id": init_image_id,
+                            "type": "UPLOADED"
+                        },
+                        "strength": "MID"
+                    }
+                ]
+            }
             
         print(f"!!! LEONARDO V2 DEBUG !!! -> URL: {self.leonardo_v2_url}/generations")
         print(f"!!! LEONARDO V2 DEBUG !!! -> Payload: {json.dumps(payload, indent=2)}")

@@ -54,6 +54,7 @@ def get_available_config():
         {"id": "gpt-image-1.5", "name": "GPT Image-1.5 (High Quality/Expensive)"},
         {"id": "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3", "name": "Phoenix 1.0 (Best for Text)"},
         {"id": "e316348f-7773-490e-adcd-46757c738eb7", "name": "Absolute Reality v1.6"},
+        {"id": "gemini-image-2", "name": "Nano Banana Pro"},
     ]
     
     # Generation Modes
