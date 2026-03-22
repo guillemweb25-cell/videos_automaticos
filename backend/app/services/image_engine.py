@@ -337,12 +337,12 @@ class ImageEngine:
             h = (h // 8) * 8
             
             # If it's a V2 compatible size (we assume we are calling it for V2 mostly now)
-            # 16:9 / 3:2 -> 1536x1024
+            # 16:9 / 3:2 -> 1792x1024
             if ratio > 1.3:
-                return 1536, 1024
-            # 9:16 / 2:3 -> 1024x1536
+                return 1792, 1024
+            # 9:16 / 2:3 -> 1024x1792
             elif ratio < 0.8:
-                return 1024, 1536
+                return 1024, 1792
             else:
                 return 1024, 1024
         except:
