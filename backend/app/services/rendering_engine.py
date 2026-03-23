@@ -7,8 +7,15 @@ from moviepy.editor import (
 )
 from moviepy.audio.AudioClip import CompositeAudioClip
 from PIL import Image
+
+# Pillow 10+ compatibility patch for MoviePy 1.0.3
+if not hasattr(Image, 'ANTIALIAS'):
+    try:
+        Image.ANTIALIAS = Image.Resampling.LANCZOS
+    except AttributeError:
+        Image.ANTIALIAS = getattr(Image, 'LANCZOS', 1)
+
 import subprocess
-import sys
 
 class RenderingEngine:
     @staticmethod
@@ -59,6 +66,7 @@ class RenderingEngine:
         out_size: Tuple[int, int] = (1080, 1920), 
         fps: int = 24,
         bg_music_path: Optional[Path] = None,
+        overlay_video_path: Optional[Path] = None,
         bg_music_volume: float = 0.06,
         voice_volume: float = 1.6
     ):
@@ -107,6 +115,30 @@ class RenderingEngine:
             clips[-1] = clips[-1].fadeout(1.0)
             
         video = CompositeVideoClip(clips, size=out_size).set_duration(t_cursor)
+        
+        # 4. Apply Overlay
+        if overlay_video_path and overlay_video_path.exists():
+            from moviepy.video.io.VideoFileClip import VideoFileClip
+            from moviepy.video.fx.all import mask_color, loop, resize
+            
+            overlay_clip = VideoFileClip(str(overlay_video_path))
+            
+            # Loop overhead handling
+            if overlay_clip.duration < t_cursor:
+                overlay_clip = overlay_clip.fx(loop, duration=t_cursor)
+            else:
+                overlay_clip = overlay_clip.subclip(0, t_cursor)
+            
+            # Apply alpha keying for pitch black background #000000 
+            # thr=30 grabs near-blacks. Lower opacity to make artifacts less blinding.
+            overlay_clip = (
+                overlay_clip
+                .fx(resize, newsize=out_size)
+                .fx(mask_color, color=[0, 0, 0], thr=30, s=5)
+                .set_opacity(0.65)
+                .set_start(0)
+            )
+            video = CompositeVideoClip([video, overlay_clip], size=out_size).set_duration(t_cursor)
         
         # ── Audio: boost voice + duck music ──
         audio_clips = [AudioFileClip(str(p)) for p in audio_paths]

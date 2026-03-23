@@ -225,6 +225,14 @@ class ApiClient {
     return res.json();
   }
 
+  async getOverlays(): Promise<{ overlays: string[] }> {
+    const res = await fetch(`${this.baseUrl}/videos/overlays`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener overlays');
+    return res.json();
+  }
+
   async createVideo(data: { channel_id: number; title: string; voice?: string; style?: string; width?: number; height?: number; max_images_per_paragraph?: number }): Promise<VideoResponse> {
     const res = await fetch(`${this.baseUrl}/videos/`, {
       method: 'POST',
@@ -341,14 +349,19 @@ class ApiClient {
     return res.json();
   }
 
-  async renderVideo(videoId: number, subtitles: boolean = false): Promise<{ ok: boolean; output: string }> {
-    let url = `${this.baseUrl}/videos/${videoId}/render`;
-    if (subtitles) url += '?subtitles=true';
-    const res = await fetch(url, {
+  async renderVideo(videoId: number, subtitles: boolean = false, overlay?: string): Promise<{ ok: boolean; output: string }> {
+    const url = new URL(`${this.baseUrl}/videos/${videoId}/render`);
+    if (subtitles) url.searchParams.append('subtitles', 'true');
+    if (overlay) url.searchParams.append('overlay', overlay);
+    
+    const res = await fetch(url.toString(), {
       method: 'POST',
       headers: this.getHeaders(true),
     });
-    if (!res.ok) throw new Error('Error al renderizar vídeo');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al renderizar vídeo');
+    }
     return res.json();
   }
 

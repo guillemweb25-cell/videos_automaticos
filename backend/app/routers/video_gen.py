@@ -29,6 +29,19 @@ from app.core.utils import slugify
 
 router = APIRouter()
 
+@router.get("/overlays")
+def get_available_overlays():
+    overlay_dir = Path("/app/overlay")
+    if not overlay_dir.exists():
+        return {"overlays": []}
+    
+    files = []
+    for ext in ["*.mp4", "*.mov", "*.webm"]:
+        for f in overlay_dir.glob(ext):
+            files.append(f.name)
+            
+    return {"overlays": sorted(files)}
+
 @router.get("/config")
 def get_available_config():
     # TikTok voices
@@ -993,7 +1006,7 @@ async def generate_seo(video_id: int, db: Session = Depends(get_db)):
     return {"ok": True, "description": description, "hashtags": hashtags, "tags": question_tags}
 
 @router.post("/{video_id}/render")
-def render_video(video_id: int, subtitles: bool = False, db: Session = Depends(get_db)):
+def render_video(video_id: int, subtitles: bool = False, overlay: str | None = None, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -1039,6 +1052,13 @@ def render_video(video_id: int, subtitles: bool = False, db: Session = Depends(g
             if music_files:
                 bg_music_path = random.choice(music_files)
 
+        # Determine overlay path if provided
+        overlay_path = None
+        if overlay and overlay != "Sin overlay":
+            possible_overlay = Path("/app/overlay") / overlay
+            if possible_overlay.exists():
+                overlay_path = possible_overlay
+
         out_path = base_dir / "output/final_video.mp4"
         out_size = (video.width or 1024, video.height or 1792)
         
@@ -1049,6 +1069,7 @@ def render_video(video_id: int, subtitles: bool = False, db: Session = Depends(g
             out_path=out_path,
             out_size=out_size,
             bg_music_path=bg_music_path,
+            overlay_video_path=overlay_path,
             bg_music_volume=0.06,
             voice_volume=1.6
         )

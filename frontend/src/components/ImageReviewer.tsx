@@ -25,6 +25,8 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [generationMode, setGenerationMode] = useState('QUALITY');
   const [uploading, setUploading] = useState(false);
   const [enableSubtitles, setEnableSubtitles] = useState(false);
+  const [availableOverlays, setAvailableOverlays] = useState<string[]>([]);
+  const [selectedOverlay, setSelectedOverlay] = useState<string>('');
 
   const loadData = async () => {
     try {
@@ -50,6 +52,13 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
       setAvailableStyles(config.styles || []);
       setGenerationModes(config.generation_modes || []);
       
+      try {
+        const overlaysRes = await api.getOverlays();
+        setAvailableOverlays(overlaysRes.overlays);
+      } catch (e) {
+        console.error("Error loading overlays", e);
+      }
+
       if (res.style) {
         setSelectedStyle(res.style);
       }
@@ -143,7 +152,8 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleRender = async () => {
     try {
       setRendering(true);
-      await api.renderVideo(videoId, enableSubtitles);
+      const overlayArg = selectedOverlay === '' ? undefined : selectedOverlay;
+      await api.renderVideo(videoId, enableSubtitles, overlayArg);
       alert("Vídeo renderizado correctamente con las nuevas imágenes.");
       onClose();
     } catch (err) {
@@ -282,6 +292,28 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
               >
                 {generationModes.map((m: any) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold' }}>OVERLAY VISUAL</label>
+              <select 
+                value={selectedOverlay}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedOverlay(e.target.value)}
+                disabled={rendering}
+                style={{
+                  backgroundColor: '#1f2937',
+                  color: 'white',
+                  border: '1px solid #475569',
+                  borderRadius: '6px',
+                  padding: '4px 8px',
+                  fontSize: '0.8rem',
+                  outline: 'none'
+                }}
+              >
+                <option value="">Ninguno</option>
+                {availableOverlays.map(opt => (
+                  <option key={opt} value={opt}>{opt}</option>
                 ))}
               </select>
             </div>

@@ -27,6 +27,7 @@ services:
     volumes:
       - ./backend:/app
       - ./cache:/app/cache
+      - ./overlay:/app/overlay
     env_file:
       - .env
     environment:

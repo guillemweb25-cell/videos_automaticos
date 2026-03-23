@@ -34,6 +34,8 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
   const [selectedModel, setSelectedModel] = useState('7b592283-e8a7-4c5a-9ba6-d18c31f258b9'); // Default to Lucid Origin
   const [generationModes, setGenerationModes] = useState<{ id: string, name: string, cost: number }[]>([]);
   const [generationMode, setGenerationMode] = useState('QUALITY');
+  const [availableOverlays, setAvailableOverlays] = useState<string[]>([]);
+  const [selectedOverlay, setSelectedOverlay] = useState<string>('');
   const stopRequested = useRef(false);
 
   const addLog = (msg: string) => setLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
@@ -46,6 +48,13 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         setAvailableStyles(config.styles);
         setLeonardoModels(config.leonardo_models || []);
         setGenerationModes(config.generation_modes || []);
+        
+        try {
+          const overlaysRes = await api.getOverlays();
+          setAvailableOverlays(overlaysRes.overlays);
+        } catch (e) {
+          console.error("Error loading overlays", e);
+        }
         
         if (config.generation_modes?.length > 0 && !initialVideo) {
           setGenerationMode('QUALITY'); // Default
@@ -246,7 +255,8 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
         setStatus('rendering');
         addLog('Iniciando renderizado del vídeo final (esto puede tardar)...');
-        const renderRes = await api.renderVideo(currentId, enableSubtitles);
+        const overlayArg = selectedOverlay === '' ? undefined : selectedOverlay;
+        const renderRes = await api.renderVideo(currentId, enableSubtitles, overlayArg);
         addLog('¡Renderizado completado!');
         setFinalVideo(renderRes.output);
         setStatus('completed');
@@ -404,6 +414,15 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
               disabled={isBusy}
             />
             <label htmlFor="enableSubtitles" style={{ margin: 0, cursor: 'pointer' }}>Subtítulos Karaoke</label>
+          </div>
+          <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '10px' }}>
+            <label>Efecto Overlay</label>
+            <select value={selectedOverlay} onChange={(e) => setSelectedOverlay(e.target.value)} disabled={isBusy || isLocked} style={{ padding: '8px', borderRadius: '4px', background: '#334155', color: '#fff', border: '1px solid #475569' }}>
+              <option value="">Ninguno (Vídeo Limpio)</option>
+              {availableOverlays.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
           </div>
         </div>
 
