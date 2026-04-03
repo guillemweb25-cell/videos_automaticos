@@ -174,6 +174,87 @@ class ApiClient {
     if (!res.ok) throw new Error('Error al eliminar canal');
   }
 
+  // Channel Music Methods
+  async getChannelMusic(channelId: number): Promise<string[]> {
+    const res = await fetch(`${this.baseUrl}/channels/${channelId}/music`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener lista de música');
+    return res.json();
+  }
+
+  async uploadChannelMusic(channelId: number, file: File): Promise<{ ok: boolean, filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const headers = this.getHeaders(true);
+    // Remove Content-Type so browser sets boundaries for FormData
+    delete headers['Content-Type'];
+    
+    const res = await fetch(`${this.baseUrl}/channels/${channelId}/music`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    if (!res.ok) throw new Error('Error al subir música');
+    return res.json();
+  }
+
+  async deleteChannelMusic(channelId: number, filename: string): Promise<{ ok: boolean }> {
+    const res = await fetch(`${this.baseUrl}/channels/${channelId}/music/${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al eliminar música');
+    return res.json();
+  }
+
+  getChannelMusicUrl(channelId: number, filename: string): string {
+    const params = new URLSearchParams();
+    const token = localStorage.getItem('token');
+    if (token) {
+        // Technically passing token in URL configures backend if it supports it, 
+        // otherwise we might need a different auth mechanism for audio tag.
+        // Actually since audio tag doesn't send Bearer easily, we can append token.
+        params.append('token', token); 
+    }
+    return `${this.baseUrl}/channels/${channelId}/music/${encodeURIComponent(filename)}?${params.toString()}`;
+  }
+
+  // Style Guide Methods
+  async checkStyleGuide(channelId: number): Promise<{ exists: boolean }> {
+    const res = await fetch(`${this.baseUrl}/channels/${channelId}/style-guide`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al comprobar guía de estilo');
+    return res.json();
+  }
+
+  async uploadStyleGuide(channelId: number, file: File): Promise<{ ok: boolean, filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const headers = this.getHeaders(true);
+    delete headers['Content-Type'];
+    
+    const res = await fetch(`${this.baseUrl}/channels/${channelId}/style-guide`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    if (!res.ok) throw new Error('Error al subir guía de estilo');
+    return res.json();
+  }
+
+  async deleteStyleGuide(channelId: number): Promise<{ ok: boolean }> {
+    const res = await fetch(`${this.baseUrl}/channels/${channelId}/style-guide`, {
+      method: 'DELETE',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al eliminar guía de estilo');
+    return res.json();
+  }
+
   // YouTube Methods
   async getYouTubeChannelInfo(channelId: number): Promise<YouTubeChannelInfo> {
     const res = await fetch(`${this.baseUrl}/youtube/channel/${channelId}`, {
@@ -569,6 +650,43 @@ class ApiClient {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.detail || 'Error al restablecer estado de subida');
     }
+    return res.json();
+  }
+
+  // Settings Methods
+  async getPublicSettings(): Promise<{ registration_enabled: boolean }> {
+    const res = await fetch(`${this.baseUrl}/settings/public`, {
+      headers: this.getHeaders(false),
+    });
+    if (!res.ok) throw new Error('Error al obtener ajustes generales');
+    return res.json();
+  }
+
+  async updateGlobalSettings(data: { registration_enabled: boolean }): Promise<{ registration_enabled: boolean }> {
+    const res = await fetch(`${this.baseUrl}/settings/global`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al actualizar ajustes generales');
+    return res.json();
+  }
+
+  async getSettings(): Promise<{ has_openai: boolean, has_leonardo: boolean, has_assemblyai: boolean, has_elevenlabs: boolean }> {
+    const res = await fetch(`${this.baseUrl}/settings/`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener ajustes');
+    return res.json();
+  }
+
+  async updateSettings(data: { openai_api_key?: string, leonardo_api_key?: string, assemblyai_api_key?: string, elevenlabs_api_key?: string }): Promise<{ has_openai: boolean, has_leonardo: boolean, has_assemblyai: boolean, has_elevenlabs: boolean }> {
+    const res = await fetch(`${this.baseUrl}/settings/`, {
+      method: 'PUT',
+      headers: this.getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al actualizar ajustes');
     return res.json();
   }
 }

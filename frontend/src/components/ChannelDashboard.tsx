@@ -47,11 +47,16 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
   const [shorts, setShorts] = useState<YouTubeVideo[]>([]);
   const [generations, setGenerations] = useState<VideoResponse[]>([]);
   const [downloads, setDownloads] = useState<string[]>([]);
+  const [musicFiles, setMusicFiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploadingMusic, setUploadingMusic] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [ytUrl, setYtUrl] = useState('');
   const [error, setError] = useState('');
   const [updateStatus, setUpdateStatus] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
+
+  const [styleGuideExists, setStyleGuideExists] = useState(false);
+  const [uploadingStyleGuide, setUploadingStyleGuide] = useState(false);
 
   const [editCredsDir, setEditCredsDir] = useState(channel.creds_dir || '');
   const [editStylePrompt, setEditStylePrompt] = useState(channel.image_style_prompt || '');
@@ -71,8 +76,19 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
     setEditNegativePrompt(channel.negative_prompt || '');
     loadDownloads();
     loadGenerations();
+    loadMusicFiles();
+    loadStyleGuideStatus();
     setSelectedVideo(null);
   }, [channel]);
+
+  const loadStyleGuideStatus = async () => {
+    try {
+      const res = await api.checkStyleGuide(channel.id);
+      setStyleGuideExists(res.exists);
+    } catch(err) {
+      console.error(err);
+    }
+  };
 
 
   const loadYouTubeData = async () => {
@@ -122,6 +138,69 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
       setGenerations(data);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const loadMusicFiles = async () => {
+    try {
+      const files = await api.getChannelMusic(channel.id);
+      setMusicFiles(files);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleMusicUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    if (!file.name.toLowerCase().endsWith('.mp3')) {
+      alert("Solo se permiten archivos MP3.");
+      return;
+    }
+    setUploadingMusic(true);
+    try {
+      await api.uploadChannelMusic(channel.id, file);
+      await loadMusicFiles();
+    } catch (err: any) {
+      alert("Error subiendo música: " + err.message);
+    } finally {
+      setUploadingMusic(false);
+      e.target.value = ''; // clear input
+    }
+  };
+
+  const handleMusicDelete = async (filename: string) => {
+    if (!confirm(`¿Eliminar ${filename}?`)) return;
+    try {
+      await api.deleteChannelMusic(channel.id, filename);
+      await loadMusicFiles();
+    } catch (err: any) {
+      alert("Error al eliminar: " + err.message);
+    }
+  };
+
+  const handleStyleGuideUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    setUploadingStyleGuide(true);
+    try {
+      await api.uploadStyleGuide(channel.id, file);
+      await loadStyleGuideStatus();
+    } catch (err: any) {
+      alert("Error subiendo style-guide: " + err.message);
+    } finally {
+      setUploadingStyleGuide(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleStyleGuideDelete = async () => {
+    if (!confirm(`¿Eliminar el style-guide actual para este canal?`)) return;
+    try {
+      await api.deleteStyleGuide(channel.id);
+      await loadStyleGuideStatus();
+    } catch(err: any) {
+      alert("Error al eliminar: " + err.message);
     }
   };
 
@@ -274,6 +353,61 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
                       placeholder="Ej: blurry, low quality, distorted hands..."
                     />
                   </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '24px' }}>
+                <h4 style={{ marginBottom: '8px' }}>Guía de Estilo (.md)</h4>
+                <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '12px' }}>
+                  Sube un archivo de texto con las guías de estilo. Será renombrado a <b>style-guide.md</b> automáticamente.
+                </p>
+                <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    {styleGuideExists ? (
+                      <span style={{ color: '#4ade80' }}>✅ <b>style-guide.md</b> subido y activo.</span>
+                    ) : (
+                      <span style={{ color: '#94a3b8' }}>❌ No hay guía de estilo configurada.</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <label className="btn btn-secondary" style={{ cursor: 'pointer', display: 'inline-block', margin: 0 }}>
+                      {uploadingStyleGuide ? 'Subiendo...' : 'Subir o Reemplazar (.md)'}
+                      <input type="file" accept=".md,.txt" style={{ display: 'none' }} onChange={handleStyleGuideUpload} disabled={uploadingStyleGuide} />
+                    </label>
+                    {styleGuideExists && (
+                      <button className="btn-link" style={{ color: '#ef4444', marginLeft: '12px' }} onClick={handleStyleGuideDelete}>Eliminar</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '24px' }}>
+                <h4 style={{ marginBottom: '8px' }}>Música de Fondo (MP3)</h4>
+                <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '12px' }}>
+                  Sube archivos MP3 que se utilizarán aleatoriamente como música de fondo al renderizar los vídeos de este canal.
+                </p>
+                <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label className="btn btn-secondary" style={{ cursor: 'pointer', display: 'inline-block' }}>
+                      {uploadingMusic ? 'Subiendo...' : 'Subir MP3'}
+                      <input type="file" accept=".mp3" style={{ display: 'none' }} onChange={handleMusicUpload} disabled={uploadingMusic} />
+                    </label>
+                  </div>
+                  {musicFiles.length === 0 ? (
+                    <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>No hay música de fondo configurada para este canal.</div>
+                  ) : (
+                    <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                      {musicFiles.map(file => (
+                        <li key={file} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.9rem' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            🎵 {file}
+                            <audio controls style={{ height: '30px' }} src={api.getChannelMusicUrl(channel.id, file)} preload="none" />
+                          </span>
+                          <button className="btn-link" style={{ color: '#ef4444', padding: 0, fontSize: '0.85rem' }} onClick={() => handleMusicDelete(file)}>Eliminar</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
 

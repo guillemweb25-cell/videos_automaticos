@@ -9,15 +9,35 @@ from app.core.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+from app.models.global_settings import GlobalSettings
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Disabled registration."""
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="El registro de nuevos usuarios está desactivado por seguridad.",
-    )
+    """Register a new user if enabled."""
+    gs = db.query(GlobalSettings).first()
+    if not gs or not gs.registration_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="El registro de nuevos usuarios está temporalmente cerrado.",
+        )
+    
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email ya en uso",
+        )
 
+    db_user = User(
+        email=user_data.email,
+        hashed_password=hash_password(user_data.password),
+        is_active=True,
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+
+    return db_user
 
 @router.post("/login", response_model=Token)
 def login(user_data: UserLogin, db: Session = Depends(get_db)):

@@ -27,7 +27,19 @@ from app.services.elevenlabs_voices import ELEVEN_VOICES
 from app.services.style_service import ALIASES
 from app.core.utils import slugify
 
-router = APIRouter()
+from app.core.deps import get_current_user
+from app.models.user import User
+
+router = APIRouter(dependencies=[Depends(get_current_user)])
+
+def get_user_settings_for_video(video: Video, db: Session):
+    channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
+    if not channel:
+        raise HTTPException(status_code=404, detail="Canal no encontrado")
+    user = db.query(User).filter(User.id == channel.user_id).first()
+    if not user or not user.settings:
+        return None
+    return user.settings
 
 @router.get("/overlays")
 def get_available_overlays():
@@ -99,13 +111,14 @@ def create_video(video_in: VideoCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(video)
 
-    # 3. Initialize directory (Cache structure: cache/0001-channel-name/YYYY-MM-DD-video-title)
+    # 3. Initialize directory (Cache structure: cache/user_0001/0001-channel-name/YYYY-MM-DD-video-title)
+    user_slug = f"user_{channel.user_id:04d}"
     channel_slug = f"{channel.id:04d}-{slugify(channel.name)}"
     date_str = datetime.now().strftime("%Y-%m-%d")
     video_title_slug = slugify(video.title or "untitled")
     video_slug = f"{date_str}-{video_title_slug}"
     
-    base_dir = Path("cache") / channel_slug / video_slug
+    base_dir = Path("cache") / user_slug / channel_slug / video_slug
     base_dir.mkdir(parents=True, exist_ok=True)
     
     (base_dir / "audio/chunks").mkdir(parents=True, exist_ok=True)
@@ -232,7 +245,10 @@ async def generate_audio(
             # Caching: Skip if file already exists
             if not out_path.exists():
                 if provider.lower() == "elevenlabs":
-                    AudioEngine.synthesize_elevenlabs(text, voice, out_path)
+                    settings = get_user_settings_for_video(video, db)
+                    if not settings or not settings.elevenlabs_api_key:
+                        raise ValueError("No has configurado tu API Key de ElevenLabs en Ajustes.")
+                    AudioEngine.synthesize_elevenlabs(text, voice, out_path, api_key=settings.elevenlabs_api_key)
                 else:
                     AudioEngine.synthesize_tiktok(text, voice, out_path)
             
@@ -246,9 +262,14 @@ async def generate_audio(
         video.status = "audio_ready"
         db.commit()
         return {"ok": True, "total_seconds": total_sec, "chunks": len(results)}
-    except Exception as e:
+    except ValueError as e:
         video.status = "failed"
         video.last_error = str(e)
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        video.status = "failed"
+        video.last_error = "Error al generar audio. Revisa consola o intenta otro proveedor."
         db.commit()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -262,12 +283,23 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
     video.style = req.style_name
     video.max_images_per_paragraph = req.max_images_per_paragraph
     db.commit()
+
+    settings = get_user_settings_for_video(video, db)
+    if not settings or not settings.openai_api_key or not settings.leonardo_api_key:
+        video.status = "failed"
+        video.last_error = "No has configurado tus API Keys de OpenAI o Leonardo en Ajustes."
+        db.commit()
+        raise HTTPException(status_code=400, detail="Faltan API Keys. Ve a la pantalla de Ajustes.")
+    
+    # Extract keys to pass to thread
+    openai_key = settings.openai_api_key
+    leonardo_key = settings.leonardo_api_key
     
     # Run image generation in background thread to avoid proxy timeouts
     import threading
     from app.database import SessionLocal
     
-    def _generate_images_background(vid_id, sty, max_imgs, m_id, gen_mode):
+    def _generate_images_background(vid_id, sty, max_imgs, m_id, gen_mode, openai_k, leonardo_k):
 
         db_bg = SessionLocal()
         try:
@@ -290,7 +322,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             dur_map = {d["id"]: d["seconds"] for d in durations}
 
             plan = json.loads(plan_path.read_text())
-            engine = ImageEngine()
+            engine = ImageEngine(openai_api_key=openai_k, leonardo_api_key=leonardo_k)
             
             # Load channel for custom style
             channel = db_bg.query(Channel).filter(Channel.id == vid.channel_id).first()
@@ -429,7 +461,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             thumbnail_path = base_dir / "output" / "thumbnail.png"
             if not thumbnail_path.exists():
                 try:
-                    seo = SEOEngine()
+                    seo = SEOEngine(api_key=openai_k)
                     script_snippet = "\n".join([item.get("spoken", "") for item in plan])
                     # NEW: use custom rules from guide for hook
                     custom_title_rules = StyleService.get_custom_title_rules(base_dir)
@@ -467,7 +499,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
     
     thread = threading.Thread(
         target=_generate_images_background,
-        args=(video_id, req.style_name, req.max_images_per_paragraph, req.model_id, req.generation_mode),
+        args=(video_id, req.style_name, req.max_images_per_paragraph, req.model_id, req.generation_mode, openai_key, leonardo_key),
         daemon=True
     )
 
@@ -829,7 +861,10 @@ async def regenerate_thumbnail_hook(video_id: int, db: Session = Depends(get_db)
     data = json.loads(images_json.read_text())
     
     script_full = "\n".join([item.get("spoken", "") for item in plan])
-    seo = SEOEngine()
+    settings = get_user_settings_for_video(video, db)
+    if not settings or not settings.openai_api_key:
+        raise HTTPException(status_code=400, detail="Falta API Key de OpenAI.")
+    seo = SEOEngine(api_key=settings.openai_api_key)
     # NEW: use custom rules from guide for hook
     custom_title_rules = StyleService.get_custom_title_rules(base_dir)
     hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules)
@@ -859,7 +894,10 @@ async def regenerate_thumbnail_visual_prompt(video_id: int, db: Session = Depend
     
     script_full = "\n".join([item.get("spoken", "") for item in plan])
     style_name = data.get("style", "stocksenior")
-    seo = SEOEngine()
+    settings = get_user_settings_for_video(video, db)
+    if not settings or not settings.openai_api_key:
+        raise HTTPException(status_code=400, detail="Falta API Key de OpenAI.")
+    seo = SEOEngine(api_key=settings.openai_api_key)
     hook = data.get("thumbnail", {}).get("hook", "")
     
     # Use custom thumbnail rules if available
@@ -929,7 +967,10 @@ async def generate_thumbnail_api(
         if plan_path.exists():
             plan = json.loads(plan_path.read_text())
             script_full = "\n".join([item.get("spoken", "") for item in plan])
-            seo = SEOEngine()
+            settings = get_user_settings_for_video(video, db)
+            if not settings or not settings.openai_api_key:
+                raise HTTPException(status_code=400, detail="Falta API Key de OpenAI.")
+            seo = SEOEngine(api_key=settings.openai_api_key)
             if not current_hook:
                 current_hook = seo.generate_thumbnail_hook(script_full[:2000])
                 data["thumbnail"]["hook"] = current_hook
@@ -951,7 +992,10 @@ async def generate_thumbnail_api(
     gen_mode = req.generation_mode or "QUALITY"
 
     thumbnail_path = base_dir / "output" / "thumbnail.png"
-    engine = ImageEngine()
+    settings = get_user_settings_for_video(video, db)
+    if not settings or not settings.openai_api_key or not settings.leonardo_api_key:
+        raise HTTPException(status_code=400, detail="Faltan API Keys. Ve a la pantalla de Ajustes.")
+    engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
     engine.generate_thumbnail(
         current_hook, current_visual, thumbnail_path, 
         size=f"{video.width}x{video.height}", 
@@ -977,7 +1021,10 @@ async def generate_seo(video_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Script not uploaded")
     
     script = script_path.read_text()
-    engine = SEOEngine()
+    settings = get_user_settings_for_video(video, db)
+    if not settings or not settings.openai_api_key:
+        raise HTTPException(status_code=400, detail="Falta API Key de OpenAI.")
+    engine = SEOEngine(api_key=settings.openai_api_key)
     
     # Fetch custom rules
     desc_rules = StyleService.get_custom_description_rules(base_dir)
@@ -1078,24 +1125,28 @@ def render_video(video_id: int, subtitles: bool = False, overlay: str | None = N
         if subtitles:
             try:
                 from app.services.subtitle_engine import SubtitleEngine
-                sub_engine = SubtitleEngine()
-                
-                # Combine all audio chunks into a single file for transcription
-                combined_audio = base_dir / "output/combined_audio.mp3"
-                if not combined_audio.exists():
-                    from pydub import AudioSegment
-                    combined = AudioSegment.empty()
-                    for ap in audio_paths:
-                        combined += AudioSegment.from_mp3(str(ap))
-                    combined.export(str(combined_audio), format="mp3")
-                
-                sub_engine.add_subtitles_to_video(
-                    video_path=out_path,
-                    audio_path=combined_audio,
-                    video_size=out_size,
-                    cache_dir=base_dir / "output"
-                )
-                print(f"[render] Karaoke subtitles applied successfully!", flush=True)
+                settings = get_user_settings_for_video(video, db)
+                if not settings or not settings.assemblyai_api_key:
+                    print("[render] WARNING: Subtitle generation skipped missing AssemblyAI API Key.")
+                else:
+                    sub_engine = SubtitleEngine(api_key=settings.assemblyai_api_key)
+                    
+                    # Combine all audio chunks into a single file for transcription
+                    combined_audio = base_dir / "output/combined_audio.mp3"
+                    if not combined_audio.exists():
+                        from pydub import AudioSegment
+                        combined = AudioSegment.empty()
+                        for ap in audio_paths:
+                            combined += AudioSegment.from_mp3(str(ap))
+                        combined.export(str(combined_audio), format="mp3")
+                    
+                    sub_engine.add_subtitles_to_video(
+                        video_path=out_path,
+                        audio_path=combined_audio,
+                        video_size=out_size,
+                        cache_dir=base_dir / "output"
+                    )
+                    print(f"[render] Karaoke subtitles applied successfully!", flush=True)
             except Exception as e:
                 print(f"[render] WARNING: Subtitle generation failed: {e}", flush=True)
                 # Don't fail the entire render if subtitles fail

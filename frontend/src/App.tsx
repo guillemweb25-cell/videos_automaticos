@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { api, type UserResponse, type ChannelResponse } from './api'
 import ChannelDashboard from './components/ChannelDashboard'
+import { Settings } from './components/Settings'
 
 function App() {
   const [user, setUser] = useState<UserResponse | null>(null)
@@ -10,10 +11,12 @@ function App() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [registrationEnabled, setRegistrationEnabled] = useState(false)
 
   // Selected Channel State
   const [selectedChannel, setSelectedChannel] = useState<ChannelResponse | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
   // Channel Form State
   const [channelName, setChannelName] = useState('')
@@ -50,6 +53,8 @@ function App() {
     } else {
       setLoading(false)
     }
+
+    api.getPublicSettings().then(res => setRegistrationEnabled(res.registration_enabled)).catch(console.error)
   }, [])
 
   useEffect(() => {
@@ -79,6 +84,7 @@ function App() {
 
   const handleSelectChannel = (channel: ChannelResponse | null) => {
     setSelectedChannel(channel)
+    setShowSettings(false)
     if (channel) {
       localStorage.setItem('selectedChannelId', channel.id.toString())
     } else {
@@ -178,8 +184,20 @@ function App() {
             </div>
             {error && <div className="error-text">{error}</div>}
             <button className="btn btn-primary" style={{ width: '100%', marginTop: '16px' }} type="submit">
-              Entrar
+              {isLogin ? 'Entrar' : 'Registrarse'}
             </button>
+            
+            {registrationEnabled && (
+              <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                <button 
+                  type="button" 
+                  className="btn-link" 
+                  onClick={() => { setIsLogin(!isLogin); setError(''); }}
+                >
+                  {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
+                </button>
+              </div>
+            )}
           </form>
         </div>
       </div>
@@ -211,6 +229,15 @@ function App() {
               <span>{channel.name}</span>
             </div>
           ))}
+          
+          <div 
+            className={`channel-link ${showSettings ? 'active' : ''}`}
+            onClick={() => { setShowSettings(true); setSelectedChannel(null); setSidebarOpen(false); }}
+            style={{ marginTop: '16px' }}
+          >
+            <div className="channel-icon" style={{ background: '#334155' }}>⚙️</div>
+            <span>Ajustes</span>
+          </div>
           
           <div style={{ padding: '12px' }}>
             <form onSubmit={handleCreateChannel}>
@@ -247,7 +274,7 @@ function App() {
             ☰
           </button>
           <div style={{ fontWeight: 600 }}>
-            {selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
+            {showSettings ? 'Ajustes' : selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
           </div>
           {selectedChannel && (
             <button className="btn-delete" onClick={() => handleDeleteChannel(selectedChannel.id)}>
@@ -257,13 +284,15 @@ function App() {
         </header>
         
         <div className="content-area">
-          {selectedChannel ? (
+          {showSettings ? (
+            <Settings />
+          ) : selectedChannel ? (
             <ChannelDashboard channel={selectedChannel} onBack={() => setSelectedChannel(null)} />
           ) : (
             <div className="empty-state">
               <div style={{ fontSize: '4rem', marginBottom: '24px' }}>📺</div>
               <h2>Bienvenido a VideoBot</h2>
-              <p>Selecciona un canal de la izquierda o crea uno nuevo para empezar a trabajar.</p>
+              <p>Selecciona un canal de la izquierda, crea uno nuevo, o configura tus Ajustes para empezar a trabajar.</p>
             </div>
           )}
         </div>
