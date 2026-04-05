@@ -499,6 +499,20 @@ class ApiClient {
     return res.json();
   }
 
+  async uploadClip(videoId: number, paragraphId: number, imageId: number, file: File): Promise<{ok: boolean, url: string}> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/upload-clip/${paragraphId}/${imageId}`, {
+      method: "POST",
+      body: formData
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to upload clip");
+    }
+    return res.json();
+  }
+
   async regenerateImage(videoId: number, paragraphId: number, imageId: number, customPrompt?: string, modelId?: string, generationMode?: string): Promise<{ ok: boolean, url: string }> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/regenerate-image`, {
       method: 'POST',

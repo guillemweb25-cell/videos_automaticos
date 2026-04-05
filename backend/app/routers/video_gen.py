@@ -843,6 +843,54 @@ async def convert_image_to_video(
     
     return {"ok": True, "url": f"/{video.base_dir}/images/{out_video_path.name}?t={timestamp}"}
 
+@router.post("/{video_id}/upload-clip/{paragraph_id}/{image_id}")
+async def upload_clip(
+    video_id: int,
+    paragraph_id: int,
+    image_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+        
+    base_dir = Path(video.base_dir)
+    images_json = base_dir / "image_prompts_all.json"
+    if not images_json.exists():
+        raise HTTPException(status_code=400, detail="Images not yet generated")
+        
+    data = json.loads(images_json.read_text())
+    
+    # Save the file
+    out_video_path = base_dir / "images" / f"p{paragraph_id:03d}_{image_id:02d}.mp4"
+    with open(out_video_path, "wb") as f:
+        f.write(await file.read())
+        
+    # Update JSON
+    timestamp = int(datetime.now().timestamp())
+    found = False
+    for item in data.get("items", []):
+        if item["paragraph_id"] == paragraph_id:
+            for p_info in item.get("prompts", []):
+                if p_info["id"] == image_id:
+                    p_info["is_video"] = True
+                    p_info["video_model"] = "UPLOADED"
+                    p_info["url"] = f"/{video.base_dir}/images/{out_video_path.name}?t={timestamp}"
+                    found = True
+                    break
+    
+    if not found:
+        raise HTTPException(status_code=404, detail="Image info not found in json")
+        
+    images_json.write_text(json.dumps(data, indent=2))
+    
+    # Remove old .png if any
+    source_img_path = base_dir / "images" / f"p{paragraph_id:03d}_{image_id:02d}.png"
+    source_img_path.unlink(missing_ok=True)
+    
+    return {"ok": True, "url": f"/{video.base_dir}/images/{out_video_path.name}?t={timestamp}"}
+
 @router.post("/{video_id}/regenerate-prompt")
 async def regenerate_prompt_api(
     video_id: int, 

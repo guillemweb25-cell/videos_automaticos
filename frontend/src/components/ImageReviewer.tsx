@@ -599,6 +599,58 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                           🎞️ Convertir a Vídeo
                         </button>
                       )}
+                      
+                      {/* Upload MP4 Button */}
+                      <label style={{
+                        backgroundColor: '#374151',
+                        color: 'white',
+                        padding: '10px',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        border: 'none',
+                        fontSize: '0.85rem',
+                        marginTop: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: (converting || regenerating) ? 0.5 : 1,
+                      }}>
+                        📤 Subir MP4 Propio
+                        <input 
+                          type="file" 
+                          accept="video/mp4,video/*" 
+                          hidden 
+                          disabled={!!converting || !!regenerating}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setConverting(key);
+                              try {
+                                const res = await api.uploadClip(videoId, item.paragraph_id, p.id, file);
+                                if (res.ok) {
+                                  const newData = { ...data };
+                                  for (const it of newData.items) {
+                                    if (it.paragraph_id === item.paragraph_id) {
+                                      for (const pr of it.prompts) {
+                                        if (pr.id === p.id) {
+                                          pr.url = res.url;
+                                          pr.is_video = true;
+                                        }
+                                      }
+                                    }
+                                  }
+                                  setData(newData);
+                                }
+                              } catch(err) {
+                                alert('Error al subir vídeo');
+                              } finally {
+                                setConverting(null);
+                              }
+                            }
+                          }} 
+                        />
+                      </label>
                     </div>
                   </div>
                 );
