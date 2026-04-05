@@ -428,15 +428,18 @@ class ImageEngine:
             for chunk in resp.iter_content(8192):
                 f.write(chunk)
 
-    def generate_leonardo_video(self, prompt: str, image_path: Path, out_path: Path, duration: int = 8, video_model: str = "VEO3FAST") -> Optional[Dict[str, Any]]:
-        """Generates video from an image using the Veo 3 API."""
+    def generate_leonardo_video(self, prompt: str, image_path: Path, out_path: Path, duration: int = 8, video_model: str = "VEO3FAST", orientation: str = "vertical") -> dict:
+        """
+        Uses Leonardo VEO3 to generate an mp4 video out of an image.
+        Returns the approx cost object.
+        """
         if not self.leonardo_api_key:
             raise RuntimeError("LEONARDO_API_KEY not configured")
 
-        # 1. Upload init image to get imageId
         init_image_id = self.upload_init_image(image_path)
-
-        # 2. Make video generation request
+        if not init_image_id:
+            raise RuntimeError("Could not upload init image to Leonardo for video generation")
+            
         headers = {
             "Authorization": f"Bearer {self.leonardo_api_key}",
             "Content-Type": "application/json",
@@ -450,6 +453,16 @@ class ImageEngine:
             
         resolution = "RESOLUTION_1080" if video_model == "VEO3" else "RESOLUTION_720"
         
+        if orientation == "vertical":
+            w = 1080 if video_model == "VEO3" else 720
+            h = 1920 if video_model == "VEO3" else 1280
+        elif orientation == "horizontal":
+            w = 1920 if video_model == "VEO3" else 1280
+            h = 1080 if video_model == "VEO3" else 720
+        else: # square/default
+            w = 1080 if video_model == "VEO3" else 768
+            h = 1080 if video_model == "VEO3" else 768
+            
         payload = {
             "prompt": clean_prompt,
             "imageId": init_image_id,

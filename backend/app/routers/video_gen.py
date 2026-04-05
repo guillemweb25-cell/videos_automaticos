@@ -820,7 +820,8 @@ async def convert_image_to_video(
         image_path=source_img_path,
         out_path=out_video_path,
         duration=req.duration,
-        video_model=req.model_id
+        video_model=req.model_id,
+        orientation=video.orientation if hasattr(video, "orientation") else "vertical"
     )
     
     # Update JSON
