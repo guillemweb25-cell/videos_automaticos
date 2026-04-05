@@ -34,3 +34,5 @@ Thumbs.db
 cache
 *.db
 backend/alembic/videos.db
+.codex/
+.agents/
