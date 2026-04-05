@@ -15,7 +15,7 @@ from app.models.channel import Channel
 from app.schemas.video import (
     VideoCreate, VideoResponse, VideoUpdate, 
     ImageGenerationRequest, RegenerateImageRequest, 
-    AddImageRequest, ThumbnailGenerationRequest
+    AddImageRequest, ThumbnailGenerationRequest, ConvertToVideoRequest
 )
 
 from app.services.audio_engine import AudioEngine
@@ -770,6 +770,78 @@ async def remove_image(video_id: int, paragraph_id: int, image_id: int, db: Sess
     
     return {"ok": True}
 
+@router.post("/{video_id}/image-to-video")
+async def convert_image_to_video(
+    video_id: int, 
+    req: ConvertToVideoRequest,
+    db: Session = Depends(get_db)
+):
+    paragraph_id = req.paragraph_id
+    image_id = req.image_id
+
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    base_dir = Path(video.base_dir)
+    images_json = base_dir / "image_prompts_all.json"
+    if not images_json.exists():
+        raise HTTPException(status_code=400, detail="Images not yet generated")
+    
+    data = json.loads(images_json.read_text())
+    
+    target_prompt = req.custom_prompt
+    found = False
+    
+    for item in data.get("items", []):
+        if item["paragraph_id"] == paragraph_id:
+            for p_info in item.get("prompts", []):
+                if p_info["id"] == image_id:
+                    if not target_prompt:
+                        target_prompt = p_info["prompt"]
+                    found = True
+                    break
+        if found: break
+    
+    if not found:
+        raise HTTPException(status_code=404, detail="Image info not found in json")
+
+    # Locate source image
+    source_img_path = base_dir / "images" / f"p{paragraph_id:03d}_{image_id:02d}.png"
+    if not source_img_path.exists():
+        raise HTTPException(status_code=404, detail="Source image file not found or already converted")
+        
+    out_video_path = base_dir / "images" / f"p{paragraph_id:03d}_{image_id:02d}.mp4"
+
+    engine = ImageEngine()
+    
+    cost_info = engine.generate_leonardo_video(
+        prompt=target_prompt,
+        image_path=source_img_path,
+        out_path=out_video_path,
+        duration=req.duration,
+        video_model=req.model_id
+    )
+    
+    # Update JSON
+    timestamp = int(datetime.now().timestamp())
+    for item in data.get("items", []):
+        if item["paragraph_id"] == paragraph_id:
+            for p_info in item.get("prompts", []):
+                if p_info["id"] == image_id:
+                    p_info["is_video"] = True
+                    p_info["video_model"] = req.model_id
+                    p_info["url"] = f"/{video.base_dir}/images/{out_video_path.name}?t={timestamp}"
+                    if cost_info:
+                        existing_cost = p_info.get("cost", {"amount": 0})
+                        p_info["cost"] = {"amount": existing_cost.get("amount", 0) + cost_info.get("amount", 0)}
+                    break
+    
+    images_json.write_text(json.dumps(data, indent=2))
+    source_img_path.unlink(missing_ok=True)
+    
+    return {"ok": True, "url": f"/{video.base_dir}/images/{out_video_path.name}?t={timestamp}"}
+
 @router.post("/{video_id}/regenerate-prompt")
 async def regenerate_prompt_api(
     video_id: int, 
@@ -1075,8 +1147,14 @@ def render_video(video_id: int, subtitles: bool = False, overlay: str | None = N
         
         for d in durations:
             idx = d["id"]
-            # Look for all images pXXX_XX.png
-            img_ps = sorted(list(base_dir.glob(f"images/p{idx:03d}_*.png")))
+            
+            files_dict = {}
+            for ext in [".png", ".mp4"]:
+                for p in base_dir.glob(f"images/p{idx:03d}_*{ext}"):
+                    files_dict[p.stem] = p
+            
+            img_ps = sorted(files_dict.values(), key=lambda x: x.stem)
+            
             if not img_ps:
                 continue
             

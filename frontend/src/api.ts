@@ -480,6 +480,25 @@ class ApiClient {
     return response.json();
   }
 
+  async convertImageToVideo(videoId: number, paragraphId: number, imageId: number, duration: number, modelId: string, customPrompt?: string): Promise<{ok: boolean, url: string}> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/image-to-video`, {
+      method: "POST",
+      headers: this.getHeaders(true),
+      body: JSON.stringify({
+        paragraph_id: paragraphId,
+        image_id: imageId,
+        duration: duration,
+        model_id: modelId,
+        custom_prompt: customPrompt
+      })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to convert image to video");
+    }
+    return res.json();
+  }
+
   async regenerateImage(videoId: number, paragraphId: number, imageId: number, customPrompt?: string, modelId?: string, generationMode?: string): Promise<{ ok: boolean, url: string }> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/regenerate-image`, {
       method: 'POST',

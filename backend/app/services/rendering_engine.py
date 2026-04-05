@@ -34,6 +34,33 @@ class RenderingEngine:
         mode: str = "linear"
     ) -> VideoClip:
         W, H = out_size
+        
+        if img_path.suffix.lower() == '.mp4':
+            from moviepy.video.io.VideoFileClip import VideoFileClip
+            from moviepy.video.fx.all import loop
+            
+            v_clip = VideoFileClip(str(img_path))
+            # Loop video to match requested duration
+            if v_clip.duration < duration:
+                v_clip = v_clip.fx(loop, duration=duration)
+            else:
+                v_clip = v_clip.subclip(0, duration)
+                
+            # Resize and crop to center
+            w, h = v_clip.size
+            scale = max(W/w, H/h)
+            
+            def center_crop_frame(get_frame, t):
+                frame = get_frame(t)
+                img = Image.fromarray(frame).resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+                arr = np.array(img)
+                ch, cw = arr.shape[:2]
+                x1 = (cw - W) // 2
+                y1 = (ch - H) // 2
+                return arr[y1:y1+H, x1:x1+W]
+                
+            return v_clip.fl(lambda gf, t: center_crop_frame(gf, t)).set_duration(duration)
+
         base = Image.open(img_path).convert("RGB")
         W0, H0 = base.size
         base_scale = max(W / W0, H / H0)

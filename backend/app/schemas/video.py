@@ -75,3 +75,9 @@ class ThumbnailGenerationRequest(BaseModel):
     model_id: Optional[str] = None
     generation_mode: Optional[str] = "QUALITY"
 
+class ConvertToVideoRequest(BaseModel):
+    paragraph_id: int
+    image_id: int
+    duration: int = 8
+    model_id: str = "VEO3FAST" # "VEO3" or "VEO3FAST"
+    custom_prompt: Optional[str] = None

@@ -11,6 +11,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [addingImage, setAddingImage] = useState<number | null>(null);
   const [regenerating, setRegenerating] = useState<string | null>(null);
+  const [converting, setConverting] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
   const [prompts, setPrompts] = useState<{ [key: string]: string }>({});
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
@@ -113,6 +114,33 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
       alert("Error al regenerar la imagen");
     } finally {
       setRegenerating(null);
+    }
+  };
+
+  const handleConvertToVideo = async (paraId: number, imgId: number) => {
+    const key = `${paraId}_${imgId}`;
+    setConverting(key);
+    try {
+      const res = await api.convertImageToVideo(videoId, paraId, imgId, 8, "VEO3FAST", prompts[key]);
+      if (res.ok) {
+        const newData = { ...data };
+        for (const item of newData.items) {
+          if (item.paragraph_id === paraId) {
+            for (const p of item.prompts) {
+              if (p.id === imgId) {
+                p.url = res.url;
+                p.is_video = true;
+              }
+            }
+          }
+        }
+        setData(newData);
+      }
+    } catch (error) {
+      console.error("Error converting image to video:", error);
+      alert("Error al convertir a vídeo");
+    } finally {
+      setConverting(null);
     }
   };
 
@@ -429,16 +457,32 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                         </div>
                       )}
 
-                      <img 
-                        src={`${API_URL}${p.url}`} 
-                        alt={`Paragraph ${item.paragraph_id} Image ${p.id}`}
-                        style={{ 
-                          maxWidth: '100%', 
-                          maxHeight: '600px', 
-                          objectFit: 'contain',
-                          display: 'block'
-                        }}
-                      />
+                      {p.is_video ? (
+                        <video 
+                          src={`${API_URL}${p.url}`} 
+                          controls
+                          loop
+                          autoPlay
+                          muted
+                          style={{ 
+                            maxWidth: '100%', 
+                            maxHeight: '600px', 
+                            objectFit: 'contain',
+                            display: 'block'
+                          }}
+                        />
+                      ) : (
+                        <img 
+                          src={`${API_URL}${p.url}`} 
+                          alt={`Paragraph ${item.paragraph_id} Image ${p.id}`}
+                          style={{ 
+                            maxWidth: '100%', 
+                            maxHeight: '600px', 
+                            objectFit: 'contain',
+                            display: 'block'
+                          }}
+                        />
+                      )}
                       
                       {/* Delete Button */}
                       <button
@@ -467,7 +511,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                         ×
                       </button>
 
-                      {(regenerating === key || addingImage === item.paragraph_id) && (
+                      {(regenerating === key || converting === key || addingImage === item.paragraph_id) && (
                         <div style={{
                           position: 'absolute',
                           inset: 0,
@@ -521,7 +565,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                       />
                       <button
                         onClick={() => handleRegenerate(item.paragraph_id, p.id)}
-                        disabled={!!regenerating}
+                        disabled={!!regenerating || !!converting}
                         style={{
                           backgroundColor: '#9333ea',
                           color: 'white',
@@ -530,12 +574,31 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                           fontWeight: 'bold',
                           cursor: 'pointer',
                           border: 'none',
-                          opacity: regenerating ? 0.5 : 1,
+                          opacity: (regenerating || converting) ? 0.5 : 1,
                           marginTop: '8px'
                         }}
                       >
                         Regenerar esta imagen
                       </button>
+                      {!p.is_video && (
+                        <button
+                          onClick={() => handleConvertToVideo(item.paragraph_id, p.id)}
+                          disabled={!!converting || !!regenerating}
+                          style={{
+                            backgroundColor: '#f59e0b',
+                            color: 'white',
+                            padding: '10px',
+                            borderRadius: '8px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            border: 'none',
+                            opacity: (converting || regenerating) ? 0.5 : 1,
+                            marginTop: '8px'
+                          }}
+                        >
+                          🎞️ Convertir a Vídeo
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

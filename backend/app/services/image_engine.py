@@ -427,3 +427,87 @@ class ImageEngine:
         with open(out_path, "wb") as f:
             for chunk in resp.iter_content(8192):
                 f.write(chunk)
+
+    def generate_leonardo_video(self, prompt: str, image_path: Path, out_path: Path, duration: int = 8, video_model: str = "VEO3FAST") -> Optional[Dict[str, Any]]:
+        """Generates video from an image using the Veo 3 API."""
+        if not self.leonardo_api_key:
+            raise RuntimeError("LEONARDO_API_KEY not configured")
+
+        # 1. Upload init image to get imageId
+        init_image_id = self.upload_init_image(image_path)
+
+        # 2. Make video generation request
+        headers = {
+            "Authorization": f"Bearer {self.leonardo_api_key}",
+            "Content-Type": "application/json",
+            "accept": "application/json"
+        }
+        
+        # Sanitize prompt
+        clean_prompt = prompt.replace("\n", " ").strip()
+        if len(clean_prompt) > 900:
+            clean_prompt = clean_prompt[:897] + "..."
+            
+        resolution = "RESOLUTION_1080" if video_model == "VEO3" else "RESOLUTION_720"
+        
+        payload = {
+            "prompt": clean_prompt,
+            "imageId": init_image_id,
+            "imageType": "UPLOADED",
+            "resolution": resolution,
+            "duration": duration,
+            "model": video_model,
+            "isPublic": False
+        }
+
+        resp = requests.post(f"{self.leonardo_v1_url}/generations-image-to-video", headers=headers, json=payload)
+        
+        if resp.status_code != 200:
+            print(f"!!! LEONARDO VIDEO GEN ERROR ({resp.status_code}) !!!")
+            print(f"!!! RESPONSE TEXT: {resp.text}")
+            resp.raise_for_status()
+            
+        resp_data = resp.json()
+        
+        gen_id = None
+        if "motion_generation_job" in resp_data:
+            gen_id = resp_data["motion_generation_job"].get("generationId")
+        elif "generations" in resp_data:
+            gen_id = resp_data["generations"].get("id")
+            
+        if not gen_id:
+            # Maybe it returns {"generationId": "..."} directly
+            gen_id = resp_data.get("generationId")
+            
+        if not gen_id:
+            print(f"!!! NO GENERATION ID IN RESPONSE: {resp_data}")
+            raise RuntimeError(f"Leonardo Video Gen failed to return a generation ID: {resp_data}")
+
+        # 3. Poll for completion using V1 poll endpoint but looking for video URL
+        video_url = self._poll_leonardo_video(gen_id, headers)
+        
+        # 4. Download Video
+        self._download_image(video_url, out_path)
+        
+        cost_amount = 0.08 if video_model == "VEO3FAST" else 0.20 # Approximate costs
+        return {"amount": cost_amount}
+        
+    def _poll_leonardo_video(self, gen_id: str, headers: dict, timeout=600) -> str:
+        """Polls for video generation completion."""
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            resp = requests.get(f"{self.leonardo_v1_url}/generations/{gen_id}", headers=headers)
+            resp.raise_for_status()
+            data = resp.json().get("generations_by_pk")
+            
+            if data and data.get("status") == "COMPLETE":
+                images = data.get("generated_images", [])
+                if images:
+                    # Look for motionMP4URL first, fallback to url
+                    return images[0].get("motionMP4URL") or images[0].get("url")
+            
+            if data and data.get("status") in ["FAILED", "ERROR"]:
+                raise RuntimeError(f"Leonardo Video generation failed: {data}")
+            
+            time.sleep(5)
+        raise TimeoutError("Leonardo Video generation timeout")
