@@ -25,7 +25,7 @@ echo "--- Starting Sync: Laptop -> Server ---"
 # 1. Sync Cache
 echo "Step 1: Synchronizing cache..."
 # Using -rtvz and disabling times/perms preservation to avoid permission issues on remote
-rsync -rtvz --exclude="*.mp4" --no-o --no-g --no-perms --no-t -e "ssh -p $REMOTE_PORT_SSH" cache/ $REMOTE_SSH:$REMOTE_BASE_PATH/cache/
+rsync -rtvz --exclude="*.mp4" --exclude="*.mp3" --no-o --no-g --no-perms --no-t -e "ssh -p $REMOTE_PORT_SSH" cache/ $REMOTE_SSH:$REMOTE_BASE_PATH/cache/
 
 # 2. Sync YouTube Credentials
 echo "Step 2: Synchronizing YouTube credentials..."
