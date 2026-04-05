@@ -470,7 +470,9 @@ class ImageEngine:
         resp_data = resp.json()
         
         gen_id = None
-        if "motion_generation_job" in resp_data:
+        if "motionVideoGenerationJob" in resp_data:
+            gen_id = resp_data["motionVideoGenerationJob"].get("generationId")
+        elif "motion_generation_job" in resp_data:
             gen_id = resp_data["motion_generation_job"].get("generationId")
         elif "generations" in resp_data:
             gen_id = resp_data["generations"].get("id")
