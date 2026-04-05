@@ -913,24 +913,34 @@ async def link_clip(
         raise HTTPException(status_code=400, detail="Images not yet generated")
         
     import re
-    match = re.search(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', req.link)
-    if not match:
-        raise HTTPException(status_code=400, detail="No valid generation ID found in link")
-        
-    gen_id = match.group(0)
-    
-    # Download using engine
-    from app.services.image_engine import ImageEngine
-    engine = ImageEngine()
-    try:
-        url = engine._poll_leonardo_video(gen_id, timeout=10) # already complete mostly
-        if not url:
-            raise RuntimeError("Could not retrieve video URL for given ID")
-        out_video_path = base_dir / "images" / f"p{req.paragraph_id:03d}_{req.image_id:02d}.mp4"
-        engine._download_image(url, out_video_path)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch linked video: {e}")
-        
+    # Check if link is a direct .mp4 (e.g. Copied Video Address)
+    if ".mp4" in req.link.lower():
+        url = req.link.strip()
+        from app.services.image_engine import ImageEngine
+        engine = ImageEngine()
+        try:
+            out_video_path = base_dir / "images" / f"p{req.paragraph_id:03d}_{req.image_id:02d}.mp4"
+            engine._download_image(url, out_video_path)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to download direct MP4: {e}")
+    else:
+        # Fallback to trying to parse generation ID
+        match = re.search(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', req.link)
+        if not match:
+            raise HTTPException(status_code=400, detail="El enlace no es un archivo .mp4 ni contiene un ID de generación.")
+            
+        gen_id = match.group(0)
+        from app.services.image_engine import ImageEngine
+        engine = ImageEngine()
+        try:
+            url = engine._poll_leonardo_video(gen_id, timeout=10)
+            if not url:
+                raise RuntimeError("No se pudo obtener el vídeo usando este ID. Leonardo devuelve null.")
+            out_video_path = base_dir / "images" / f"p{req.paragraph_id:03d}_{req.image_id:02d}.mp4"
+            engine._download_image(url, out_video_path)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error en API de Leonardo: {e}")
+            
     data = json.loads(images_json.read_text())
     timestamp = int(datetime.now().timestamp())
     found = False

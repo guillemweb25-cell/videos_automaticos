@@ -621,8 +621,8 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                                   }
                                   setData(newData);
                                 }
-                              } catch(err) {
-                                alert("Error al vincular clip");
+                              } catch(err: any) {
+                                alert("Error al vincular clip: " + (err.message || "Desconocido"));
                               } finally {
                                 setConverting(null);
                               }
