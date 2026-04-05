@@ -581,23 +581,68 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                         Regenerar esta imagen
                       </button>
                       {!p.is_video && (
-                        <button
-                          onClick={() => handleConvertToVideo(item.paragraph_id, p.id)}
-                          disabled={!!converting || !!regenerating}
-                          style={{
-                            backgroundColor: '#f59e0b',
-                            color: 'white',
-                            padding: '10px',
-                            borderRadius: '8px',
-                            fontWeight: 'bold',
-                            cursor: 'pointer',
-                            border: 'none',
-                            opacity: (converting || regenerating) ? 0.5 : 1,
-                            marginTop: '8px'
-                          }}
-                        >
-                          🎞️ Convertir a Vídeo
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                          <button
+                            onClick={() => handleConvertToVideo(item.paragraph_id, p.id)}
+                            disabled={!!converting || !!regenerating}
+                            style={{
+                              flex: 1,
+                              backgroundColor: '#f59e0b',
+                              color: 'white',
+                              padding: '10px',
+                              borderRadius: '8px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              border: 'none',
+                              opacity: (converting || regenerating) ? 0.5 : 1
+                            }}
+                          >
+                            🎞️ Convertir a Vídeo
+                          </button>
+                          
+                          <button
+                            onClick={async () => {
+                              const link = prompt("Pega el enlace de Leonardo AI:");
+                              if (!link) return;
+                              setConverting(key);
+                              try {
+                                const res = await api.linkClip(videoId, item.paragraph_id, p.id, link);
+                                if (res.ok) {
+                                  const newData = { ...data };
+                                  for (const it of newData.items) {
+                                    if (it.paragraph_id === item.paragraph_id) {
+                                      for (const pr of it.prompts) {
+                                        if (pr.id === p.id) {
+                                          pr.url = res.url;
+                                          pr.is_video = true;
+                                        }
+                                      }
+                                    }
+                                  }
+                                  setData(newData);
+                                }
+                              } catch(err) {
+                                alert("Error al vincular clip");
+                              } finally {
+                                setConverting(null);
+                              }
+                            }}
+                            disabled={!!converting || !!regenerating}
+                            style={{
+                              backgroundColor: '#3b82f6',
+                              color: 'white',
+                              padding: '10px',
+                              borderRadius: '8px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              border: 'none',
+                              opacity: (converting || regenerating) ? 0.5 : 1
+                            }}
+                            title="Vincular desde URL de Leonardo AI"
+                          >
+                            🔗 Vincular
+                          </button>
+                        </div>
                       )}
                       
                       {/* Upload MP4 Button */}

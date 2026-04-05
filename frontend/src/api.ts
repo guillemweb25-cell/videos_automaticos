@@ -499,6 +499,23 @@ class ApiClient {
     return res.json();
   }
 
+  async linkClip(videoId: number, paragraphId: number, imageId: number, link: string): Promise<{ok: boolean, url: string}> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/link-clip`, {
+      method: "POST",
+      headers: this.getHeaders(true),
+      body: JSON.stringify({
+        paragraph_id: paragraphId,
+        image_id: imageId,
+        link: link
+      })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to link clip");
+    }
+    return res.json();
+  }
+
   async uploadClip(videoId: number, paragraphId: number, imageId: number, file: File): Promise<{ok: boolean, url: string}> {
     const formData = new FormData();
     formData.append("file", file);

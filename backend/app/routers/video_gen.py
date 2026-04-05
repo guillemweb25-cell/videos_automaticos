@@ -891,6 +891,68 @@ async def upload_clip(
     
     return {"ok": True, "url": f"/{video.base_dir}/images/{out_video_path.name}?t={timestamp}"}
 
+class LinkClipRequest(BaseModel):
+    paragraph_id: int
+    image_id: int
+    link: str
+
+@router.post("/{video_id}/link-clip")
+async def link_clip(
+    video_id: int,
+    req: LinkClipRequest,
+    db: Session = Depends(get_db)
+):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+        
+    base_dir = Path(video.base_dir)
+    images_json = base_dir / "image_prompts_all.json"
+    if not images_json.exists():
+        raise HTTPException(status_code=400, detail="Images not yet generated")
+        
+    import re
+    match = re.search(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', req.link)
+    if not match:
+        raise HTTPException(status_code=400, detail="No valid generation ID found in link")
+        
+    gen_id = match.group(0)
+    
+    # Download using engine
+    from app.services.image_engine import ImageEngine
+    engine = ImageEngine()
+    try:
+        url = engine._poll_leonardo_video(gen_id, timeout=10) # already complete mostly
+        if not url:
+            raise RuntimeError("Could not retrieve video URL for given ID")
+        out_video_path = base_dir / "images" / f"p{req.paragraph_id:03d}_{req.image_id:02d}.mp4"
+        engine._download_image(url, out_video_path)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch linked video: {e}")
+        
+    data = json.loads(images_json.read_text())
+    timestamp = int(datetime.now().timestamp())
+    found = False
+    for item in data.get("items", []):
+        if item["paragraph_id"] == req.paragraph_id:
+            for p_info in item.get("prompts", []):
+                if p_info["id"] == req.image_id:
+                    p_info["is_video"] = True
+                    p_info["video_model"] = "LINKED"
+                    p_info["url"] = f"/{video.base_dir}/images/{out_video_path.name}?t={timestamp}"
+                    found = True
+                    break
+    
+    if not found:
+        raise HTTPException(status_code=404, detail="Image info not found in json")
+        
+    images_json.write_text(json.dumps(data, indent=2))
+    
+    source_img_path = base_dir / "images" / f"p{req.paragraph_id:03d}_{req.image_id:02d}.png"
+    source_img_path.unlink(missing_ok=True)
+    
+    return {"ok": True, "url": f"/{video.base_dir}/images/{out_video_path.name}?t={timestamp}"}
+
 @router.post("/{video_id}/regenerate-prompt")
 async def regenerate_prompt_api(
     video_id: int, 
