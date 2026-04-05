@@ -17,8 +17,8 @@ import requests
 
 
 class SubtitleEngine:
-    def __init__(self):
-        self.api_key = os.getenv("ASSEMBLYAI_API_KEY")
+    def __init__(self, api_key: str = None):
+        self.api_key = api_key or os.getenv("ASSEMBLYAI_API_KEY")
         self.base_url = "https://api.assemblyai.com/v2"
     
     # ─── 1. Transcription ───────────────────────────────────────────
