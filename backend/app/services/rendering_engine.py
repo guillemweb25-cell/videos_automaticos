@@ -50,7 +50,20 @@ class RenderingEngine:
                 # clamp t to max possible frame time in the src video
                 safe_t = min(t, v_clip.duration - 0.05) if v_clip.duration > 0 else 0
                 frame = v_clip.get_frame(safe_t)
-                img = Image.fromarray(frame).resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+                
+                # Apply the same Ken Burns zoom logic as the images
+                u = t / max(duration, 0.001)
+                if mode == "pingpong":
+                    z = z0 + (z1 - z0) * (u*2 if u <= 0.5 else (1-u)*2)
+                else:
+                    z = z0 + (z1 - z0) * u
+                
+                # Base scale to cover the target size, multiplied by zoom
+                base_scale = max(W/w, H/h)
+                scale = base_scale * z
+                
+                # Use BILINEAR for video frames because LANCZOS on 24fps video is extremely slow
+                img = Image.fromarray(frame).resize((int(w * scale), int(h * scale)), Image.BILINEAR)
                 arr = np.array(img)
                 ch, cw = arr.shape[:2]
                 x1 = max(0, (cw - W) // 2)
