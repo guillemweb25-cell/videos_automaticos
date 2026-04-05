@@ -891,6 +891,7 @@ async def upload_clip(
     
     return {"ok": True, "url": f"/{video.base_dir}/images/{out_video_path.name}?t={timestamp}"}
 
+from pydantic import BaseModel
 class LinkClipRequest(BaseModel):
     paragraph_id: int
     image_id: int
