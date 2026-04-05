@@ -37,29 +37,27 @@ class RenderingEngine:
         
         if img_path.suffix.lower() == '.mp4':
             from moviepy.video.io.VideoFileClip import VideoFileClip
-            from moviepy.video.fx.all import loop
             
             v_clip = VideoFileClip(str(img_path))
-            # Loop video to match requested duration
-            if v_clip.duration < duration:
-                v_clip = v_clip.fx(loop, duration=duration)
-            else:
-                v_clip = v_clip.subclip(0, duration)
-                
-            # Resize and crop to center
+            
+            # The clip must run exactly `duration` seconds. 
+            # If the source video is shorter, we freeze at the last frame by clamping `t`.
+            # If it's longer, it naturally just gets subclipped.
             w, h = v_clip.size
             scale = max(W/w, H/h)
             
-            def center_crop_frame(get_frame, t):
-                frame = get_frame(t)
+            def center_crop_frame(t):
+                # clamp t to max possible frame time in the src video
+                safe_t = min(t, v_clip.duration - 0.05) if v_clip.duration > 0 else 0
+                frame = v_clip.get_frame(safe_t)
                 img = Image.fromarray(frame).resize((int(w * scale), int(h * scale)), Image.LANCZOS)
                 arr = np.array(img)
                 ch, cw = arr.shape[:2]
-                x1 = (cw - W) // 2
-                y1 = (ch - H) // 2
+                x1 = max(0, (cw - W) // 2)
+                y1 = max(0, (ch - H) // 2)
                 return arr[y1:y1+H, x1:x1+W]
                 
-            return v_clip.fl(lambda gf, t: center_crop_frame(gf, t)).set_duration(duration)
+            return VideoClip(center_crop_frame, duration=duration)
 
         base = Image.open(img_path).convert("RGB")
         W0, H0 = base.size
