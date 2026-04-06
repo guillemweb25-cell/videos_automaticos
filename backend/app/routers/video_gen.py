@@ -867,6 +867,8 @@ async def upload_clip(
     with open(out_video_path, "wb") as f:
         f.write(await file.read())
         
+    # Standardize video to avoid MoviePy freezes
+    _normalize_video(out_video_path)
     # Update JSON
     timestamp = int(datetime.now().timestamp())
     found = False
@@ -890,6 +892,32 @@ async def upload_clip(
     source_img_path.unlink(missing_ok=True)
     
     return {"ok": True, "url": f"/{video.base_dir}/images/{out_video_path.name}?t={timestamp}"}
+
+def _normalize_video(video_path: Path):
+    """Normalize video to a safe 24fps Constant Frame Rate and standard pixel format using ffmpeg."""
+    import subprocess
+    tmp_path = video_path.parent / f"tmp_norm_{video_path.name}"
+    video_path.rename(tmp_path)
+    try:
+        norm_cmd = [
+            "ffmpeg", "-y",
+            "-i", str(tmp_path),
+            "-vf", "scale='min(1080,iw)':-2,format=yuv420p", # max 1080p width, preserve aspect
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            "-r", "24",
+            "-c:a", "aac", "-b:a", "128k",
+            str(video_path)
+        ]
+        res = subprocess.run(norm_cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            print(f"[_normalize_video] ffmpeg error: {res.stderr[-500:]}", flush=True)
+            tmp_path.rename(video_path)
+        else:
+            tmp_path.unlink()
+    except Exception as e:
+        print(f"[_normalize_video] Critical failure: {e}", flush=True)
+        if tmp_path.exists():
+            tmp_path.rename(video_path)
 
 from pydantic import BaseModel
 class LinkClipRequest(BaseModel):
@@ -921,6 +949,8 @@ async def link_clip(
         try:
             out_video_path = base_dir / "images" / f"p{req.paragraph_id:03d}_{req.image_id:02d}.mp4"
             engine._download_image(url, out_video_path)
+            # Standardize video to avoid MoviePy freezes
+            _normalize_video(out_video_path)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to download direct MP4: {e}")
     else:
@@ -938,6 +968,8 @@ async def link_clip(
                 raise RuntimeError("No se pudo obtener el vídeo usando este ID. Leonardo devuelve null.")
             out_video_path = base_dir / "images" / f"p{req.paragraph_id:03d}_{req.image_id:02d}.mp4"
             engine._download_image(url, out_video_path)
+            # Standardize video to avoid MoviePy freezes
+            _normalize_video(out_video_path)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Error en API de Leonardo: {e}")
             
