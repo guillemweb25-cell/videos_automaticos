@@ -421,7 +421,14 @@ class ImageEngine:
         self.generate_leonardo_image(base_prompt, out_path, size=thumb_size, model_id=target_model, negative_prompt=negative_prompt, mode=mode)
 
     def _download_image(self, url: str, out_path: Path):
-        resp = requests.get(url, stream=True)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        # Add Referer if it's a known protected domain (like Grok)
+        if "grok.com" in url or "x.ai" in url:
+            headers["Referer"] = "https://grok.com/"
+            
+        resp = requests.get(url, stream=True, headers=headers)
         resp.raise_for_status()
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "wb") as f:

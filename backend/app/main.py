@@ -13,6 +13,17 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# Increase upload size limit to 500MB for video file uploads
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+class LargeUploadMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request._body_max_size = 500 * 1024 * 1024  # 500MB
+        return await call_next(request)
+
+app.add_middleware(LargeUploadMiddleware)
+
 # Static files for cache
 app.mount("/cache", StaticFiles(directory="cache"), name="cache")
 

@@ -40,37 +40,40 @@ class RenderingEngine:
             
             v_clip = VideoFileClip(str(img_path))
             
-            # The clip must run exactly `duration` seconds. 
-            # If the source video is shorter, we freeze at the last frame by clamping `t`.
-            # If it's longer, it naturally just gets subclipped.
             w, h = v_clip.size
-            scale = max(W/w, H/h)
+            base_scale = max(W/w, H/h)
             
-            def center_crop_frame(t):
-                # clamp t to max possible frame time in the src video
+            def center_crop_fl(get_frame, t):
+                # t follows the duration we set on the clip
+                # clamp t for source video
                 safe_t = min(t, v_clip.duration - 0.05) if v_clip.duration > 0 else 0
-                frame = v_clip.get_frame(safe_t)
+                frame = get_frame(safe_t)
                 
-                # Apply the same Ken Burns zoom logic as the images
+                # Apply Ken Burns zoom logic
                 u = t / max(duration, 0.001)
                 if mode == "pingpong":
                     z = z0 + (z1 - z0) * (u*2 if u <= 0.5 else (1-u)*2)
                 else:
                     z = z0 + (z1 - z0) * u
                 
-                # Base scale to cover the target size, multiplied by zoom
-                base_scale = max(W/w, H/h)
                 scale = base_scale * z
                 
-                # Use BILINEAR for video frames because LANCZOS on 24fps video is extremely slow
                 img = Image.fromarray(frame).resize((int(w * scale), int(h * scale)), Image.BILINEAR)
                 arr = np.array(img)
                 ch, cw = arr.shape[:2]
                 x1 = max(0, (cw - W) // 2)
                 y1 = max(0, (ch - H) // 2)
                 return arr[y1:y1+H, x1:x1+W]
+
+            final_clip = v_clip.subclip(0, min(duration, v_clip.duration)).set_duration(duration).fl(center_crop_fl)
+            
+            # Use original audio if present
+            if v_clip.audio:
+                # Cut original audio if duration < clip length. 
+                # If duration > clip length, it will end naturally.
+                final_clip = final_clip.set_audio(v_clip.audio.subclip(0, min(duration, v_clip.duration)).set_duration(duration))
                 
-            return VideoClip(center_crop_frame, duration=duration)
+            return final_clip
 
         base = Image.open(img_path).convert("RGB")
         W0, H0 = base.size
