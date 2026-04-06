@@ -77,10 +77,11 @@ export const API_URL = import.meta.env.VITE_API_URL || `${window.location.protoc
 class ApiClient {
   private baseUrl = API_URL;
 
-  private getHeaders(auth = false) {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
+  private getHeaders(auth = false, json = true) {
+    const headers: any = {};
+    if (json) {
+      headers['Content-Type'] = 'application/json';
+    }
     if (auth) {
       const token = localStorage.getItem('token');
       if (token) {
@@ -521,6 +522,7 @@ class ApiClient {
     formData.append("file", file);
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/upload-clip/${paragraphId}/${imageId}`, {
       method: "POST",
+      headers: this.getHeaders(true, false),
       body: formData
     });
     if (!res.ok) {
