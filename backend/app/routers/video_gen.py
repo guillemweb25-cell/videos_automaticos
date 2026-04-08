@@ -1312,10 +1312,58 @@ def render_video(video_id: int, subtitles: bool = False, overlay: str | None = N
             if not img_ps:
                 continue
             
-            dur_per_img = d["seconds"] / len(img_ps)
-            for img_p in img_ps:
-                image_paths.append(img_p)
-                durs.append(dur_per_img)
+            v_ps = [p for p in img_ps if p.suffix.lower() == '.mp4']
+            i_ps = [p for p in img_ps if p.suffix.lower() == '.png']
+            
+            # Helper to get duration of an MP4
+            from moviepy.video.io.VideoFileClip import VideoFileClip
+            
+            p_total_dur = d["seconds"]
+            video_durations = []
+            sum_v_dur = 0
+            
+            for vp in v_ps:
+                try:
+                    with VideoFileClip(str(vp)) as vc:
+                        vdur = vc.duration
+                        video_durations.append(vdur)
+                        sum_v_dur += vdur
+                except:
+                    video_durations.append(4.0) # Fallback
+                    sum_v_dur += 4.0
+
+            # If videos exceed paragraph duration, scale them down proportionally
+            if sum_v_dur > p_total_dur:
+                factor = p_total_dur / sum_v_dur
+                for i in range(len(video_durations)):
+                    video_durations[i] *= factor
+                
+                # In this case images get almost no time, let's give them a tiny bit if they exist
+                for vp, vdur in zip(v_ps, video_durations):
+                    image_paths.append(vp)
+                    durs.append(vdur)
+                
+                if i_ps:
+                    dur_per_img = 0.5 # Tiny flash for images if they exist but no time left
+                    for ip in i_ps:
+                        image_paths.append(ip)
+                        durs.append(dur_per_img)
+            else:
+                # Videos take their natural duration
+                for vp, vdur in zip(v_ps, video_durations):
+                    image_paths.append(vp)
+                    durs.append(vdur)
+                
+                # Remaining time for images
+                rem_dur = p_total_dur - sum_v_dur
+                if i_ps:
+                    dur_per_img = rem_dur / len(i_ps)
+                    for ip in i_ps:
+                        image_paths.append(ip)
+                        durs.append(dur_per_img)
+                elif rem_dur > 0 and v_ps:
+                    # If no images, distribute remaining time to the last video (stretch it)
+                    durs[-1] += rem_dur
             
             audio_paths.append(base_dir / "audio/chunks" / d["file"])
         
