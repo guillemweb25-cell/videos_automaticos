@@ -139,7 +139,13 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
     if (provider === 'tiktok' && availableVoices.tiktok.length > 0) {
       setVoice(availableVoices.tiktok[0].id);
     } else if (provider === 'elevenlabs' && availableVoices.elevenlabs.length > 0) {
-      setVoice(availableVoices.elevenlabs[0].id);
+      // Prioritize Dipemo if it exists in the list
+      const pin = availableVoices.elevenlabs.find(v => v.id === 'Dipemo' || v.name === 'Dipemo');
+      if (pin) {
+        setVoice(pin.id);
+      } else {
+        setVoice(availableVoices.elevenlabs[0].id);
+      }
     }
   }, [provider, availableVoices]);
 
