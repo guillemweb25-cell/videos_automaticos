@@ -13,9 +13,9 @@ type GenerationStep = 'idle' | 'creating' | 'script' | 'audio' | 'generating_aud
 const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, onReviewImages }) => {
   const [title, setTitle] = useState(initialVideo?.title || '');
   const [script, setScript] = useState('');
-  const [voice, setVoice] = useState('es_mx_002');
-  const [provider, setProvider] = useState<'tiktok' | 'elevenlabs'>('tiktok');
-  const [style, setStyle] = useState('realistic');
+  const [voice, setVoice] = useState('Dipemo');
+  const [provider, setProvider] = useState<'tiktok' | 'elevenlabs'>('elevenlabs');
+  const [style, setStyle] = useState('epic');
   const [status, setStatus] = useState<GenerationStep>('idle');
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState('');
@@ -26,14 +26,14 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
 
   const [availableVoices, setAvailableVoices] = useState<{ tiktok: any[], elevenlabs: any[] }>({ tiktok: [], elevenlabs: [] });
   const [availableStyles, setAvailableStyles] = useState<{ id: string, name: string }[]>([]);
-  const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('vertical');
-  const [maxImagesPerParagraph, setMaxImagesPerParagraph] = useState(2);
+  const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
+  const [maxImagesPerParagraph, setMaxImagesPerParagraph] = useState(3);
   const [shouldAutoRender, setShouldAutoRender] = useState(false);
   const [enableSubtitles, setEnableSubtitles] = useState(false);
   const [leonardoModels, setLeonardoModels] = useState<{ id: string, name: string }[]>([]);
-  const [selectedModel, setSelectedModel] = useState('7b592283-e8a7-4c5a-9ba6-d18c31f258b9'); // Default to Lucid Origin
+  const [selectedModel, setSelectedModel] = useState('gpt-image-1.5'); // Default to GPT Image-1.5
   const [generationModes, setGenerationModes] = useState<{ id: string, name: string, cost: number }[]>([]);
-  const [generationMode, setGenerationMode] = useState('QUALITY');
+  const [generationMode, setGenerationMode] = useState('FAST');
   const [availableOverlays, setAvailableOverlays] = useState<string[]>([]);
   const [selectedOverlay, setSelectedOverlay] = useState<string>('');
   const stopRequested = useRef(false);
@@ -57,7 +57,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         }
         
         if (config.generation_modes?.length > 0 && !initialVideo) {
-          setGenerationMode('QUALITY'); // Default
+          setGenerationMode('FAST'); // Default
         }
         
         if (!initialVideo) {
