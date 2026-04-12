@@ -38,6 +38,40 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
   const [selectedOverlay, setSelectedOverlay] = useState<string>('');
   const stopRequested = useRef(false);
 
+  // Persistence logic: Load draft on mount
+  React.useEffect(() => {
+    if (!initialVideo) {
+      const draft = localStorage.getItem('yt_auto_creator_draft');
+      if (draft) {
+        try {
+          const data = JSON.parse(draft);
+          if (data.title) setTitle(data.title);
+          if (data.script) setScript(data.script);
+          if (data.voice) setVoice(data.voice);
+          if (data.provider) setProvider(data.provider);
+          if (data.style) setStyle(data.style);
+          if (data.orientation) setOrientation(data.orientation);
+          if (data.maxImagesPerParagraph) setMaxImagesPerParagraph(data.maxImagesPerParagraph);
+          if (data.selectedModel) setSelectedModel(data.selectedModel);
+          if (data.generationMode) setGenerationMode(data.generationMode);
+        } catch (e) {
+          console.error("Error loading draft", e);
+        }
+      }
+    }
+  }, [initialVideo]);
+
+  // Persistence logic: Save draft on change
+  React.useEffect(() => {
+    if (!initialVideo && status === 'idle') {
+      const draft = {
+        title, script, voice, provider, style, orientation, 
+        maxImagesPerParagraph, selectedModel, generationMode
+      };
+      localStorage.setItem('yt_auto_creator_draft', JSON.stringify(draft));
+    }
+  }, [title, script, voice, provider, style, orientation, maxImagesPerParagraph, selectedModel, generationMode, status, initialVideo]);
+
   const addLog = (msg: string) => setLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
   React.useEffect(() => {
@@ -184,6 +218,8 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         currentId = video.id;
         setVideoId(currentId);
         addLog(`Registro creado con ID: ${currentId}`);
+        // Clear draft since it's now saved on the server
+        localStorage.removeItem('yt_auto_creator_draft');
       } else {
         addLog(`Usando registro existente ID: ${currentId}`);
         // Update existing record with current UI settings
