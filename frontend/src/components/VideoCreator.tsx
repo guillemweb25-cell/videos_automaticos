@@ -27,7 +27,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
   const [availableVoices, setAvailableVoices] = useState<{ tiktok: any[], elevenlabs: any[] }>({ tiktok: [], elevenlabs: [] });
   const [availableStyles, setAvailableStyles] = useState<{ id: string, name: string }[]>([]);
   const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
-  const [maxImagesPerParagraph, setMaxImagesPerParagraph] = useState(3);
+  const [maxImagesPerParagraph, setMaxImagesPerParagraph] = useState(0);
   const [shouldAutoRender, setShouldAutoRender] = useState(false);
   const [enableSubtitles, setEnableSubtitles] = useState(false);
   const [leonardoModels, setLeonardoModels] = useState<{ id: string, name: string }[]>([]);
@@ -419,16 +419,24 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
           </div>
           <div className="form-group">
             <label className="block text-sm font-medium text-gray-400 mb-2">Máx. Imágenes por Párrafo</label>
-            <input
-              type="number"
-              min="1"
-              max="5"
+            <select
               value={maxImagesPerParagraph}
-              onChange={(e) => setMaxImagesPerParagraph(parseInt(e.target.value) || 1)}
+              onChange={(e) => setMaxImagesPerParagraph(parseInt(e.target.value))}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={isBusy || isLocked}
-            />
-            <p className="text-xs text-gray-500 mt-1">Si el párrafo dura menos de 10s, se generará solo 1.</p>
+            >
+              <option value={0}>Automático (Recomendado)</option>
+              <option value={1}>Fijo: 1 Imagen</option>
+              <option value={2}>Máx: 2 Imágenes</option>
+              <option value={3}>Máx: 3 Imágenes</option>
+              <option value={4}>Máx: 4 Imágenes</option>
+              <option value={5}>Máx: 5 Imágenes</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {maxImagesPerParagraph === 0 
+                ? "El sistema calculará las fotos necesarias según la duración (1 cada 10s)." 
+                : "Se generarán como máximo las fotos indicadas por cada párrafo."}
+            </p>
           </div>
           <div className="form-group">
             <label>Orientación / Tamaño</label>

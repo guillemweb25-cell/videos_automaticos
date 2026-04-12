@@ -370,6 +370,13 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                 
                 if duration < seconds_per_image:
                     images_count = 1
+                elif max_imgs == 0:
+                    # Dynamic mode: 1 image per 10s (approx)
+                    # 15s -> 2, 25s -> 3, etc.
+                    import math
+                    images_count = math.ceil(duration / seconds_per_image)
+                    # Hard cap at 10 images per paragraph to avoid API abuse/timeouts
+                    images_count = min(10, images_count)
                 else:
                     import math
                     images_count = min(max_imgs, math.ceil(duration / seconds_per_image))
