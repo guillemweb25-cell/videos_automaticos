@@ -2,7 +2,7 @@ import os
 import json
 from pathlib import Path
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -82,21 +82,21 @@ class YouTubeService:
             else:
                 raise FileNotFoundError(f"Missing client_secret.json in {self.creds_dir}")
         
-        flow = InstalledAppFlow.from_client_secrets_file(
-            str(self.secret_path), SCOPES, redirect_uri=redirect_uri
+        flow = Flow.from_client_secrets_file(
+            str(self.secret_path), scopes=SCOPES, redirect_uri=redirect_uri
         )
         auth_url, _ = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true',
-            prompt='consent' # Force consent to ensure we get a refresh token
+            prompt='consent'
         )
         return auth_url
 
     def finish_oauth(self, code: str, redirect_uri: str):
         """Exchanges the auth code for a token and saves it."""
         print(f"[DEBUG] finish_oauth: Exchange code for channel {self.creds_dir.name} with redirect_uri: {redirect_uri}")
-        flow = InstalledAppFlow.from_client_secrets_file(
-            str(self.secret_path), SCOPES, redirect_uri=redirect_uri
+        flow = Flow.from_client_secrets_file(
+            str(self.secret_path), scopes=SCOPES, redirect_uri=redirect_uri
         )
         flow.fetch_token(code=code)
         creds = flow.credentials
