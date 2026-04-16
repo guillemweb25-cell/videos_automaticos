@@ -135,6 +135,11 @@ async def upload_video_to_youtube(
     service = YouTubeService(channel.id, channel.user_id, channel.name)
     try:
         metadata = req.dict()
+        video_path = Path(video.base_dir) / "output" / "final_video.mp4"
+        
+        if not video_path.exists():
+            raise HTTPException(status_code=400, detail="El archivo de vídeo no existe. ¿Has renderizado el vídeo?")
+            
         response = service.upload_video(video_path, metadata)
         youtube_id = response.get("id")
         
