@@ -301,12 +301,16 @@ def youtube_callback(
     if not channel:
         raise HTTPException(status_code=404, detail="Canal no encontrado")
     
-    yt = YouTubeService(channel.id, channel.user_id, channel.name)
     try:
+        yt = YouTubeService(channel.id, channel.user_id, channel.name)
         yt.finish_oauth(code, redirect_uri)
+        print(f"[DEBUG] YouTube OAuth finished successfully for channel {channel_id}")
         return {"status": "ok"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[ERROR] youtube_callback error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error finalizing OAuth: {str(e)}")
 
 @router.post("/{channel_id}/youtube/client-secret")
 def upload_client_secret(

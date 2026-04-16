@@ -191,7 +191,10 @@ class ApiClient {
       method: "POST",
       headers: this.getHeaders(true),
     });
-    if (!response.ok) throw new Error("Failed to finish YouTube OAuth");
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to finish YouTube OAuth");
+    }
     return response.json();
   }
 
