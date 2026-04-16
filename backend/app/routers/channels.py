@@ -309,21 +309,31 @@ def youtube_callback(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{channel_id}/youtube/client-secret")
-async def upload_client_secret(
+def upload_client_secret(
     channel_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Sube el archivo client_secret.json para un canal."""
-    channel = db.query(Channel).filter(Channel.id == channel_id, Channel.user_id == current_user.id).first()
+    channel = db.query(Channel).filter(
+        Channel.id == channel_id, 
+        Channel.user_id == current_user.id
+    ).first()
+    
     if not channel:
+        print(f"[ERROR] upload_client_secret: Channel {channel_id} not found for user {current_user.id}")
         raise HTTPException(status_code=404, detail="Canal no encontrado")
     
-    creds_dir = YouTubeService.get_creds_dir(channel.id, channel.user_id, channel.name)
-    
-    secret_path = creds_dir / "client_secret.json"
-    with secret_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    try:
+        creds_dir = YouTubeService.get_creds_dir(channel.id, channel.user_id, channel.name)
+        secret_path = creds_dir / "client_secret.json"
         
-    return {"status": "ok", "message": "Archivo client_secret.json subido correctamente."}
+        with secret_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        print(f"[DEBUG] client_secret.json uploaded for channel {channel_id} to {secret_path}")
+        return {"status": "ok", "message": "Archivo client_secret.json subido correctamente."}
+    except Exception as e:
+        print(f"[ERROR] upload_client_secret error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
