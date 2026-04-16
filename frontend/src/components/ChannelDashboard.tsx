@@ -93,7 +93,8 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
   const handleOAuthCallback = async (code: string) => {
     setLoading(true);
     try {
-      const redirectUri = window.location.origin + window.location.pathname;
+      // Use the origin as a predictable redirect URI
+      const redirectUri = window.location.origin + "/";
       await api.finishYouTubeOAuth(channel.id, code, redirectUri);
       setUpdateStatus({msg: '¡Cuenta vinculada correctamente!', type: 'success'});
       loadYouTubeData();
@@ -106,11 +107,12 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
 
   const handleStartOAuth = async () => {
     try {
-        const redirectUri = window.location.origin + window.location.pathname;
+        // We use the origin to make it easier to configure in Google Cloud
+        const redirectUri = window.location.origin + "/";
         const res = await api.getYouTubeAuthUrl(channel.id, redirectUri);
         window.location.href = res.auth_url;
     } catch (err: any) {
-        setError("Para vincular la cuenta, primero debes subir el archivo 'client_secret.json' de tu proyecto de Google Cloud.");
+        setError("Error al iniciar OAuth. Asegúrate de haber subido el client_secret.json correcto.");
     }
   };
 
