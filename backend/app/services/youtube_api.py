@@ -15,14 +15,26 @@ SCOPES = [
     "https://www.googleapis.com/auth/userinfo.email",
 ]
 
-YOUTUBE_CREDS_BASE = Path("/app/youtube_creds")
-
 class YouTubeService:
     def __init__(self, channel_id: int, user_id: int, channel_name: str):
-        from app.core.utils import slugify
-        slug = slugify(channel_name)
-        # Structure: cache/user_0001/0005-sombrasdelnortemx/youtube_credentials/
-        self.creds_dir = Path("cache") / f"user_{user_id:04d}" / f"{channel_id:04d}-{slug}" / "youtube_credentials"
+        # find the actual directory in cache/user_XXXX/ that starts with channel_id-
+        user_dir = Path("cache") / f"user_{user_id:04d}"
+        user_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Look for existing folder like "0005-*"
+        pattern = f"{channel_id:04d}-*"
+        matches = list(user_dir.glob(pattern))
+        
+        if matches:
+            channel_dir = matches[0]
+        else:
+            # Fallback to a default slug if not found
+            from app.core.utils import slugify
+            slug = slugify(channel_name)
+            channel_dir = user_dir / f"{channel_id:04d}-{slug}"
+            channel_dir.mkdir(parents=True, exist_ok=True)
+            
+        self.creds_dir = channel_dir / "youtube_credentials"
         self.creds_dir.mkdir(parents=True, exist_ok=True)
         self.token_path = self.creds_dir / "token.json"
         self.secret_path = self.creds_dir / "client_secret.json"
