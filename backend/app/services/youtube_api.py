@@ -82,19 +82,30 @@ class YouTubeService:
             else:
                 raise FileNotFoundError(f"Missing client_secret.json in {self.creds_dir}")
         
-        flow = Flow.from_client_secrets_file(
-            str(self.secret_path), scopes=SCOPES, redirect_uri=redirect_uri
-        )
-        auth_url, _ = flow.authorization_url(
-            access_type='offline',
-            include_granted_scopes='true',
-            prompt='consent'
-        )
+        # Read client_id directly to avoid PKCE auto-generation in google-auth-oauthlib
+        with open(self.secret_path, 'r') as f:
+            data = json.load(f)
+            web_data = data.get('web') or data.get('installed')
+            client_id = web_data['client_id']
+            auth_uri = web_data['auth_uri']
+
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": " ".join(SCOPES),
+            "response_type": "code",
+            "access_type": "offline",
+            "prompt": "consent",
+            "include_granted_scopes": "true"
+        }
+        import urllib.parse
+        auth_url = f"{auth_uri}?{urllib.parse.urlencode(params)}"
         return auth_url
 
     def finish_oauth(self, code: str, redirect_uri: str):
         """Exchanges the auth code for a token and saves it."""
         print(f"[DEBUG] finish_oauth: Exchange code for channel {self.creds_dir.name} with redirect_uri: {redirect_uri}")
+        # Use Flow only for the token exchange
         flow = Flow.from_client_secrets_file(
             str(self.secret_path), scopes=SCOPES, redirect_uri=redirect_uri
         )
