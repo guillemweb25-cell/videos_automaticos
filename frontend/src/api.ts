@@ -167,6 +167,46 @@ class ApiClient {
     return res.json();
   }
 
+  async getYouTubeInfo(id: number): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/channels/${id}/youtube/info`, {
+      headers: this.getHeaders(true),
+    });
+    if (!response.ok) throw new Error("Failed to fetch YouTube info");
+    return response.json();
+  }
+
+  async getYouTubeAuthUrl(id: number, redirectUri: string): Promise<{ auth_url: string }> {
+    const response = await fetch(`${this.baseUrl}/channels/${id}/youtube/auth-url?redirect_uri=${encodeURIComponent(redirectUri)}`, {
+      headers: this.getHeaders(true),
+    });
+    if (!response.ok) {
+       const err = await response.json();
+       throw new Error(err.detail || "Failed to get auth URL");
+    }
+    return response.json();
+  }
+
+  async finishYouTubeOAuth(id: number, code: string, redirectUri: string): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/channels/youtube/callback?code=${encodeURIComponent(code)}&channel_id=${id}&redirect_uri=${encodeURIComponent(redirectUri)}`, {
+      method: "POST",
+      headers: this.getHeaders(true),
+    });
+    if (!response.ok) throw new Error("Failed to finish YouTube OAuth");
+    return response.json();
+  }
+
+  async uploadYouTubeClientSecret(id: number, file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch(`${this.baseUrl}/channels/${id}/youtube/client-secret`, {
+      method: "POST",
+      headers: this.getHeaders(false), // Let browser set form-data boundary
+      body: formData,
+    });
+    if (!response.ok) throw new Error("Failed to upload client secret");
+    return response.json();
+  }
+
   async deleteChannel(channelId: number): Promise<void> {
     const res = await fetch(`${this.baseUrl}/channels/${channelId}`, {
       method: 'DELETE',

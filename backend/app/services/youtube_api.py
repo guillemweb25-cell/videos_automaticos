@@ -12,6 +12,7 @@ from typing import Dict, Any
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/userinfo.email",
 ]
 
 YOUTUBE_CREDS_BASE = Path("/app/youtube_creds")
@@ -26,7 +27,11 @@ class YouTubeService:
     def get_credentials(self):
         creds = None
         if self.token_path.exists():
-            creds = Credentials.from_authorized_user_file(str(self.token_path), SCOPES)
+            try:
+                creds = Credentials.from_authorized_user_file(str(self.token_path), SCOPES)
+            except Exception as e:
+                print(f"Error loading credentials from {self.token_path}: {e}")
+                return None
         
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
@@ -44,6 +49,41 @@ class YouTubeService:
                     return None
             else:
                 return None
+        return creds
+
+    def get_auth_url(self, redirect_uri: str):
+        """Generates the authorization URL for Google OAuth."""
+        if not self.secret_path.exists():
+            # Check if there's a global one
+            global_secret = YOUTUBE_CREDS_BASE / "client_secret.json"
+            if global_secret.exists():
+                 # Copy it to the current dir for the flow
+                 import shutil
+                 shutil.copy(global_secret, self.secret_path)
+            else:
+                raise FileNotFoundError(f"Missing client_secret.json in {self.creds_dir}")
+        
+        flow = InstalledAppFlow.from_client_secrets_file(
+            str(self.secret_path), SCOPES, redirect_uri=redirect_uri
+        )
+        auth_url, _ = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            prompt='consent' # Force consent to ensure we get a refresh token
+        )
+        return auth_url
+
+    def finish_oauth(self, code: str, redirect_uri: str):
+        """Exchanges the auth code for a token and saves it."""
+        flow = InstalledAppFlow.from_client_secrets_file(
+            str(self.secret_path), SCOPES, redirect_uri=redirect_uri
+        )
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+        
+        # Save the credentials for the next run
+        self.creds_dir.mkdir(parents=True, exist_ok=True)
+        self.token_path.write_text(creds.to_json())
         return creds
 
     def is_authenticated(self):
