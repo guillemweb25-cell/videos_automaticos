@@ -200,7 +200,7 @@ class ApiClient {
     formData.append("file", file);
     const response = await fetch(`${this.baseUrl}/channels/${id}/youtube/client-secret`, {
       method: "POST",
-      headers: this.getHeaders(false), // Let browser set form-data boundary
+      headers: this.getHeaders(true, false), // Added auth=true, json=false
       body: formData,
     });
     if (!response.ok) throw new Error("Failed to upload client secret");
