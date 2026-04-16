@@ -246,13 +246,7 @@ def get_youtube_auth_url(
     if not channel:
         raise HTTPException(status_code=404, detail="Canal no encontrado")
     
-    if not channel.creds_dir:
-        # Generate a default creds_dir if not set
-        from app.core.utils import slugify
-        channel.creds_dir = slugify(channel.name)
-        db.commit()
-
-    yt = YouTubeService(channel.creds_dir)
+    yt = YouTubeService(channel.id, channel.user_id, channel.name)
     try:
         # Use state to pass channel_id back to callback
         import json
@@ -307,7 +301,7 @@ def youtube_callback(
     if not channel:
         raise HTTPException(status_code=404, detail="Canal no encontrado")
     
-    yt = YouTubeService(channel.creds_dir)
+    yt = YouTubeService(channel.id, channel.user_id, channel.name)
     try:
         yt.finish_oauth(code, redirect_uri)
         return {"status": "ok"}
@@ -326,13 +320,10 @@ async def upload_client_secret(
     if not channel:
         raise HTTPException(status_code=404, detail="Canal no encontrado")
     
-    if not channel.creds_dir:
-        from app.core.utils import slugify
-        channel.creds_dir = slugify(channel.name)
-        db.commit()
-    
-    # Path inside Docker
-    creds_dir = Path("/app/youtube_creds") / channel.creds_dir
+    from app.core.utils import slugify
+    slug = slugify(channel.name)
+    # Target directory: cache/user_0001/0005-sombrasdelnortemx/youtube_credentials/
+    creds_dir = Path("cache") / f"user_{channel.user_id:04d}" / f"{channel.id:04d}-{slug}" / "youtube_credentials"
     creds_dir.mkdir(parents=True, exist_ok=True)
     
     secret_path = creds_dir / "client_secret.json"

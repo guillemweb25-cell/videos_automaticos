@@ -18,8 +18,11 @@ SCOPES = [
 YOUTUBE_CREDS_BASE = Path("/app/youtube_creds")
 
 class YouTubeService:
-    def __init__(self, creds_dir: str):
-        self.creds_dir = YOUTUBE_CREDS_BASE / creds_dir
+    def __init__(self, channel_id: int, user_id: int, channel_name: str):
+        from app.core.utils import slugify
+        slug = slugify(channel_name)
+        # Structure: cache/user_0001/0005-sombrasdelnortemx/youtube_credentials/
+        self.creds_dir = Path("cache") / f"user_{user_id:04d}" / f"{channel_id:04d}-{slug}" / "youtube_credentials"
         self.creds_dir.mkdir(parents=True, exist_ok=True)
         self.token_path = self.creds_dir / "token.json"
         self.secret_path = self.creds_dir / "client_secret.json"
