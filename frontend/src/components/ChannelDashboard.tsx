@@ -93,8 +93,8 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
   const handleOAuthCallback = async (code: string) => {
     setLoading(true);
     try {
-      // Use the origin as a predictable redirect URI (no trailing slash)
-      const redirectUri = window.location.origin;
+      // Use the origin as a predictable redirect URI (with trailing slash)
+      const redirectUri = window.location.origin + "/";
       console.log("Finishing OAuth with redirectUri:", redirectUri);
       await api.finishYouTubeOAuth(channel.id, code, redirectUri);
       setUpdateStatus({msg: '¡Cuenta vinculada correctamente!', type: 'success'});
@@ -109,7 +109,7 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
   const handleStartOAuth = async () => {
     try {
         // We use the origin to make it easier to configure in Google Cloud
-        const redirectUri = window.location.origin;
+        const redirectUri = window.location.origin + "/";
         console.log("Starting OAuth with redirectUri:", redirectUri);
         const res = await api.getYouTubeAuthUrl(channel.id, redirectUri);
         window.location.href = res.auth_url;
