@@ -94,6 +94,7 @@ class YouTubeService:
 
     def finish_oauth(self, code: str, redirect_uri: str):
         """Exchanges the auth code for a token and saves it."""
+        print(f"[DEBUG] finish_oauth: Exchange code for channel {self.creds_dir.name} with redirect_uri: {redirect_uri}")
         flow = InstalledAppFlow.from_client_secrets_file(
             str(self.secret_path), SCOPES, redirect_uri=redirect_uri
         )
