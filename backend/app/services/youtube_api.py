@@ -35,6 +35,7 @@ class YouTubeService:
             
         creds_dir = channel_dir / "youtube_credentials"
         creds_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[DEBUG] Creds dir for channel {channel_id}: {creds_dir}")
         return creds_dir
 
     def __init__(self, channel_id: int, user_id: int, channel_name: str):
