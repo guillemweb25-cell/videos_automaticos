@@ -30,10 +30,10 @@ async def get_youtube_channel_info(
     current_user = Depends(get_current_user)
 ):
     channel = db.query(Channel).filter(Channel.id == channel_id, Channel.user_id == current_user.id).first()
-    if not channel or not channel.creds_dir:
-        raise HTTPException(status_code=404, detail="Canal no encontrado o sin credenciales configuradas")
+    if not channel:
+        raise HTTPException(status_code=404, detail="Canal no encontrado")
     
-    service = YouTubeService(channel.creds_dir)
+    service = YouTubeService(channel.id, channel.user_id, channel.name)
     info = await service.get_channel_info()
     if not info:
         raise HTTPException(status_code=401, detail="No se pudo autenticar con YouTube. El token puede haber caducado.")
@@ -47,10 +47,10 @@ async def get_youtube_videos(
     current_user = Depends(get_current_user)
 ):
     channel = db.query(Channel).filter(Channel.id == channel_id, Channel.user_id == current_user.id).first()
-    if not channel or not channel.creds_dir:
+    if not channel:
         raise HTTPException(status_code=404, detail="Canal no encontrado")
     
-    service = YouTubeService(channel.creds_dir)
+    service = YouTubeService(channel.id, channel.user_id, channel.name)
     videos = await service.get_videos()
     # Regular videos: more than 120s
     return [v for v in videos if v["duration_seconds"] > 120]
@@ -65,10 +65,10 @@ async def get_youtube_shorts(
     # A common trick is to search filtering by 'type=video' and 'videoDuration=short' (< 4 mins, but shorts are < 1 min)
     # For now let's reuse the logic but maybe in the future we use a specialized search call.
     channel = db.query(Channel).filter(Channel.id == channel_id, Channel.user_id == current_user.id).first()
-    if not channel or not channel.creds_dir:
+    if not channel:
         raise HTTPException(status_code=404, detail="Canal no encontrado")
     
-    service = YouTubeService(channel.creds_dir)
+    service = YouTubeService(channel.id, channel.user_id, channel.name)
     videos = await service.get_videos()
     # Shorts: 120s or less
     return [v for v in videos if v["duration_seconds"] <= 120]
@@ -132,14 +132,7 @@ async def upload_video_to_youtube(
         raise HTTPException(status_code=404, detail="Vídeo no encontrado")
     
     channel = video.channel
-    if not channel or not channel.creds_dir:
-        raise HTTPException(status_code=400, detail="El canal no tiene YouTube configurado")
-        
-    video_path = Path(video.base_dir) / "output" / "final_video.mp4"
-    if not video_path.exists():
-        raise HTTPException(status_code=400, detail="El vídeo no ha sido renderizado aún")
-    
-    service = YouTubeService(channel.creds_dir)
+    service = YouTubeService(channel.id, channel.user_id, channel.name)
     try:
         metadata = req.dict()
         response = service.upload_video(video_path, metadata)
@@ -174,10 +167,7 @@ async def update_youtube_metadata(
         raise HTTPException(status_code=404, detail="Vídeo no encontrado o no ha sido subido a YouTube")
     
     channel = video.channel
-    if not channel or not channel.creds_dir:
-        raise HTTPException(status_code=400, detail="El canal no tiene YouTube configurado")
-    
-    service = YouTubeService(channel.creds_dir)
+    service = YouTubeService(channel.id, channel.user_id, channel.name)
     try:
         metadata = req.dict()
         service.update_video_metadata(video.youtube_video_id, metadata)

@@ -320,24 +320,7 @@ async def upload_client_secret(
     if not channel:
         raise HTTPException(status_code=404, detail="Canal no encontrado")
     
-    # Target directory identification
-    user_dir = Path("cache") / f"user_{channel.user_id:04d}"
-    user_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Look for existing folder like "0005-*"
-    pattern = f"{channel.id:04d}-*"
-    matches = list(user_dir.glob(pattern))
-    
-    if matches:
-        channel_dir = matches[0]
-    else:
-        from app.core.utils import slugify
-        slug = slugify(channel.name)
-        channel_dir = user_dir / f"{channel_id:04d}-{slug}"
-        channel_dir.mkdir(parents=True, exist_ok=True)
-
-    creds_dir = channel_dir / "youtube_credentials"
-    creds_dir.mkdir(parents=True, exist_ok=True)
+    creds_dir = YouTubeService.get_creds_dir(channel.id, channel.user_id, channel.name)
     
     secret_path = creds_dir / "client_secret.json"
     with secret_path.open("wb") as buffer:
