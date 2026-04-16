@@ -41,6 +41,7 @@ app.include_router(auth.router)
 app.include_router(channels.router)
 app.include_router(settings.router)
 app.include_router(youtube.router)
+app.include_router(video_gen.public_router, prefix="/videos", tags=["video-gen-public"])
 app.include_router(video_gen.router, prefix="/videos", tags=["video-gen"])
 
 

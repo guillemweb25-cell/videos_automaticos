@@ -31,6 +31,7 @@ from app.core.deps import get_current_user
 from app.models.user import User
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+public_router = APIRouter()
 
 def get_user_settings_for_video(video: Video, db: Session):
     channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
@@ -150,7 +151,7 @@ def update_video(video_id: int, video_in: VideoUpdate, db: Session = Depends(get
 def get_channel_videos(channel_id: int, db: Session = Depends(get_db)):
     return db.query(Video).filter(Video.channel_id == channel_id).order_by(Video.created_at.desc()).all()
 
-@router.get("/{video_id}/thumbnail.png")
+@public_router.get("/{video_id}/thumbnail.png")
 def get_video_thumbnail(video_id: int, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
