@@ -13,9 +13,12 @@ SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
-    "openid",
-    "profile"
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "openid"
 ]
+
+# Allow scope changes (Google sometimes returns scopes in different formats)
+os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
 
 class YouTubeService:
     @staticmethod
