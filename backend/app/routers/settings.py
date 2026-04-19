@@ -22,6 +22,10 @@ class SettingsResponse(BaseModel):
     has_leonardo: bool
     has_assemblyai: bool
     has_elevenlabs: bool
+    is_openai_global: bool = False
+    is_leonardo_global: bool = False
+    is_assemblyai_global: bool = False
+    is_elevenlabs_global: bool = False
 
 class PublicSettingsResponse(BaseModel):
     registration_enabled: bool

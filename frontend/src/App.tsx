@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { api, type UserResponse, type ChannelResponse } from './api'
 import ChannelDashboard from './components/ChannelDashboard'
 import { Settings } from './components/Settings'
+import { Payments } from './components/Payments'
+import { AdminDashboard } from './components/AdminDashboard'
 
 function App() {
   const [user, setUser] = useState<UserResponse | null>(null)
@@ -17,6 +19,8 @@ function App() {
   const [selectedChannel, setSelectedChannel] = useState<ChannelResponse | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showPayments, setShowPayments] = useState(false)
+  const [showAdmin, setShowAdmin] = useState(false)
 
   // Channel Form State
   const [channelName, setChannelName] = useState('')
@@ -82,14 +86,40 @@ function App() {
     }
   }
 
+  const handleShowPayments = () => {
+    setShowPayments(true)
+    setShowSettings(false)
+    setShowAdmin(false)
+    setSelectedChannel(null)
+    setSidebarOpen(false)
+  }
+
+  const handleShowAdmin = () => {
+    setShowAdmin(true)
+    setShowSettings(false)
+    setShowPayments(false)
+    setSelectedChannel(null)
+    setSidebarOpen(false)
+  }
+
   const handleSelectChannel = (channel: ChannelResponse | null) => {
     setSelectedChannel(channel)
     setShowSettings(false)
+    setShowPayments(false)
+    setShowAdmin(false)
     if (channel) {
       localStorage.setItem('selectedChannelId', channel.id.toString())
     } else {
       localStorage.removeItem('selectedChannelId')
     }
+    setSidebarOpen(false)
+  }
+
+  const handleShowSettings = () => {
+    setShowSettings(true)
+    setShowPayments(false)
+    setShowAdmin(false)
+    setSelectedChannel(null)
     setSidebarOpen(false)
   }
 
@@ -232,12 +262,33 @@ function App() {
           
           <div 
             className={`channel-link ${showSettings ? 'active' : ''}`}
-            onClick={() => { setShowSettings(true); setSelectedChannel(null); setSidebarOpen(false); }}
+            onClick={handleShowSettings}
             style={{ marginTop: '16px' }}
           >
             <div className="channel-icon" style={{ background: '#334155' }}>⚙️</div>
             <span>Ajustes</span>
           </div>
+
+          <div 
+            className={`channel-link ${showPayments ? 'active' : ''}`}
+            onClick={handleShowPayments}
+            style={{ marginTop: '4px' }}
+          >
+            <div className="channel-icon" style={{ background: '#1e293b' }}>💳</div>
+            <span>Créditos</span>
+            <span className="balance-badge">{(user.credits / 100).toFixed(2)}€</span>
+          </div>
+
+          {user.is_admin && (
+            <div 
+              className={`channel-link ${showAdmin ? 'active' : ''}`}
+              onClick={handleShowAdmin}
+              style={{ marginTop: '4px' }}
+            >
+              <div className="channel-icon" style={{ background: '#3b82f6' }}>🛡️</div>
+              <span>Administración</span>
+            </div>
+          )}
           
           <div style={{ padding: '12px' }}>
             <form onSubmit={handleCreateChannel}>
@@ -274,7 +325,7 @@ function App() {
             ☰
           </button>
           <div style={{ fontWeight: 600 }}>
-            {showSettings ? 'Ajustes' : selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
+            {showSettings ? 'Ajustes' : showPayments ? 'Créditos y Pagos' : showAdmin ? 'Panel de Administración' : selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
           </div>
           {selectedChannel && (
             <button className="btn-delete" onClick={() => handleDeleteChannel(selectedChannel.id)}>
@@ -286,6 +337,12 @@ function App() {
         <div className="content-area">
           {showSettings ? (
             <Settings />
+          ) : showPayments ? (
+            <Payments user={user} onUpdateUser={(updated) => setUser(updated)} />
+          ) : showAdmin ? (
+            <AdminDashboard onUserUpdate={(updated) => {
+              if (updated.id === user.id) setUser(updated);
+            }} />
           ) : selectedChannel ? (
             <ChannelDashboard channel={selectedChannel} onBack={() => setSelectedChannel(null)} />
           ) : (

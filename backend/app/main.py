@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
-from app.routers import auth, channels, youtube, video_gen, settings
+from app.routers import auth, channels, youtube, video_gen, settings, payments, admin
 
 settings_config = get_settings()
 
@@ -43,6 +43,8 @@ app.include_router(settings.router)
 app.include_router(youtube.router)
 app.include_router(video_gen.public_router, prefix="/videos", tags=["video-gen-public"])
 app.include_router(video_gen.router, prefix="/videos", tags=["video-gen"])
+app.include_router(payments.router, prefix="/payments", tags=["payments"])
+app.include_router(admin.router)
 
 
 @app.get("/health")

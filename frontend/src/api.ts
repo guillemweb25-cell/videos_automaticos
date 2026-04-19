@@ -37,6 +37,8 @@ export interface UserResponse {
   id: number;
   email: string;
   is_active: boolean;
+  is_admin: boolean;
+  credits: number;
 }
 
 export interface ChannelResponse {
@@ -364,7 +366,13 @@ class ApiClient {
       headers: this.getHeaders(true),
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Error al crear vídeo');
+    if (!res.ok) {
+      if (res.status === 402) {
+        const err = await res.json();
+        throw new Error(err.detail || 'INSUFFICIENT_CREDITS');
+      }
+      throw new Error('Error al crear vídeo');
+    }
     return res.json();
   }
 
@@ -374,7 +382,13 @@ class ApiClient {
       headers: this.getHeaders(true),
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Error al actualizar vídeo');
+    if (!res.ok) {
+      if (res.status === 402) {
+        const err = await res.json();
+        throw new Error(err.detail || 'INSUFFICIENT_CREDITS');
+      }
+      throw new Error('Error al actualizar vídeo');
+    }
     return res.json();
   }
 
@@ -782,6 +796,51 @@ class ApiClient {
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Error al actualizar ajustes');
+    return res.json();
+  }
+
+  // Payment Methods
+  async getBalance(): Promise<{ credits: number, euros: number }> {
+    const res = await fetch(`${this.baseUrl}/payments/balance`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener saldo');
+    return res.json();
+  }
+
+  async createCheckoutSession(amountEuros: number): Promise<{ checkout_url: string }> {
+    const res = await fetch(`${this.baseUrl}/payments/create-checkout-session`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: JSON.stringify({ amount_euros: amountEuros }),
+    });
+    if (!res.ok) throw new Error('Error al crear sesión de pago');
+    return res.json();
+  }
+  // Admin Methods
+  async adminGetUsers(): Promise<any[]> {
+    const res = await fetch(`${this.baseUrl}/admin/users`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener usuarios (Admin)');
+    return res.json();
+  }
+
+  async adminAddCredits(userId: number, amount: number): Promise<{ ok: boolean, new_balance: number }> {
+    const res = await fetch(`${this.baseUrl}/admin/users/${userId}/add-credits`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: JSON.stringify({ amount }),
+    });
+    if (!res.ok) throw new Error('Error al añadir créditos');
+    return res.json();
+  }
+
+  async adminGetStats(): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/admin/stats`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener estadísticas');
     return res.json();
   }
 }

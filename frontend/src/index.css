@@ -791,3 +791,187 @@ h2 {
     gap: 24px;
   }
 }
+
+/* Payments Styles */
+.balance-badge {
+  background: #22c55e;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  margin-left: auto;
+}
+
+.payments-container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.payments-header {
+  margin-bottom: 48px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.current-balance-card {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid var(--primary-color);
+  border-radius: 20px;
+  padding: 24px 40px;
+  min-width: 300px;
+  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.2);
+}
+
+.balance-label {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.balance-value {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: white;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.balance-credits {
+  color: #22c55e;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 32px;
+  margin-bottom: 64px;
+}
+
+.pricing-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  padding: 40px;
+  text-align: center;
+  transition: var(--transition);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.pricing-card.popular {
+  border-color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.05);
+  transform: scale(1.05);
+}
+
+.popular-badge {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--primary-color);
+  color: white;
+  padding: 4px 16px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pricing-card h3 {
+  font-size: 1.25rem;
+  margin-bottom: 16px;
+  color: var(--text-muted);
+}
+
+.pack-price {
+  font-size: 3rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.pack-credits {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  margin-bottom: 16px;
+}
+
+.pack-desc {
+  color: var(--text-muted);
+  margin-bottom: 32px;
+  font-size: 0.95rem;
+}
+
+.pricing-card .btn {
+  margin-top: auto;
+  width: 100%;
+  padding: 14px;
+}
+
+.payments-info {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 16px;
+  padding: 32px;
+  border: 1px solid var(--border-color);
+}
+
+.payments-info h3 {
+  margin-bottom: 16px;
+}
+
+.payments-info ul {
+  list-style: none;
+}
+
+.payments-info li {
+  margin-bottom: 12px;
+  display: flex;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.payments-info li::before {
+  content: '✓';
+  color: #22c55e;
+  font-weight: 800;
+}
+
+.error-banner {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.success-banner {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid #22c55e;
+  color: #22c55e;
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .pricing-card.popular {
+    transform: none;
+  }
+  .payments-header {
+    text-align: center;
+    justify-content: center;
+  }
+}

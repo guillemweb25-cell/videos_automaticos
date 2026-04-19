@@ -308,9 +308,14 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
       }
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Error desconocido durante la generación');
+      if (err.message?.includes('créditos') || err.message === 'INSUFFICIENT_CREDITS') {
+        setError('Saldo insuficiente. Por favor, recarga tus créditos en la sección de Pagos.');
+        addLog('ERROR: Saldo insuficiente para generar el vídeo.');
+      } else {
+        setError(err.message || 'Error desconocido durante la generación');
+        addLog('ERROR: ' + err.message);
+      }
       setStatus('error');
-      addLog('ERROR: ' + err.message);
     } finally {
       setIsBusy(false);
     }

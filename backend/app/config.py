@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     ELEVEN_API_KEY: str | None = None
     ASSEMBLYAI_API_KEY: str | None = None
 
+    # Stripe
+    STRIPE_SECRET_KEY: str | None = None
+    STRIPE_WEBHOOK_SECRET: str | None = None
+    FRONTEND_URL: str = "http://localhost:5173"
+    VIDEO_COST_CREDITS: int = 50
+
     model_config = {
         "env_file": ".env",
         "extra": "ignore",

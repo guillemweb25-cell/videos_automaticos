@@ -39,7 +39,7 @@ def get_user_settings_for_video(video: Video, db: Session):
         raise HTTPException(status_code=404, detail="Canal no encontrado")
     user = db.query(User).filter(User.id == channel.user_id).first()
     if not user or not user.settings:
-        return None
+        raise HTTPException(status_code=400, detail="Faltan API Keys. Ve a la pantalla de Ajustes.")
     return user.settings
 
 @router.get("/overlays")
@@ -100,13 +100,26 @@ def get_available_config():
     }
 
 @router.post("/", response_model=VideoResponse)
-def create_video(video_in: VideoCreate, db: Session = Depends(get_db)):
-    # 1. Check channel exists
+def create_video(video_in: VideoCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.config import get_settings
+    settings = get_settings()
+
+    # 1. Check credits
+    if current_user.credits < settings.VIDEO_COST_CREDITS:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Saldo insuficiente. Necesitas {settings.VIDEO_COST_CREDITS} créditos (0.50€) y tienes {current_user.credits}."
+        )
+
+    # 2. Check channel exists
     channel = db.query(Channel).filter(Channel.id == video_in.channel_id).first()
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
 
-    # 2. Create DB record
+    # 3. Deduct credits
+    current_user.credits -= settings.VIDEO_COST_CREDITS
+    
+    # 4. Create DB record
     video = Video(**video_in.model_dump())
     db.add(video)
     db.commit()
@@ -195,7 +208,9 @@ async def upload_script(video_id: int, request: Request, script: str = None, db:
     base_dir = Path(video.base_dir)
     (base_dir / "script.txt").write_text(script_text, encoding="utf-8")
     
-    # Simple split into paragraphs for now
+    settings = get_user_settings_for_video(video, db)
+    engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
+    
     paragraphs = [p.strip() for p in script_text.split("\n\n") if p.strip()]
     (base_dir / "plan.json").write_text(json.dumps([{"idx": i+1, "spoken": p} for i, p in enumerate(paragraphs)], indent=2), encoding="utf-8")
     
@@ -286,11 +301,6 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
     db.commit()
 
     settings = get_user_settings_for_video(video, db)
-    if not settings or not settings.openai_api_key or not settings.leonardo_api_key:
-        video.status = "failed"
-        video.last_error = "No has configurado tus API Keys de OpenAI o Leonardo en Ajustes."
-        db.commit()
-        raise HTTPException(status_code=400, detail="Faltan API Keys. Ve a la pantalla de Ajustes.")
     
     # Extract keys to pass to thread
     openai_key = settings.openai_api_key
@@ -324,6 +334,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
 
             plan = json.loads(plan_path.read_text())
             engine = ImageEngine(openai_api_key=openai_k, leonardo_api_key=leonardo_k)
+            seo = SEOEngine(api_key=openai_k)
             
             # Load channel for custom style
             channel = db_bg.query(Channel).filter(Channel.id == vid.channel_id).first()
@@ -604,7 +615,8 @@ async def regenerate_image(
     if out_path.exists():
         out_path.unlink()
     
-    engine = ImageEngine()
+    settings = get_user_settings_for_video(video, db)
+    engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
     style_name = data.get("style", "stocksenior")
     channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
     style = StyleService.get_channel_style(channel, style_name)
@@ -661,7 +673,8 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
     last_img_path = base_dir / "images" / f"p{paragraph_id:03d}_{last_img_id:02d}.png"
 
     # 2. Logic for continuity
-    engine = ImageEngine()
+    settings = get_user_settings_for_video(video, db)
+    engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
     init_image_id = None
     if last_img_path.exists():
         try:
@@ -821,7 +834,8 @@ async def convert_image_to_video(
         
     out_video_path = base_dir / "images" / f"p{paragraph_id:03d}_{image_id:02d}.mp4"
 
-    engine = ImageEngine()
+    settings = get_user_settings_for_video(video, db)
+    engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
     
     cost_info = engine.generate_leonardo_video(
         prompt=target_prompt,
