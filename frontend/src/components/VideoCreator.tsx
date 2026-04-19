@@ -533,7 +533,20 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
              ))}
           </div>
 
-          {error && <div className="error-text" style={{ padding: '12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', marginBottom: '16px' }}>{error}</div>}
+          {error && (
+            <div className="error-text" style={{ padding: '12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{error}</span>
+              {error.includes('Saldo insuficiente') && (
+                <button 
+                  className="btn btn-primary" 
+                  style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+                  onClick={() => window.location.hash = '#/payments'}
+                >
+                  Recargar 💳
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="log-console" style={{ background: '#0f172a', padding: '16px', borderRadius: '8px', fontFamily: 'monospace', fontSize: '0.85rem', maxHeight: '200px', overflowY: 'auto' }}>
             {log.map((line, i) => (

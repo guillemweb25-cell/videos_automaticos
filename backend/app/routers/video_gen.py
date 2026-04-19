@@ -107,7 +107,7 @@ def create_video(video_in: VideoCreate, db: Session = Depends(get_db), current_u
     # 1. Check credits
     if current_user.credits < settings.VIDEO_COST_CREDITS:
         raise HTTPException(
-            status_code=403, 
+            status_code=402, 
             detail=f"Saldo insuficiente. Necesitas {settings.VIDEO_COST_CREDITS} créditos (0.50€) y tienes {current_user.credits}."
         )
 
