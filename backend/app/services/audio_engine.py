@@ -45,13 +45,14 @@ class AudioEngine:
         if not text.strip():
             raise ValueError("Empty text for TTS")
         
-        parts = AudioEngine._split_text(text, 299)
+        parts = AudioEngine._split_text(text, 200)
         tmp_dir = out_path.parent / "__tts_tmp__"
         tmp_dir.mkdir(parents=True, exist_ok=True)
         
         chunk_paths = []
         try:
             for i, part in enumerate(parts):
+                print(f"Generating TikTok chunk {i+1}/{len(parts)} ({len(part)} chars)...")
                 b64 = AudioEngine._generate_chunk_with_retry(part, voice)
                 chunk_path = tmp_dir / f"{out_path.stem}_{i:03d}.mp3"
                 chunk_path.write_bytes(base64.b64decode(b64))
@@ -121,14 +122,18 @@ class AudioEngine:
             try:
                 r = requests.post(endpoint, json={"text": text, "voice": voice}, timeout=30)
                 if not r.ok:
+                    last_err = f"Status {r.status_code}: {r.text}"
+                    print(f"TikTok endpoint {endpoint} failed: {last_err}")
                     continue
                 data = r.json()
                 for key in ["data", "audio", "vocal", "result"]:
                     if key in data and isinstance(data[key], str):
                         v = data[key]
                         return v.split("base64,")[-1] if "base64," in v else v
+                last_err = f"Invalid format: {data}"
             except Exception as e:
-                last_err = e
+                last_err = str(e)
+                print(f"TikTok endpoint {endpoint} exception: {last_err}")
                 continue
         raise RuntimeError(f"TikTok TTS service unavailable or invalid response. Last error: {last_err}")
 
