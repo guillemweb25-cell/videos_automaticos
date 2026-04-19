@@ -45,17 +45,14 @@ class AudioEngine:
         if not text.strip():
             raise ValueError("Empty text for TTS")
         
-        # Simplified logic from legacy tiktokvoices.py
-        endpoint = AudioEngine._healthcheck()
         parts = AudioEngine._split_text(text, 299)
-        
         tmp_dir = out_path.parent / "__tts_tmp__"
         tmp_dir.mkdir(parents=True, exist_ok=True)
         
         chunk_paths = []
         try:
             for i, part in enumerate(parts):
-                b64 = AudioEngine._generate_chunk(part, voice, endpoint)
+                b64 = AudioEngine._generate_chunk_with_retry(part, voice)
                 chunk_path = tmp_dir / f"{out_path.stem}_{i:03d}.mp3"
                 chunk_path.write_bytes(base64.b64decode(b64))
                 chunk_paths.append(chunk_path)
@@ -105,15 +102,6 @@ class AudioEngine:
         out_path.write_bytes(resp.content)
 
     @staticmethod
-    def _healthcheck() -> str:
-        for url in ENDPOINTS:
-            try:
-                r = requests.get(url.split("/api")[0], timeout=5)
-                if r.ok: return url
-            except: continue
-        raise RuntimeError("TikTok TTS service unavailable")
-
-    @staticmethod
     def _split_text(s: str, limit: int) -> List[str]:
         parts = []
         while s:
@@ -127,16 +115,22 @@ class AudioEngine:
         return parts
 
     @staticmethod
-    def _generate_chunk(text: str, voice: str, endpoint: str) -> str:
-        r = requests.post(endpoint, json={"text": text, "voice": voice}, timeout=30)
-        r.raise_for_status()
-        data = r.json()
-        # Handle different response formats
-        for key in ["data", "audio", "vocal", "result"]:
-            if key in data and isinstance(data[key], str):
-                v = data[key]
-                return v.split("base64,")[-1] if "base64," in v else v
-        raise RuntimeError("TikTok TTS: invalid response format")
+    def _generate_chunk_with_retry(text: str, voice: str) -> str:
+        last_err = None
+        for endpoint in ENDPOINTS:
+            try:
+                r = requests.post(endpoint, json={"text": text, "voice": voice}, timeout=30)
+                if not r.ok:
+                    continue
+                data = r.json()
+                for key in ["data", "audio", "vocal", "result"]:
+                    if key in data and isinstance(data[key], str):
+                        v = data[key]
+                        return v.split("base64,")[-1] if "base64," in v else v
+            except Exception as e:
+                last_err = e
+                continue
+        raise RuntimeError(f"TikTok TTS service unavailable or invalid response. Last error: {last_err}")
 
     @staticmethod
     def _concat_chunks(paths: List[Path], out_path: Path, gap_ms: int) -> None:
