@@ -35,7 +35,7 @@ rsync -rtvz --no-o --no-g --no-perms --no-t -e "ssh -p $REMOTE_PORT_SSH" backend
 echo "Step 3: Synchronizing database..."
 # Check if local DB is running
 if ! docker ps | grep -q "videos_automaticos-db-1"; then
-    echo "Error: Local database container (videos_automaticos-db-1) is not running!"
+    echo "Error: Local database container  is not running!"
     exit 1
 fi
 
