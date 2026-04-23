@@ -4,10 +4,13 @@ from sqlalchemy.orm import Session
 from pathlib import Path
 import json
 import os
+import json
+import logging
+import asyncio
 import random
 import math
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from app.database import get_db
 from app.models.video import Video
