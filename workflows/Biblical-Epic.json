@@ -51,7 +51,7 @@
   },
   "6": {
     "inputs": {
-      "text": "(photorealistic biblical epic:1.2), masterpiece cinematic vision, hyper-realistic mystical atmosphere, ancient sandstone landscapes, dramatic golden-hour lighting, volumetric rays, (extremely detailed textures:1.2), epic high-end film grading, profound spiritual immersion, 8k, Unreal Engine 5 render style",
+      "text": "(photorealistic biblical epic:1.2), masterpiece cinematic vision, hyper-realistic mystical atmosphere, ancient sandstone landscapes, soft natural golden lighting, (extremely detailed textures:1.2), epic high-end film grading, profound spiritual immersion, 8k, Unreal Engine 5 render style",
       "clip": [
         "4",
         1
@@ -64,7 +64,7 @@
   },
   "7": {
     "inputs": {
-      "text": "(text, watermark, low quality, blurry:1.2), (deformed anatomy, extra limbs, extra legs, malformed hands, extra fingers:1.4), cartoon, drawing, anime, 3d render, plastic, neon, cheerful, bright, modern buildings, electricity, cars, technology, out of frame, cropped",
+      "text": "(text, watermark, low quality, blurry, bright starburst sun, lens flare:1.2), (deformed anatomy, extra limbs, extra legs, malformed hands, extra fingers:1.4), cartoon, drawing, anime, 3d render, plastic, neon, cheerful, bright, modern buildings, electricity, cars, technology, out of frame, cropped",
       "clip": [
         "4",
         1

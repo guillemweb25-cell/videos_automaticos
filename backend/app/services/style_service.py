@@ -138,8 +138,8 @@ STYLES: Dict[str, StyleSpec] = {
     },
     "biblical_classic": {
         "display_name": "Biblical Classic",
-        "image_style_prompt": "Epic cinematic biblical photography, cinematic lighting with golden rays, historically accurate textures and robes, desert landscapes of ancient Judea, majestic atmosphere, high contrast, photorealistic, 8k, sharp focus on faces and respectful expressions.",
-        "negative_prompt": "modern architecture, technology, cars, electrical lines, text, watermarks, frames, borders, cartoon, anime, plastic CGI, extra limbs, deformed hands, stained glass, kitsch glow, church murals, framed paintings, distorted anatomy, low quality.",
+        "image_style_prompt": "Epic cinematic biblical photography, soft natural lighting, historically accurate textures and robes, desert landscapes of ancient Judea, majestic atmosphere, high contrast, photorealistic, 8k, sharp focus on faces and respectful expressions.",
+        "negative_prompt": "modern architecture, technology, cars, electrical lines, text, watermarks, frames, borders, cartoon, anime, plastic CGI, extra limbs, deformed hands, stained glass, kitsch glow, church murals, framed paintings, distorted anatomy, low quality, lens flare, bright starburst sun.",
     }
 }
 
