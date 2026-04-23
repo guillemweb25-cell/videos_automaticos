@@ -36,6 +36,8 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
   const [generationMode, setGenerationMode] = useState('FAST');
   const [availableOverlays, setAvailableOverlays] = useState<string[]>([]);
   const [selectedOverlay, setSelectedOverlay] = useState<string>('');
+  const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string>('Comic-Horror.json');
   const stopRequested = useRef(false);
 
   // Persistence logic: Load draft on mount
@@ -66,7 +68,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
     if (!initialVideo && status === 'idle') {
       const draft = {
         title, script, voice, provider, style, orientation, 
-        maxImagesPerParagraph, selectedModel, generationMode
+        maxImagesPerParagraph, selectedModel, generationMode, selectedWorkflow
       };
       localStorage.setItem('yt_auto_creator_draft', JSON.stringify(draft));
     }
@@ -86,8 +88,14 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         try {
           const overlaysRes = await api.getOverlays();
           setAvailableOverlays(overlaysRes.overlays);
+          
+          const workflowsRes = await api.getWorkflows();
+          setAvailableWorkflows(workflowsRes.workflows);
+          if (!selectedWorkflow && workflowsRes.workflows.length > 0) {
+            setSelectedWorkflow(workflowsRes.workflows[0]);
+          }
         } catch (e) {
-          console.error("Error loading overlays", e);
+          console.error("Error loading config", e);
         }
         
         if (config.generation_modes?.length > 0 && !initialVideo) {
@@ -276,7 +284,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         setStatus('images');
         addLog(`Generando imágenes (${maxImagesPerParagraph} por párrafo) usando modelo: ${selectedModel} (${generationMode})...`);
         setStatus('generating_images');
-        await api.generateImages(currentId!, style, maxImagesPerParagraph, selectedModel, generationMode);
+        await api.generateImages(currentId!, style, maxImagesPerParagraph, selectedModel, generationMode, selectedWorkflow);
         addLog('Imágenes generadas con éxito.');
       } else {
         addLog('Saltando: Imágenes ya generadas.');
@@ -422,6 +430,22 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
             </select>
             <p className="text-xs text-gray-400">Elige entre rapidez o máxima fidelidad visual.</p>
           </div>
+          {generationMode === 'COMFYUI' && (
+            <div className="space-y-2 border-l-2 border-blue-500 pl-4 bg-blue-500/5 py-2">
+              <label className="block text-sm font-medium text-blue-400">Workflow ComfyUI</label>
+              <select
+                value={selectedWorkflow}
+                onChange={(e) => setSelectedWorkflow(e.target.value)}
+                className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isBusy || isLocked}
+              >
+                {availableWorkflows.map(wf => (
+                  <option key={wf} value={wf}>{wf}</option>
+                ))}
+              </select>
+              <p className="text-xs text-blue-300/70">Usando instancia local de ComfyUI</p>
+            </div>
+          )}
           <div className="form-group">
             <label className="block text-sm font-medium text-gray-400 mb-2">Máx. Imágenes por Párrafo</label>
             <select

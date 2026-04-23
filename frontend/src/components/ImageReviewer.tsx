@@ -28,6 +28,8 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [enableSubtitles, setEnableSubtitles] = useState(false);
   const [availableOverlays, setAvailableOverlays] = useState<string[]>([]);
   const [selectedOverlay, setSelectedOverlay] = useState<string>('');
+  const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string>('Comic-Horror.json');
 
   const loadData = async () => {
     try {
@@ -56,12 +58,29 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
       try {
         const overlaysRes = await api.getOverlays();
         setAvailableOverlays(overlaysRes.overlays);
+        
+        const workflowsRes = await api.getWorkflows();
+        setAvailableWorkflows(workflowsRes.workflows);
+        if (res.workflow_name) {
+          setSelectedWorkflow(res.workflow_name);
+        } else if (workflowsRes.workflows.length > 0 && !selectedWorkflow) {
+          setSelectedWorkflow(workflowsRes.workflows[0]);
+        }
       } catch (e) {
-        console.error("Error loading overlays", e);
+        console.error("Error loading config", e);
       }
 
       if (res.style) {
         setSelectedStyle(res.style);
+      }
+      if (res.generation_mode) {
+        setGenerationMode(res.generation_mode);
+      }
+      if (res.model_id) {
+        setSelectedModel(res.model_id);
+      }
+      if (res.workflow_name) {
+        setSelectedWorkflow(res.workflow_name);
       }
     } catch (err) {
       console.error("Error loading data:", err);
@@ -95,7 +114,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
     const prompt = prompts[key];
     setRegenerating(key);
     try {
-      const res = await api.regenerateImage(videoId, paraId, imgId, prompt, selectedModel, generationMode);
+      const res = await api.regenerateImage(videoId, paraId, imgId, prompt, selectedModel, generationMode, selectedWorkflow);
       if (res.ok) {
         const newData = { ...data };
         for (const item of newData.items) {
@@ -147,7 +166,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleAddImage = async (paraId: number) => {
     setAddingImage(paraId);
     try {
-      const res = await api.addImage(videoId, paraId, selectedStyle, selectedModel, generationMode);
+      const res = await api.addImage(videoId, paraId, selectedStyle, selectedModel, generationMode, selectedWorkflow);
       if (res.ok) {
         // Refresh data or update locally
         await loadData();
@@ -262,20 +281,21 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
       <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
         <div className="modal-header">
           <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>Revisión de Imágenes - Vídeo #{videoId}</h2>
-          <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div className="header-actions" style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap', backgroundColor: '#1f2937', padding: '12px', borderRadius: '8px', border: '1px solid #374151', marginTop: '10px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold' }}>MODELO LEONARDO</label>
               <select 
                 value={selectedModel}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedModel(e.target.value)}
                 style={{
-                  backgroundColor: '#1f2937',
+                  backgroundColor: '#111827',
                   color: 'white',
-                  border: '1px solid #a855f7',
+                  border: '1px solid #4b5563',
                   borderRadius: '6px',
-                  padding: '4px 8px',
-                  fontSize: '0.8rem',
-                  outline: 'none'
+                  padding: '6px 10px',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  minWidth: '150px'
                 }}
               >
                 {leonardoModels.map((m: any) => (
@@ -289,13 +309,14 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                 value={selectedStyle}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedStyle(e.target.value)}
                 style={{
-                  backgroundColor: '#1f2937',
+                  backgroundColor: '#111827',
                   color: 'white',
-                  border: '1px solid #16a34a',
+                  border: '1px solid #4b5563',
                   borderRadius: '6px',
-                  padding: '4px 8px',
-                  fontSize: '0.8rem',
-                  outline: 'none'
+                  padding: '6px 10px',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  minWidth: '130px'
                 }}
               >
                 {availableStyles.map((s: any) => (
@@ -304,25 +325,61 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
               </select>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold' }}>CALIDAD / COSTE</label>
+              <label style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 'bold' }}>CALIDAD / COSTE</label>
               <select 
                 value={generationMode}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setGenerationMode(e.target.value)}
                 style={{
-                  backgroundColor: '#1f2937',
+                  backgroundColor: '#111827',
                   color: 'white',
-                  border: '1px solid #3b82f6',
+                  border: '2px solid #3b82f6',
                   borderRadius: '6px',
-                  padding: '4px 8px',
-                  fontSize: '0.8rem',
-                  outline: 'none'
+                  padding: '6px 10px',
+                  fontSize: '0.85rem',
+                  fontWeight: 'bold',
+                  outline: 'none',
+                  minWidth: '200px',
+                  cursor: 'pointer'
                 }}
               >
-                {generationModes.map((m: any) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
+                {generationModes.length > 0 ? (
+                  generationModes.map((m: any) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="QUALITY">Modo Calidad ($0.0852)</option>
+                    <option value="FAST">Modo Rápido ($0.012)</option>
+                    <option value="COMFYUI">ComfyUI (Local/Gratis)</option>
+                  </>
+                )}
               </select>
             </div>
+
+            {generationMode === 'COMFYUI' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderLeft: '2px solid #ef4444', paddingLeft: '12px' }}>
+                <label style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>WORKFLOW COMFY</label>
+                <select 
+                  value={selectedWorkflow}
+                  onChange={(e) => setSelectedWorkflow(e.target.value)}
+                  style={{
+                    backgroundColor: '#111827',
+                    color: 'white',
+                    border: '1px solid #ef4444',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    minWidth: '180px'
+                  }}
+                >
+                  {availableWorkflows.map(wf => (
+                    <option key={wf} value={wf}>{wf}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold' }}>OVERLAY VISUAL</label>
               <select 
@@ -330,13 +387,14 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedOverlay(e.target.value)}
                 disabled={rendering}
                 style={{
-                  backgroundColor: '#1f2937',
+                  backgroundColor: '#111827',
                   color: 'white',
                   border: '1px solid #475569',
                   borderRadius: '6px',
-                  padding: '4px 8px',
-                  fontSize: '0.8rem',
-                  outline: 'none'
+                  padding: '6px 10px',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  minWidth: '120px'
                 }}
               >
                 <option value="">Ninguno</option>

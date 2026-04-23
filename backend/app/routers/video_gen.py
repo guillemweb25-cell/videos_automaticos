@@ -87,6 +87,7 @@ def get_available_config():
     generation_modes = [
         {"id": "FAST", "name": "Modo Rápido ($0.012)", "cost": 0.012},
         {"id": "QUALITY", "name": "Modo Calidad ($0.0852)", "cost": 0.0852},
+        {"id": "COMFYUI", "name": "ComfyUI (Local/Gratis)", "cost": 0.0},
     ]
     
     return {
@@ -98,6 +99,18 @@ def get_available_config():
         "leonardo_models": leonardo_models,
         "generation_modes": generation_modes
     }
+
+@router.get("/workflows")
+def get_available_workflows():
+    workflow_dir = Path("/app/workflows")
+    if not workflow_dir.exists():
+        return {"workflows": []}
+    
+    files = []
+    for f in workflow_dir.glob("*.json"):
+        files.append(f.name)
+            
+    return {"workflows": sorted(files)}
 
 @router.post("/", response_model=VideoResponse)
 def create_video(video_in: VideoCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -305,12 +318,13 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
     # Extract keys to pass to thread
     openai_key = settings.openai_api_key
     leonardo_key = settings.leonardo_api_key
+    wf_name = req.workflow_name # New field
     
     # Run image generation in background thread to avoid proxy timeouts
     import threading
     from app.database import SessionLocal
     
-    def _generate_images_background(vid_id, sty, max_imgs, m_id, gen_mode, openai_k, leonardo_k):
+    async def _generate_images_background(vid_id, sty, max_imgs, m_id, gen_mode, openai_k, leonardo_k, wf_n):
 
         db_bg = SessionLocal()
         try:
@@ -343,6 +357,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             all_prompts_data = {
                 "video_id": vid_id,
                 "style": sty,
+                "workflow_name": wf_n, # Store workflow name in metadata
                 "model": "gpt-4o-mini",
                 "seconds_per_image": seconds_per_image,
                 "max_images_per_paragraph": max_imgs,
@@ -350,7 +365,8 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                 "processed_paragraphs": 0,
                 "total_images": 0,
                 "items": [],
-                "generation_mode": gen_mode
+                "generation_mode": gen_mode,
+                "model_id": m_id
             }
 
             # Caching: Load existing prompts if possible
@@ -359,7 +375,11 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             if all_prompts_all_path.exists():
                 try:
                     old_data = json.loads(all_prompts_all_path.read_text())
-                    if old_data.get("style") == sty and old_data.get("max_images_per_paragraph") == max_imgs:
+                    # Only reuse if style, max_images AND workflow match
+                    if old_data.get("style") == sty and \
+                       old_data.get("max_images_per_paragraph") == max_imgs and \
+                       old_data.get("workflow_name") == wf_n and \
+                       old_data.get("model_id") == m_id:
                         for item in old_data.get("items", []):
                             existing_prompts_all[item["paragraph_id"]] = {
                                 "prompts": item["prompts"],
@@ -444,7 +464,15 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                                 except Exception as e:
                                     print(f"Warning: Failed to upload reference image for paragraph {idx} image {img_idx}: {e}")
                         
-                        cost_info = engine.generate_leonardo_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=m_id, mode=gen_mode)
+                        if gen_mode.upper() == "COMFYUI":
+                            # Use custom workflow name if provided
+                            if wf_n:
+                                cost_info = await engine.generate_comfy_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg, workflow_name=wf_n)
+                            else:
+                                cost_info = await engine.generate_comfy_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg)
+                        else:
+                            cost_info = await engine.generate_leonardo_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=m_id, mode=gen_mode)
+                        
                         p_info_entry = {
                             "id": img_idx,
                             "prompt": p_text
@@ -516,13 +544,8 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
         finally:
             db_bg.close()
     
-    thread = threading.Thread(
-        target=_generate_images_background,
-        args=(video_id, req.style_name, req.max_images_per_paragraph, req.model_id, req.generation_mode, openai_key, leonardo_key),
-        daemon=True
-    )
-
-    thread.start()
+    # Use asyncio.create_task instead of threading.Thread for async background task
+    asyncio.create_task(_generate_images_background(video_id, req.style_name, req.max_images_per_paragraph, req.model_id, req.generation_mode, openai_key, leonardo_key, wf_name))
     
     return {"ok": True, "background": True, "count": 0}
 
@@ -578,6 +601,7 @@ async def regenerate_image(
     custom_prompt = req.custom_prompt
     model_id = req.model_id
     generation_mode = req.generation_mode
+    workflow_name = req.workflow_name
 
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
@@ -606,8 +630,21 @@ async def regenerate_image(
     if not found:
         raise HTTPException(status_code=404, detail="Image info not found in json")
 
-    # Update json if prompt changed
+    # Update json if prompt or settings changed
+    changed = False
     if custom_prompt:
+        changed = True
+    if generation_mode and generation_mode != data.get("generation_mode"):
+        data["generation_mode"] = generation_mode
+        changed = True
+    if workflow_name and workflow_name != data.get("workflow_name"):
+        data["workflow_name"] = workflow_name
+        changed = True
+    if model_id and model_id != data.get("model_id"):
+        data["model_id"] = model_id
+        changed = True
+
+    if changed:
         images_json.write_text(json.dumps(data, indent=2))
 
     # Delete old image so Leonardo generates a new one (or just overwrite it)
@@ -618,13 +655,19 @@ async def regenerate_image(
     settings = get_user_settings_for_video(video, db)
     engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
     style_name = data.get("style", "stocksenior")
+    # New: get workflow from request or json
+    wf_name = req.workflow_name or data.get("workflow_name")
+    
     channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
     style = StyleService.get_channel_style(channel, style_name)
     neg = style.get("negative_prompt")
     
     # Check if a specific model was requested (passed as a query param or from somewhere)
     # For now, we'll allow an optional model_id in the regenerate call too if we want
-    cost_info = engine.generate_leonardo_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, model_id=model_id, mode=generation_mode)
+    if generation_mode.upper() == "COMFYUI":
+        cost_info = await engine.generate_comfy_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, workflow_name=wf_name)
+    else:
+        cost_info = await engine.generate_leonardo_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, model_id=model_id, mode=generation_mode)
     
     # Update cost in JSON
     for item in data.get("items", []):
@@ -646,6 +689,7 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
     style_name = req.style_name
     model_id = req.model_id
     generation_mode = req.generation_mode
+    workflow_name = req.workflow_name
 
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
@@ -665,6 +709,20 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
     
     if not target_para:
         raise HTTPException(status_code=404, detail="Paragraph not found in JSON")
+
+    # Update metadata if settings changed
+    changed = False
+    if generation_mode and generation_mode != data.get("generation_mode"):
+        data["generation_mode"] = generation_mode
+        changed = True
+    if workflow_name and workflow_name != data.get("workflow_name"):
+        data["workflow_name"] = workflow_name
+        changed = True
+    if model_id and model_id != data.get("model_id"):
+        data["model_id"] = model_id
+        changed = True
+    if changed:
+        images_json.write_text(json.dumps(data, indent=2))
 
     # 1. Get reference image and prompt
     last_p = target_para["prompts"][-1]
@@ -698,6 +756,9 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
         custom_rules=custom_niche_rules
     )
     
+    # NEW: get workflow from request or json
+    wf_name = req.workflow_name or data.get("workflow_name")
+    
     # 3. Generate New Image
     new_img_id = last_img_id + 1
     out_path = base_dir / "images" / f"p{paragraph_id:03d}_{new_img_id:02d}.png"
@@ -705,7 +766,10 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
     style = StyleService.get_channel_style(channel, effective_style)
     neg = style.get("negative_prompt")
     
-    cost_info = engine.generate_leonardo_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=model_id, mode=generation_mode)
+    if generation_mode.upper() == "COMFYUI":
+        cost_info = await engine.generate_comfy_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, workflow_name=wf_name)
+    else:
+        cost_info = await engine.generate_leonardo_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=model_id, mode=generation_mode)
 
     # 4. Update JSON
     new_entry = {
@@ -1220,7 +1284,8 @@ async def generate_thumbnail_api(
                 raise HTTPException(status_code=400, detail="Falta API Key de OpenAI.")
             seo = SEOEngine(api_key=settings.openai_api_key)
             if not current_hook:
-                current_hook = seo.generate_thumbnail_hook(script_full[:2000])
+                custom_title_rules = get_style_rules(video.channel_id, "title-rules")
+                current_hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules)
                 data["thumbnail"]["hook"] = current_hook
                 if not current_visual:
                     custom_thumb_rules = StyleService.get_custom_thumbnail_rules(base_dir)

@@ -28,6 +28,7 @@ services:
       - ./backend:/app
       - ./cache:/app/cache
       - ./overlay:/app/overlay
+      - ./workflows:/app/workflows
     env_file:
       - .env
     environment:

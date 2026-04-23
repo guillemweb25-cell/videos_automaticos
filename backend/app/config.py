@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     LEONARDO_API_KEY: str | None = None
     ELEVEN_API_KEY: str | None = None
     ASSEMBLYAI_API_KEY: str | None = None
+    COMFY_URL: str = "http://192.168.1.184:8188"
 
     # Stripe
     STRIPE_SECRET_KEY: str | None = None

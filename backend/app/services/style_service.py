@@ -135,6 +135,11 @@ STYLES: Dict[str, StyleSpec] = {
             "interconnected golden threads of reality; Unreal Engine 5 render style, 8k, "
             "extremely detailed textures, epic high-end legacy film grading; profound spiritual immersion; no on-image text"
         ),
+    },
+    "biblical_classic": {
+        "display_name": "Biblical Classic",
+        "image_style_prompt": "Epic cinematic biblical photography, cinematic lighting with golden rays, historically accurate textures and robes, desert landscapes of ancient Judea, majestic atmosphere, high contrast, photorealistic, 8k, sharp focus on faces and respectful expressions.",
+        "negative_prompt": "modern architecture, technology, cars, electrical lines, text, watermarks, frames, borders, cartoon, anime, plastic CGI, extra limbs, deformed hands, stained glass, kitsch glow, church murals, framed paintings, distorted anatomy, low quality.",
     }
 }
 
@@ -155,6 +160,7 @@ ALIASES = {
     "celtico": "celtico_oscuro",
     "cabalalegacy": "cabala_legacy_master",
     "legacy": "cabala_legacy_master",
+    "biblical_classic": "biblical_classic",
     "canal_personalizado": "canal_personalizado",
 }
 

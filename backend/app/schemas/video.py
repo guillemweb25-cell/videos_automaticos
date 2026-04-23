@@ -55,6 +55,7 @@ class ImageGenerationRequest(BaseModel):
     max_images_per_paragraph: int = 2
     model_id: Optional[str] = None
     generation_mode: str = "QUALITY"
+    workflow_name: Optional[str] = None
 
 class RegenerateImageRequest(BaseModel):
     paragraph_id: int
@@ -62,12 +63,14 @@ class RegenerateImageRequest(BaseModel):
     custom_prompt: Optional[str] = None
     model_id: Optional[str] = None
     generation_mode: str = "QUALITY"
+    workflow_name: Optional[str] = None
 
 class AddImageRequest(BaseModel):
     paragraph_id: int
     style_name: Optional[str] = None
     model_id: Optional[str] = None
     generation_mode: str = "QUALITY"
+    workflow_name: Optional[str] = None
 
 class ThumbnailGenerationRequest(BaseModel):
     hook: Optional[str] = None

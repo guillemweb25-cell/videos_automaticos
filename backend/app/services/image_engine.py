@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from app.services.style_service import StyleService
+from app.services.comfy_service import ComfyService
+import asyncio
 
 class ImageEngine:
     def __init__(self, openai_api_key: Optional[str] = None, leonardo_api_key: Optional[str] = None):
@@ -13,6 +15,7 @@ class ImageEngine:
         self.leonardo_api_key = leonardo_api_key or os.getenv("LEONARDO_API_KEY")
         self.leonardo_v1_url = "https://cloud.leonardo.ai/api/rest/v1"
         self.leonardo_v2_url = "https://cloud.leonardo.ai/api/rest/v2"
+        self.comfy_service = ComfyService()
 
     def generate_prompts(self, text: str, style_name: str, n: int = 1, full_context: str = "", style_override: dict = None, recent_history: List[str] = [], custom_rules: Optional[str] = None) -> List[str]:
         """Generates visual prompts from narration text using GPT, with optional full video context and recent prompt history."""
@@ -134,7 +137,7 @@ class ImageEngine:
         
         return image_id
 
-    def generate_leonardo_image(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, model_id: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY") -> Optional[Dict[str, Any]]:
+    async def generate_leonardo_image(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, model_id: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY") -> Optional[Dict[str, Any]]:
         """Generates an image using Leonardo.ai with optional model selection and image guidance. Defaults to V2."""
         use_v2 = os.getenv("LEONARDO_API_VERSION", "v2").lower() == "v2"
         
@@ -149,7 +152,7 @@ class ImageEngine:
         
         if (use_v2 and not mid) or is_explicit_v2:
             print(f"Routing to Leonardo V2: model={mid or 'default'}")
-            return self.generate_leonardo_v2(prompt, out_path, size=size, negative_prompt=negative_prompt, init_image_id=init_image_id, mode=mode, model_id=mid)
+            return await self.generate_leonardo_v2(prompt, out_path, size=size, negative_prompt=negative_prompt, init_image_id=init_image_id, mode=mode, model_id=mid)
 
             
         # V1 logic
@@ -229,7 +232,44 @@ class ImageEngine:
         
         return {"amount": cost_amount}
 
-    def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY", model_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    async def generate_comfy_image(self, prompt: str, out_path: Path, size: str = "1024x1024", negative_prompt: Optional[str] = None, workflow_name: str = "Comic-Horror.json") -> Dict[str, Any]:
+        """Generates an image using local ComfyUI via ComfyService."""
+        # Use absolute path inside Docker container
+        workflow_path = Path("/app/workflows") / workflow_name
+        
+        if not workflow_path.exists():
+            workflow_path = Path("workflows") / workflow_name
+
+        if not workflow_path.exists():
+            raise FileNotFoundError(f"Workflow {workflow_name} not found.")
+
+        # 1. Load the base workflow JSON
+        with open(workflow_path, "r") as f:
+            base_workflow = json.load(f)
+
+        # 2. Prepare dimensions
+        try:
+            w, h = map(int, size.split("x"))
+        except:
+            w, h = 1024, 1024
+
+        # 3. Inject parameters into workflow
+        workflow = self.comfy_service.prepare_workflow(
+            base_workflow,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            width=w,
+            height=h
+        )
+
+        print(f"Executing ComfyUI workflow: {workflow_name}")
+        
+        # 4. Execute
+        await self.comfy_service.generate_image(workflow, out_path)
+        
+        return {"amount": 0.0}
+
+    async def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY", model_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
 
         """Generates an image using Leonardo.ai V2 API with GPT Image-1.5 model."""
         if not self.leonardo_api_key:
@@ -322,6 +362,7 @@ class ImageEngine:
         }
         
         return {"amount": v2_costs.get(mode, 0.0852)}
+        
 
     def _normalize_size(self, size: str, model_id: Optional[str] = None) -> tuple[int, int]:
         """Normalizes dimensions to Leonardo compatible sizes.

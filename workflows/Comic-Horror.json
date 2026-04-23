@@ -1,0 +1,107 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 0,
+      "steps": 25,
+      "cfg": 7.5,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "4": {
+    "inputs": {
+      "ckpt_name": "SDXL/juggernautXL_ragnarokBy.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "(dark horror comic book illustration:1.2), (gritty graphic novel style:1.2), thick black outlines, bold line art, sharp ink lines, cross-hatching, heavy ink shading, dramatic high contrast, (masterpiece:1.2), (mexican rural gothic:1.1), muted palette of cold blues and dark ambers, (single subject:1.1)",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "positive"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "(duplicate persons, twin characters, group of people, multiple characters, cloned face, extra heads, extra legs, five legs, six legs, three back legs, many legs, extra limbs, fused heads, malformed neck, deformed, mutated, poorly drawn horse, bad horse anatomy, multiple tails, extra ears:1.6), (extra hands, multiple hands, three hands, more than two hands, extra fingers, fused fingers, malformed hands:1.5), (two people, second person, background person:1.5), (cropped, out of frame, cut off, partial body, incomplete limbs:1.4), (photorealistic, 3d render, plastic:1.3), text, watermark, blurry, low resolution, bright, cheerful, cartoonish, low quality, bad anatomy, extra fingers, extra hands",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "negative"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "HorrorComic",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}

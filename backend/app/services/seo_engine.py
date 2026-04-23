@@ -101,14 +101,18 @@ class SEOEngine:
             if not t.startswith("#"): t = "#" + t
             clean_tags.append(t)
         return clean_tags[:count]
-    def generate_thumbnail_hook(self, script_snippet: str, lang: str = "es") -> str:
-        """Generates a short, catchy thumbnail hook from the script."""
+
+    def generate_thumbnail_hook(self, script_snippet: str, lang: str = "es", custom_rules: Optional[str] = None) -> str:
+        """Generates a catchy short hook for a YouTube thumbnail."""
         system_msg = (
-            "You are a YouTube thumbnail expert. Generate a single, very short, "
-            "and impactful hook or title for a thumbnail (max 30 characters). "
+            "You are an expert YouTube thumbnail designer and copywriter. "
+            "Your goal is to create a very short, high-impact hook for a video thumbnail. "
+            "The hook must be 2-4 words long, in ALL CAPS, and evoke curiosity or urgency. "
+            f"{f'Additional brand rules: {custom_rules}' if custom_rules else ''} "
+            f"The output must be in {'SPANISH' if lang == 'es' else 'the requested language'}. "
             "Output ONLY the text, no quotes or emojis."
         )
-        user_msg = f"Language: {lang}\nScript snippet:\n{script_snippet}\n\nWrite a short thumbnail hook."
+        user_msg = f"Script snippet:\n{script_snippet}\n\nWrite a short thumbnail hook."
         
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",

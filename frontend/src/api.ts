@@ -360,6 +360,14 @@ class ApiClient {
     return res.json();
   }
 
+  async getWorkflows(): Promise<{ workflows: string[] }> {
+    const res = await fetch(`${this.baseUrl}/videos/workflows`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener workflows');
+    return res.json();
+  }
+
   async createVideo(data: { channel_id: number; title: string; voice?: string; style?: string; width?: number; height?: number; max_images_per_paragraph?: number }): Promise<VideoResponse> {
     const res = await fetch(`${this.baseUrl}/videos/`, {
       method: 'POST',
@@ -427,7 +435,7 @@ class ApiClient {
     return res.json();
   }
 
-  async generateImages(videoId: number, style: string, maxImages: number, modelId?: string, generationMode?: string): Promise<{ ok: boolean; count: number }> {
+  async generateImages(videoId: number, style: string, maxImages: number, modelId?: string, generationMode?: string, workflowName?: string): Promise<{ ok: boolean; count: number }> {
     const response = await fetch(`${this.baseUrl}/videos/${videoId}/images`, {
       method: 'POST',
       headers: this.getHeaders(true),
@@ -435,7 +443,8 @@ class ApiClient {
         style_name: style,
         max_images_per_paragraph: maxImages,
         model_id: modelId,
-        generation_mode: generationMode
+        generation_mode: generationMode,
+        workflow_name: workflowName
       })
     });
 
@@ -513,7 +522,7 @@ class ApiClient {
     return res.json();
   }
 
-  async addImage(videoId: number, paragraph_id: number, style?: string, modelId?: string, generationMode?: string): Promise<{ok: boolean, image: any}> {
+  async addImage(videoId: number, paragraph_id: number, style?: string, modelId?: string, generationMode?: string, workflowName?: string): Promise<{ok: boolean, image: any}> {
     const response = await fetch(`${this.baseUrl}/videos/${videoId}/add-image`, {
       method: "POST",
       headers: this.getHeaders(true),
@@ -521,7 +530,8 @@ class ApiClient {
         paragraph_id,
         style_name: style,
         model_id: modelId,
-        generation_mode: generationMode
+        generation_mode: generationMode,
+        workflow_name: workflowName
       })
     });
 
@@ -589,7 +599,7 @@ class ApiClient {
     return res.json();
   }
 
-  async regenerateImage(videoId: number, paragraphId: number, imageId: number, customPrompt?: string, modelId?: string, generationMode?: string): Promise<{ ok: boolean, url: string }> {
+  async regenerateImage(videoId: number, paragraphId: number, imageId: number, customPrompt?: string, modelId?: string, generationMode?: string, workflowName?: string): Promise<{ ok: boolean, url: string }> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/regenerate-image`, {
       method: 'POST',
       headers: this.getHeaders(true),
@@ -598,7 +608,8 @@ class ApiClient {
         image_id: imageId,
         custom_prompt: customPrompt,
         model_id: modelId,
-        generation_mode: generationMode
+        generation_mode: generationMode,
+        workflow_name: workflowName
       })
     });
     if (!res.ok) throw new Error('Error al regenerar imagen');
