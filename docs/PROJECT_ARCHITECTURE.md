@@ -13,61 +13,53 @@ Combina múltiples APIs de IA generativa para imágenes y voces, y unifica los r
 - **Base de Datos:** MariaDB (vía SQLAlchemy ORM y Alembic para migraciones)
 - **Motor de Vídeo:** MoviePy (Renderizado, Efecto Ken Burns, Overlays con Chroma Key, Concatenación, Subtítulos).
 - **Procesamiento de Imágenes:** Pillow (Pillow >= 10.0.0 con parche de compatibilidad `LANCZOS` para MoviePy).
-- **APIs Externas:**
-  - **Leonardo.Ai:** (Generación de imágenes, incluyendo modelos V1 y V2 como *Nano Banana Pro* - alias `gemini-image-2`).
+- **APIs Externas y Motores:**
+  - **ComfyUI (Local/Remoto):** Motor principal de generación de imágenes mediante workflows dinámicos JSON. Permite alta calidad (SDXL/Juggernaut) y control total sin censura.
+  - **Leonardo.Ai:** (Motor secundario/legacy para generación de imágenes).
   - **ElevenLabs:** (Síntesis de voz / TTS).
   - **YouTube Data API v3:** (Subida automatizada de los vídeos finales).
 
 ### Frontend
 - **Framework:** React con TypeScript.
-- **Build Tool:** Vite (sirviendo típicamente en el puerto 8501).
+- **Build Tool:** Vite.
 - **Componentes clave:**
-  - `VideoCreator.tsx`: Formulario principal para configurar el canal, resolución (vertical 9:16 vs horizontal 16:9), guion y subtítulos.
+  - `VideoCreator.tsx`: Formulario principal para configurar el canal, resolución, guion y **selección de Workflow de ComfyUI**.
   - `ImageReviewer.tsx`: Modal avanzado para revisar imagen a imagen, regenerar prompts con IA, sustituir imágenes, seleccionar Overlays y renderizar.
   - `api.ts`: Cliente HTTP fuertemente tipado que se comunica con el Backend.
 
 ### Infraestructura & Despliegue
 - **Docker Compose:** Define 3 servicios principales:
-  1. `api`: Contenedor Python con el backend FastAPI (expuesto en puertos internos/externos).
+  1. `api`: Contenedor Python con el backend FastAPI.
   2. `db`: Contenedor MariaDB con volúmenes persistentes.
   3. `frontend`: Contenedor Node/Vite.
 - **Volúmenes compartidos:**
-  - `./overlay`: Carpeta montada en caliente para añadir archivos de vídeo que sirvan como capas de superposición (`overlay_retro_01.mp4`).
-  - Carpeta de Caché (`/cache` o `./downloads/`): Donde se guardan temporalmente los fragmentos de audio (`chunk_001.mp3`), imágenes y vídeos renderizados.
+  - `./overlay`: Carpeta montada en caliente para vídeos de superposición.
+  - `./cache`: Carpeta de caché persistente para audios, imágenes y renders.
 
 ## 3. Arquitectura del Backend (`backend/app/`)
 
-El backend sigue un patrón modular claro MVC + Servicios:
+El backend utiliza una arquitectura **100% asíncrona** para evitar bloqueos del event loop:
 
-- **`routers/`**: Controladores de FastAPI (`video_gen.py`, `youtube.py`). Orquestan las peticiones del frontend.
-- **`models/`**: Modelos de SQLAlchemy (`Video`, `Channel`).
-- **`schemas/`**: Validadores Pydantic.
-- **`services/`**: Donde reside la lógica de negocio pesada.
-  - `image_engine.py`: Encargado de hablar con Leonardo.Ai. Ajusta de forma dinámica las dimensiones (ej. obligando a `848x1264` para Nano Banana Pro en vertical).
-  - `audio_engine.py`: Encargado de consumir ElevenLabs y gestionar la línea de tiempo (segundos de duración por párrafo).
-  - `rendering_engine.py`: El corazón de MoviePy. Recibe las rutas estáticas de audio e imágenes, aplica transiciones o Ken Burns, inserta archivos del directorio `overlay/` con `vfx.mask_color` transparente, y "plancha" los subtítulos si se requieren.
-  - `seo_engine.py`: Para metadatos de YouTube.
+- **`routers/`**: Controladores de FastAPI. `video_gen.py` orquesta la generación lanzando tareas en segundo plano (`asyncio.create_task`).
+- **`services/`**:
+  - `comfy_service.py`: Cliente asíncrono para interactuar con ComfyUI.
+  - `image_engine.py`: Orquestador de generación de imágenes (ComfyUI / Leonardo).
+  - `audio_engine.py`: Gestión de TTS con ElevenLabs.
+  - `rendering_engine.py`: Ensamblaje de vídeo con MoviePy.
+  - `seo_engine.py`: Generación asíncrona de metadatos (Títulos, Descripciones) mediante IA.
 
 ## 4. Flujo de Datos Principal (Generación de Vídeo)
 
-1. **Configuración y Guion (Frontend)**
-   - El usuario elige Canal, Guion, Orientación (Vertical/Horizontal), Estilo visual y Modelo de IA.
-2. **Generación de Assets Multiservicio (`POST /{video_id}/render` o pasos previos)**
-   - El guion se separa por párrafos.
-   - El backend solicita los audios a ElevenLabs. La duración de esos audios marca exactamente cuánto durará la imagen estática generada por Leonardo.Ai en la pantalla.
-3. **Revisión Humana (ImageReviewer)**
-   - El usuario entra al modal de revisión. Mira los fotogramas, escucha el audio de cada párrafo, elimina, añade o repite prompts para pulir detalles.
-4. **Renderizado Final y Ensamblaje (`RenderingEngine`)**
-   - Cuando el usuario hace click en "Finalizar y Renderizar":
-     - MoviePy construye `ImageClip` a partir de las fotos.
-     - Ajusta sus duraciones a los fragmentos `.mp3` de ElevenLabs.
-     - (Opcional) Crea un `VideoFileClip` de un overlay (ej. polvo retro de película) y hace un loop encima de todas las capas ignorando el fondo negro (`[0,0,0]`).
-     - (Opcional) Usa un creador de generador de texto (ej. ImageMagick o TextClip) para imprimir subtítulos dinámicos de Karaoke.
-     - Ejecuta `write_videofile` exportando el MP4 final.
+1. **Configuración (Frontend)**: El usuario elige estilo, guion y el **Workflow de ComfyUI** deseado.
+2. **Generación Asíncrona**: 
+   - El backend genera el audio y calcula los tiempos por párrafo.
+   - Se lanza una tarea en segundo plano que consume la API de ComfyUI enviando el prompt positivo/negativo inyectado en el JSON del workflow.
+3. **Caché Persistente**: Los resultados se guardan en `/cache` organizados por `user_id/channel_id/video_id`.
+4. **Revisión y Render**: El usuario valida los assets y MoviePy genera el MP4 final.
 
 ## 5. Notas Importantes para IA
 
-- **MoviePy & Pillow:** Dado que MoviePy 1.0.3 tiene dependencias legacy de Pillow, el backend incluye un parche dinámico (`Image.ANTIALIAS = Image.Resampling.LANCZOS`) en tiempo de ejecución.
-- **Soporte Leonardo v2:** Usa soporte V2 para permitir ControlNet o *Image Guidance*.
-- **Subtítulos:** Generan variables en las query strings, al igual que los overlays (ej. `?subtitles=true&overlay=overlay_retro.mp4`).
-- **Montaje Local:** Usa rutas absolutas y relativas dentro de la red Docker. Cualquier archivo subido al backend o almacenado en la caché es referenciado a través de un ID estructurado por el Canal y Título del vídeo en la base de datos MariaDB.
+- **Async Everywhere**: No utilizar funciones bloqueantes en los routers. Siempre usar `async/await` o `run_in_executor`.
+- **Workflow Templates**: Los archivos `.json` en `/workflows` son plantillas. El backend reemplaza tokens específicos (como el prompt) antes de enviarlos a ComfyUI.
+- **Pillow Patch**: Se mantiene el parche `Image.ANTIALIAS` para compatibilidad con MoviePy en `image_engine.py` y `rendering_engine.py`.
+- **ComfyUI URL**: Se configura vía `.env` (puerto default 8188).
