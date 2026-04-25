@@ -15,7 +15,9 @@ NEGATIVE_BASE = (
     "anime, cartoon, plastic CGI, neon oversaturation, low quality, heavy HDR, "
     "deformed anatomy, extra limbs, extra arms, deformed hands, mutated hands, "
     "fused fingers, extra fingers, missing limbs, cross-eyed, ugly, morbid, "
-    "mutation, gross proportions, backwards feet, inverted limbs, floating limbs"
+    "mutation, gross proportions, backwards feet, inverted limbs, floating limbs, "
+    "elongated limbs, disproportionate arms, long arms, lanky, rubbery limbs, "
+    "deformed body, anatomical nonsense"
 )
 
 

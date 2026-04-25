@@ -64,7 +64,7 @@
   },
   "7": {
     "inputs": {
-      "text": "nsfw, nude, naked, nipples, breasts, erotic, bare skin, embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), (polydactyly:2.0), (multiple hands:1.8), (fused fingers:1.8), (malformed limbs:1.8), (extra limbs:1.8), (extra arms:1.8), (poorly drawn hands:1.8), (missing fingers:1.8), (extra wheels, multiple wheels, extra tires, deformed car, fused wheels:1.4), (duplicate persons, twin characters, group of people, multiple characters, cloned face:1.4), (cropped, out of frame, cut off:1.3), (comic, drawing, illustration, painting, anime, sketch, cartoon, plastic, CGI:1.4), text, watermark, blurry, low quality, bad anatomy",
+      "text": "nsfw, nude, naked, nipples, breasts, erotic, bare skin, embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), (polydactyly:2.0), (multiple hands:1.8), (fused fingers:1.8), (malformed limbs:1.8), (extra limbs:1.8), (extra arms:1.8), (poorly drawn hands:1.8), (missing fingers:1.8), (long arms, elongated limbs, disproportionate body:1.5), (extra wheels, multiple wheels, extra tires, deformed car, fused wheels:1.4), (duplicate persons, twin characters, group of people, multiple characters, cloned face:1.4), (cropped, out of frame, cut off:1.3), (comic, drawing, illustration, painting, anime, sketch, cartoon, plastic, CGI:1.4), text, watermark, blurry, low quality, bad anatomy",
       "clip": [
         "4",
         1
