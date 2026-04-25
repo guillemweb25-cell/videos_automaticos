@@ -10,7 +10,8 @@ settings = get_settings()
 
 class ComfyService:
     def __init__(self, comfy_url: Optional[str] = None):
-        self.comfy_url = comfy_url or settings.COMFY_URL
+        url = comfy_url or settings.COMFY_URL
+        self.comfy_url = url.rstrip("/")
         self.client_id = f"video-auto-{random.randint(1000, 9999)}"
 
     async def run_workflow(self, workflow: Dict[str, Any]) -> Dict[str, Any]:
@@ -19,7 +20,16 @@ class ComfyService:
             "client_id": self.client_id,
         }
         async with httpx.AsyncClient(timeout=60.0) as client:
+            print(f"[DEBUG] Sending workflow to ComfyUI at {self.comfy_url}/prompt")
+            # Log first checkpoint found for debug
+            for node in workflow.values():
+                if "ckpt_name" in node.get("inputs", {}):
+                    print(f"[DEBUG] Target Checkpoint: {node['inputs']['ckpt_name']}")
+                    break
+
             r = await client.post(f"{self.comfy_url}/prompt", json=payload)
+            if r.status_code != 200:
+                print(f"[DEBUG] ComfyUI Error Response: {r.text}")
             r.raise_for_status()
             return r.json()
 
@@ -46,10 +56,21 @@ class ComfyService:
             r.raise_for_status()
             return r.content
 
-    async def generate_image(self, workflow: Dict[str, Any], out_path: Path) -> Path:
+    async def generate_image(self, workflow: Dict[str, Any], out_path: Path) -> Dict[str, Any]:
         """
         Executes a workflow and saves the resulting image to out_path.
+        Returns a dict with metadata (like seed).
         """
+        # Extract seed from workflow for metadata return
+        seed = None
+        for node in workflow.values():
+            if "seed" in node.get("inputs", {}):
+                seed = node["inputs"]["seed"]
+                break
+            elif "noise_seed" in node.get("inputs", {}):
+                seed = node["inputs"]["noise_seed"]
+                break
+
         # 1. Send workflow
         r = await self.run_workflow(workflow)
         prompt_id = r["prompt_id"]
@@ -75,7 +96,8 @@ class ComfyService:
         # 5. Save
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(data)
-        return out_path
+        
+        return {"out_path": out_path, "seed": seed}
 
     def prepare_workflow(self, 
         base_workflow: Dict[str, Any], 
@@ -86,7 +108,8 @@ class ComfyService:
         positive_node_id: Optional[str] = None,
         negative_node_id: Optional[str] = None,
         latent_node_id: Optional[str] = None,
-        seed_node_id: Optional[str] = None
+        seed_node_id: Optional[str] = None,
+        seed: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Injects parameters into a workflow dictionary.
@@ -148,7 +171,9 @@ class ComfyService:
             latent_node["inputs"]["height"] = height
 
         # 4. Find and Randomize Seed Nodes (Can be multiple)
-        seed = random.randrange(0, 2**63)
+        if seed is None:
+            seed = settings.COMFY_SEED if settings.COMFY_SEED is not None else random.randrange(0, 2**63)
+        
         if seed_node_id and seed_node_id in workflow:
             node = workflow[seed_node_id]
             seed_key = "seed" if "seed" in node["inputs"] else "noise_seed"
@@ -167,5 +192,13 @@ class ComfyService:
                 if node.get("class_type") == "PreviewImage":
                     node["class_type"] = "SaveImage"
                     node["inputs"]["filename_prefix"] = "ComfyUI_Auto"
+
+        # 6. Windows Path Normalization: If ComfyUI is on Windows, replace / with \\ in ckpt_name
+        if settings.COMFY_IS_WINDOWS:
+            for node in workflow.values():
+                if "ckpt_name" in node.get("inputs", {}):
+                    current_path = node["inputs"]["ckpt_name"]
+                    if isinstance(current_path, str):
+                        node["inputs"]["ckpt_name"] = current_path.replace("/", "\\")
 
         return workflow

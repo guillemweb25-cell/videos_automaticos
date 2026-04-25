@@ -470,9 +470,10 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                         if gen_mode.upper() == "COMFYUI":
                             # Use custom workflow name if provided
                             if wf_n:
-                                cost_info = await engine.generate_comfy_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg, workflow_name=wf_n)
+                                result = await engine.generate_comfy_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg, workflow_name=wf_n)
                             else:
-                                cost_info = await engine.generate_comfy_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg)
+                                result = await engine.generate_comfy_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg)
+                            cost_info = result
                         else:
                             cost_info = await engine.generate_leonardo_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=m_id, mode=gen_mode)
                         
@@ -481,7 +482,8 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                             "prompt": p_text
                         }
                         if cost_info:
-                            p_info_entry["cost"] = cost_info
+                            if "amount" in cost_info: p_info_entry["cost"] = cost_info
+                            if "seed" in cost_info: p_info_entry["seed"] = cost_info["seed"]
                         paragraph_item["prompts"].append(p_info_entry)
                     else:
                         existing_p = None
@@ -492,8 +494,9 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                             "id": img_idx,
                             "prompt": p_text
                         }
-                        if existing_p and "cost" in existing_p:
-                            entry["cost"] = existing_p["cost"]
+                        if existing_p:
+                            if "cost" in existing_p: entry["cost"] = existing_p["cost"]
+                            if "seed" in existing_p: entry["seed"] = existing_p["seed"]
                             
                         paragraph_item["prompts"].append(entry)
                     total_images += 1
@@ -530,7 +533,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                     all_prompts_data["thumbnail"]["hook"] = hook
                     all_prompts_data["thumbnail"]["visual_prompt"] = visual_prompt
                     
-                    engine.generate_thumbnail(hook, visual_prompt, thumbnail_path, size=f"{vid.width}x{vid.height}")
+                    await engine.generate_thumbnail(hook, visual_prompt, thumbnail_path, size=f"{vid.width}x{vid.height}")
                 except Exception as e:
                     print(f"Warning: Thumbnail generation failed: {e}")
 
@@ -571,6 +574,13 @@ def get_images_data(video_id: int, db: Session = Depends(get_db)):
         return {"items": []}
     
     data = json.loads(images_json.read_text())
+    
+    # Add metadata from database
+    data["width"] = video.width
+    data["height"] = video.height
+    data["orientation"] = "horizontal" if video.width > video.height else "vertical"
+    data["is_short"] = video.is_short
+
     # Add relative path for frontend access via /cache
     # base_dir is like "cache/0001-channel/..."
     # We want "cache/0001-channel/.../images/p001_01.png"
@@ -668,17 +678,19 @@ async def regenerate_image(
     # Check if a specific model was requested (passed as a query param or from somewhere)
     # For now, we'll allow an optional model_id in the regenerate call too if we want
     if generation_mode.upper() == "COMFYUI":
-        cost_info = await engine.generate_comfy_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, workflow_name=wf_name)
+        result = await engine.generate_comfy_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, workflow_name=wf_name, seed=req.seed)
+        cost_info = result
     else:
         cost_info = await engine.generate_leonardo_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, model_id=model_id, mode=generation_mode)
     
-    # Update cost in JSON
+    # Update cost and seed in JSON
     for item in data.get("items", []):
         if item["paragraph_id"] == paragraph_id:
             for p_info in item.get("prompts", []):
                 if p_info["id"] == image_id:
                     if cost_info:
-                        p_info["cost"] = cost_info
+                        if "amount" in cost_info: p_info["cost"] = cost_info
+                        if "seed" in cost_info: p_info["seed"] = cost_info["seed"]
                     break
     
     # Save JSON with prompt and cost update
@@ -1288,7 +1300,7 @@ async def generate_thumbnail_api(
             seo = SEOEngine(api_key=settings.openai_api_key)
             if not current_hook:
                 custom_title_rules = get_style_rules(video.channel_id, "title-rules")
-                current_hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules)
+                current_hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules, channel_name=video.channel.name)
                 data["thumbnail"]["hook"] = current_hook
                 if not current_visual:
                     custom_thumb_rules = StyleService.get_custom_thumbnail_rules(base_dir)
@@ -1312,18 +1324,47 @@ async def generate_thumbnail_api(
     if not settings or not settings.openai_api_key or not settings.leonardo_api_key:
         raise HTTPException(status_code=400, detail="Faltan API Keys. Ve a la pantalla de Ajustes.")
     engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
-    engine.generate_thumbnail(
+    await engine.generate_thumbnail(
         current_hook, current_visual, thumbnail_path, 
         size=f"{video.width}x{video.height}", 
         model_id=model_id,
         negative_prompt=neg,
-        mode=gen_mode
+        mode=gen_mode,
+        channel_name=video.channel.name
     )
     
     # Save updates
     images_json.write_text(json.dumps(data, indent=2))
     
     return {"ok": True, "url": f"/{video.base_dir}/output/thumbnail.png?t={int(datetime.now().timestamp())}"}
+
+@router.post("/{video_id}/update-thumbnail-text")
+async def update_thumbnail_text(
+    video_id: int, 
+    req: ThumbnailGenerationRequest,
+    db: Session = Depends(get_db)
+):
+    hook = req.hook
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    if not hook:
+        raise HTTPException(status_code=400, detail="Hook text is required")
+
+    # Update json
+    base_dir = Path(video.base_dir)
+    images_json = base_dir / "image_prompts_all.json"
+    if images_json.exists():
+        data = json.loads(images_json.read_text())
+        if "thumbnail" not in data: data["thumbnail"] = {}
+        data["thumbnail"]["hook"] = hook
+        images_json.write_text(json.dumps(data, indent=2))
+
+    engine = ImageEngine()
+    url_rel = engine.apply_text_to_thumbnail(video.base_dir, hook, channel_name=video.channel.name)
+    
+    return {"ok": True, "url": f"/{url_rel}?t={int(datetime.now().timestamp())}"}
 
 @router.post("/{video_id}/seo")
 async def generate_seo(video_id: int, db: Session = Depends(get_db)):

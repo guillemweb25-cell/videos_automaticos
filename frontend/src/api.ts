@@ -692,6 +692,16 @@ class ApiClient {
     return res.json();
   }
 
+  async updateThumbnailText(videoId: number, hook: string): Promise<{ ok: boolean, url: string }> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/update-thumbnail-text`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: JSON.stringify({ hook })
+    });
+    if (!res.ok) throw new Error('Error al actualizar texto de la miniatura');
+    return res.json();
+  }
+
   // YouTube Upload & SEO
   async getVideoMetadata(videoId: number): Promise<{
     title: string;

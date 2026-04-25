@@ -64,6 +64,7 @@ class RegenerateImageRequest(BaseModel):
     model_id: Optional[str] = None
     generation_mode: str = "QUALITY"
     workflow_name: Optional[str] = None
+    seed: Optional[int] = None
 
 class AddImageRequest(BaseModel):
     paragraph_id: int

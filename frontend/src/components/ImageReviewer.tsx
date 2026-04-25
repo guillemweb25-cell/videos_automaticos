@@ -255,6 +255,21 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
     }
   };
 
+  const handleUpdateThumbnailText = async () => {
+    setThumbnailRegenerating(true);
+    try {
+      const res = await api.updateThumbnailText(videoId, thumbnailHook);
+      if (res.ok) {
+        setThumbnailUrl(res.url);
+      }
+    } catch (error) {
+      console.error("Error updating thumbnail text:", error);
+      alert("Error al actualizar el texto de la miniatura");
+    } finally {
+      setThumbnailRegenerating(false);
+    }
+  };
+
   const handleUploadThumbnail = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -800,7 +815,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
               backgroundColor: '#1f2937', 
               borderRadius: '12px', 
               overflow: 'hidden', 
-              aspectRatio: data?.orientation === 'horizontal' ? '16/9' : '9/16',
+              aspectRatio: data?.orientation === 'vertical' ? '9/16' : '16/9',
               maxWidth: '100%',
               maxHeight: '70vh',
               display: 'flex',
@@ -912,7 +927,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                   onClick={handleGenerateThumbnailImage}
                   disabled={thumbnailRegenerating || (!thumbnailHook && !thumbnailVisualPrompt)}
                   style={{
-                    flex: 2,
+                    flex: 1,
                     backgroundColor: '#a855f7',
                     color: 'white',
                     padding: '14px',
@@ -924,7 +939,26 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                     opacity: (thumbnailRegenerating || (!thumbnailHook && !thumbnailVisualPrompt)) ? 0.5 : 1
                   }}
                 >
-                  {thumbnailUrl ? '🔄 Regenerar Miniatura' : '✨ Generar Miniatura'}
+                  {thumbnailUrl ? '🔄 Regenerar Todo' : '✨ Generar'}
+                </button>
+
+                <button
+                  onClick={handleUpdateThumbnailText}
+                  disabled={thumbnailRegenerating || !thumbnailUrl || !thumbnailHook}
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    padding: '14px',
+                    borderRadius: '12px',
+                    fontWeight: 'bold',
+                    fontSize: '1rem',
+                    cursor: 'pointer',
+                    border: 'none',
+                    opacity: (thumbnailRegenerating || !thumbnailUrl || !thumbnailHook) ? 0.5 : 1
+                  }}
+                >
+                  📝 Actualizar Texto
                 </button>
                 
                 <label style={{

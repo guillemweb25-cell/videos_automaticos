@@ -3,11 +3,12 @@ import json
 import time
 import requests
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from openai import OpenAI
 from app.services.style_service import StyleService
 from app.services.comfy_service import ComfyService
 import asyncio
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 class ImageEngine:
     def __init__(self, openai_api_key: Optional[str] = None, leonardo_api_key: Optional[str] = None):
@@ -16,6 +17,7 @@ class ImageEngine:
         self.leonardo_v1_url = "https://cloud.leonardo.ai/api/rest/v1"
         self.leonardo_v2_url = "https://cloud.leonardo.ai/api/rest/v2"
         self.comfy_service = ComfyService()
+        self.comfy_url = os.getenv("COMFY_URL")
 
     def generate_prompts(self, text: str, style_name: str, n: int = 1, full_context: str = "", style_override: dict = None, recent_history: List[str] = [], custom_rules: Optional[str] = None) -> List[str]:
         """Generates visual prompts from narration text using GPT, with optional full video context and recent prompt history."""
@@ -232,7 +234,7 @@ class ImageEngine:
         
         return {"amount": cost_amount}
 
-    async def generate_comfy_image(self, prompt: str, out_path: Path, size: str = "1024x1024", negative_prompt: Optional[str] = None, workflow_name: str = "Comic-Horror.json") -> Dict[str, Any]:
+    async def generate_comfy_image(self, prompt: str, out_path: Path, size: str = "1024x1024", negative_prompt: Optional[str] = None, workflow_name: str = "Comic-Horror.json", seed: Optional[int] = None) -> Dict[str, Any]:
         """Generates an image using local ComfyUI via ComfyService."""
         # Use absolute path inside Docker container
         workflow_path = Path("/app/workflows") / workflow_name
@@ -259,15 +261,16 @@ class ImageEngine:
             prompt=prompt,
             negative_prompt=negative_prompt,
             width=w,
-            height=h
+            height=h,
+            seed=seed
         )
 
         print(f"Executing ComfyUI workflow: {workflow_name}")
         
         # 4. Execute
-        await self.comfy_service.generate_image(workflow, out_path)
+        result = await self.comfy_service.generate_image(workflow, out_path)
         
-        return {"amount": 0.0}
+        return {"amount": 0.0, "seed": result.get("seed")}
 
     async def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY", model_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
 
@@ -431,35 +434,188 @@ class ImageEngine:
             time.sleep(3)
         raise TimeoutError("Leonardo V2 timeout")
 
-    def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY") -> None:
+    async def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY", channel_name: Optional[str] = None) -> None:
         """Generates a professional thumbnail. Blends visual prompt with text instructions. 
-        Defaults to gpt-image-1.5 for better text rendering.
         """
 
-        # If the visual prompt already mentions 'text', 'font', or 'hook', we use it as the base.
-        # Otherwise, we append a standard text placement instruction.
-        base_prompt = visual_prompt
-        has_text_instruction = any(word in visual_prompt.lower() for word in ["text", "font", "reads", " hook", "written"])
+        # Ensure the subject is on the right to leave space for text on the left
+        if "right side" not in visual_prompt.lower():
+            visual_prompt = f"Subject on the right side of the frame, empty space on the left for text overlay. {visual_prompt}"
         
-        if not has_text_instruction and hook:
-            base_prompt += (
-                f". The text '{hook}' is written in a big, modern, bold, cinematic font, "
-                "centered and highly legible. High contrast, vibrant colors, eye-catching composition."
-            )
-        
-        # Ensure it mentions cinematic/8k for quality even if not in visual_prompt
-        if "8k" not in base_prompt.lower():
-            base_prompt += " Extreme detail, 8k resolution, cinematic lighting."
+        # Ensure it mentions cinematic/8k for quality
+        if "8k" not in visual_prompt.lower():
+            visual_prompt += " Extreme detail, 8k resolution, cinematic lighting."
 
-        # Force GPT Image 1.5 for thumbnails if not specified
-        target_model = model_id or "gpt-image-1.5"
-        
-        # For survival: Force a safe size for thumbnail if we don't trust the incoming one
-        thumb_size = size
-        if "x" not in size or not size:
-            thumb_size = "1024x1024"
+        # Generate base image
+        if self.comfy_url:
+            # Dynamic workflow selection
+            vp_lower = visual_prompt.lower()
+            biblical_keywords = ["biblical", "jesus", "apostle", "god", "divine", "revelation", "prophecy", "bible", "sacred"]
+            if any(k in vp_lower for k in biblical_keywords):
+                workflow = "Biblical-Epic-Ultra.json"
+            elif "anime" in vp_lower or "illustration" in vp_lower or "hentai" in vp_lower:
+                workflow = "Anime-Illustration-Ultra.json"
+            else:
+                workflow = "Comic-Horror-Ultra.json"
             
-        self.generate_leonardo_image(base_prompt, out_path, size=thumb_size, model_id=target_model, negative_prompt=negative_prompt, mode=mode)
+            await self.generate_comfy_image(
+                prompt=visual_prompt, 
+                out_path=out_path, 
+                size=size, 
+                negative_prompt=negative_prompt,
+                workflow_name=workflow
+            )
+        else:
+            target_model = model_id or "gpt-image-1.5"
+            thumb_size = size
+            if "x" not in size or not size:
+                thumb_size = "1024x1024"
+            self.generate_leonardo_image(visual_prompt, out_path, size=thumb_size, model_id=target_model, negative_prompt=negative_prompt, mode=mode)
+            
+        # Save a "clean" copy before applying text
+        clean_path = out_path.parent / "thumbnail-clean.png"
+        import shutil
+        shutil.copy2(out_path, clean_path)
+
+        # Apply text overlay using Python
+        self._apply_thumbnail_text_overlay(out_path, hook, channel_name=channel_name)
+
+    def apply_text_to_thumbnail(self, base_dir: str, hook: str, channel_name: Optional[str] = None) -> str:
+        """Re-applies text overlay to an existing clean thumbnail."""
+        out_path = Path(base_dir) / "output" / "thumbnail.png"
+        clean_path = Path(base_dir) / "output" / "thumbnail-clean.png"
+        
+        if not clean_path.exists():
+            if out_path.exists():
+                # If clean doesn't exist, we use the current one as base (not ideal but works as fallback)
+                import shutil
+                shutil.copy2(out_path, clean_path)
+            else:
+                raise FileNotFoundError("No se encontró una miniatura base para aplicar el texto.")
+        
+        # Always start from the clean version
+        import shutil
+        shutil.copy2(clean_path, out_path)
+        
+        # Apply text
+        self._apply_thumbnail_text_overlay(out_path, hook, channel_name=channel_name)
+        return f"cache/{os.path.relpath(out_path, 'cache')}"
+
+    def _apply_thumbnail_text_overlay(self, image_path: Path, text: str, channel_name: Optional[str] = None):
+        """Applies text overlay following the channel style guide."""
+        if not image_path.exists():
+            return
+
+        img = Image.open(image_path).convert("RGBA")
+        width, height = img.size
+        draw = ImageDraw.Draw(img)
+
+        # Detect channel style
+        style = "default"
+        if channel_name and ("jesus" in channel_name.lower() or "jesús" in channel_name.lower()):
+            style = "jesus"
+        elif channel_name and "sombras" in channel_name.lower():
+            style = "sombras"
+
+        # Font configuration (Fallback paths)
+        font_paths = [
+            "/usr/share/fonts/truetype/msttcorefonts/arialbd.ttf",
+            "/usr/share/fonts/truetype/msttcorefonts/ariblk.ttf", # Arial Black
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+        ]
+        
+        font_path_bold = next((p for p in font_paths if Path(p).exists()), None)
+        # Try to find a specifically thick one for Bebas Neue substitute
+        font_path_heavy = next((p for p in font_paths if "ariblk" in p and Path(p).exists()), font_path_bold)
+
+        def draw_text_with_outline(draw_obj, text_str, pos, font_obj, fill_color, outline_color, outline_width=4, align="left"):
+            x, y = pos
+            if align == "center":
+                # Calculate width using textbbox
+                bbox = draw_obj.textbbox((0, 0), text_str, font=font_obj)
+                w = bbox[2] - bbox[0]
+                x = (width - w) // 2
+            
+            # Draw outline
+            for adj in range(-outline_width, outline_width + 1):
+                for adj_y in range(-outline_width, outline_width + 1):
+                    draw_obj.text((x + adj, y + adj_y), text_str, font=font_obj, fill=outline_color)
+            # Draw main text
+            draw_obj.text((x, y), text_str, font=font_obj, fill=fill_color)
+            return x, y
+
+        if style == "jesus":
+            # 3-line style for Jesus channel
+            # Top: White bold (Label)
+            # Center: Gold Heavy (Main Title)
+            # Bottom: White Italic (Subtitle)
+            
+            # Split text: "LABEL...TITLE...SUBTITLE" or "LABEL...TITLE"
+            parts = text.split("...")
+            label = parts[0].strip().upper() if len(parts) > 0 else "MENSAJE DE"
+            title = parts[1].strip().upper() if len(parts) > 1 else ""
+            subtitle = parts[2].strip().lower() if len(parts) > 2 else ""
+
+            # Sizes
+            size_top = int(height * 0.07)
+            size_center = int(height * 0.15)
+            size_bottom = int(height * 0.06)
+
+            font_top = ImageFont.truetype(font_path_bold, size_top) if font_path_bold else ImageFont.load_default()
+            font_center = ImageFont.truetype(font_path_heavy, size_center) if font_path_heavy else ImageFont.load_default()
+            font_bottom = ImageFont.truetype(font_path_bold, size_bottom) if font_path_bold else ImageFont.load_default()
+
+            # Draw Top (18% from top)
+            draw_text_with_outline(draw, label, (0, int(height * 0.18)), font_top, "white", "black", outline_width=4, align="center")
+            
+            # Draw Center
+            if title:
+                draw_text_with_outline(draw, title, (0, int(height * 0.45)), font_center, "#FFD700", "black", outline_width=8, align="center")
+            
+            # Draw Bottom (28% from bottom / 72% from top)
+            if subtitle:
+                draw_text_with_outline(draw, subtitle, (0, int(height * 0.72)), font_bottom, "white", "black", outline_width=4, align="center")
+
+        else:
+            # Default 2-line style (Sombras or generic)
+            if "..." in text:
+                parts = text.split("...", 1)
+                line1 = parts[0].strip() + "..."
+                line2 = ("..." + parts[1].strip()) if parts[1].strip() else ""
+            else:
+                words = text.split()
+                if len(words) > 4:
+                    line1 = " ".join(words[:len(words)//2])
+                    line2 = " ".join(words[len(words)//2:])
+                else:
+                    line1 = text
+                    line2 = ""
+
+            font_size_1 = int(height * 0.12)
+            font_size_2 = int(height * 0.10)
+            
+            font1 = ImageFont.truetype(font_path_bold, font_size_1) if font_path_bold else ImageFont.load_default()
+            font2 = ImageFont.truetype(font_path_bold, font_size_2) if font_path_bold else ImageFont.load_default()
+
+            margin_x = int(width * 0.05)
+            curr_y = int(height * 0.35)
+
+            # Colors based on style
+            color1, color2 = ("yellow", "#FF8C00") # Default
+            if style == "sombras":
+                color1, color2 = ("#ff3333", "#33ff33") # Red and Green for horror
+
+            if line1:
+                draw_text_with_outline(draw, line1.upper(), (margin_x, curr_y), font1, color1, "black", outline_width=6)
+                curr_y += int(font_size_1 * 1.2)
+
+            if line2:
+                draw_text_with_outline(draw, line2.upper(), (margin_x, curr_y), font2, color2, "black", outline_width=6)
+
+        # Save back
+        img.convert("RGB").save(image_path, "PNG")
+        print(f"[thumbnail] Applied {style} text overlay to {image_path.name}")
 
     def _download_image(self, url: str, out_path: Path):
         headers = {

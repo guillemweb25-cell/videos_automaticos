@@ -2,10 +2,10 @@
   "3": {
     "inputs": {
       "seed": 0,
-      "steps": 30,
-      "cfg": 8,
-      "sampler_name": "dpmpp_2m_sde_gpu",
-      "scheduler": "karras",
+      "steps": 20,
+      "cfg": 7,
+      "sampler_name": "euler",
+      "scheduler": "normal",
       "denoise": 1,
       "model": [
         "4",
@@ -26,7 +26,7 @@
     },
     "class_type": "KSampler",
     "_meta": {
-      "title": "KSampler"
+      "title": "Base KSampler"
     }
   },
   "4": {
@@ -51,7 +51,7 @@
   },
   "6": {
     "inputs": {
-      "text": "(photorealistic biblical epic:1.2), masterpiece cinematic vision, hyper-realistic mystical atmosphere, ancient sandstone landscapes, soft natural golden lighting, (extremely detailed textures:1.2), epic high-end film grading, profound spiritual immersion, 8k, Unreal Engine 5 render style",
+      "text": "(biblical epic scene, hyper-realistic, masterpiece:1.3), divine golden hour lighting, cinematic atmosphere, 8k resolution, historical authenticity, religious art style, highly detailed textures, majestic composition",
       "clip": [
         "4",
         1
@@ -78,7 +78,7 @@
   "8": {
     "inputs": {
       "samples": [
-        "3",
+        "11",
         0
       ],
       "vae": [
@@ -93,7 +93,7 @@
   },
   "9": {
     "inputs": {
-      "filename_prefix": "BiblicalEpic",
+      "filename_prefix": "Biblical_Ultra",
       "images": [
         "8",
         0
@@ -102,6 +102,50 @@
     "class_type": "SaveImage",
     "_meta": {
       "title": "Save Image"
+    }
+  },
+  "10": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "scale_by": 1.25,
+      "samples": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "LatentUpscaleBy",
+    "_meta": {
+      "title": "Latent Upscale"
+    }
+  },
+  "11": {
+    "inputs": {
+      "seed": 0,
+      "steps": 15,
+      "cfg": 7,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 0.4,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "Refinement KSampler"
     }
   }
 }

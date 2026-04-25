@@ -102,12 +102,34 @@ class SEOEngine:
             clean_tags.append(t)
         return clean_tags[:count]
 
-    def generate_thumbnail_hook(self, script_snippet: str, lang: str = "es", custom_rules: Optional[str] = None) -> str:
+    def generate_thumbnail_hook(self, script_snippet: str, lang: str = "es", custom_rules: Optional[str] = None, channel_name: Optional[str] = None) -> str:
         """Generates a catchy short hook for a YouTube thumbnail."""
+        
+        # Determine niche/style based on channel name
+        is_jesus = channel_name and ("jesus" in channel_name.lower() or "jesús" in channel_name.lower())
+        
+        if is_jesus:
+            niche_desc = "Christian/Spiritual channel. The hook must be DIVINE, SOLEMN, and PROFOUND."
+            format_desc = (
+                "The hook MUST be in 3 parts separated by '...'. "
+                "Part 1: A category or label (e.g. 'EL MISTERIO', 'LA REVELACIÓN'). "
+                "Part 2: The main shocking title (e.g. 'EL APOCALIPSIS', 'JUAN VIO ESTO'). "
+                "Part 3: A small curiosity or result (e.g. 'nadie te lo contó', 'mira el final'). "
+                "Example: 'LA REVELACIÓN...EL APOCALIPSIS...mira el final'"
+            )
+        else:
+            niche_desc = "Mystery and Horror channel. The hook must be SHOCKING, AGGRESSIVE, and IRRESISTIBLE."
+            format_desc = (
+                "The hook must be 2-5 words long, in ALL CAPS. "
+                "Use '...' to separate the hook into two parts for a two-line layout. "
+                "Example: 'ESTABA... ALLÍ', 'NO MIRES... ATRÁS'."
+            )
+
         system_msg = (
-            "You are an expert YouTube thumbnail designer and copywriter. "
-            "Your goal is to create a very short, high-impact hook for a video thumbnail. "
-            "The hook must be 2-4 words long, in ALL CAPS, and evoke curiosity or urgency. "
+            f"You are an expert YouTube CLICKBAIT strategist for a {niche_desc}. "
+            "Your goal is to create an IRRESISTIBLE hook. "
+            "Use psychological triggers like 'THE FORBIDDEN', 'THE UNKNOWN', 'LETHAL', 'TERRIFYING', 'SECRET' (adapted to the niche). "
+            f"{format_desc} "
             f"{f'Additional brand rules: {custom_rules}' if custom_rules else ''} "
             f"The output must be in {'SPANISH' if lang == 'es' else 'the requested language'}. "
             "Output ONLY the text, no quotes or emojis."
@@ -122,23 +144,35 @@ class SEOEngine:
             ],
             temperature=0.8
         )
-        return (response.choices[0].message.content or "").strip()[:50]
+        return (response.choices[0].message.content or "").strip()[:80]
 
-    def generate_thumbnail_visual_prompt(self, script_snippet: str, style_desc: str, thumbnail_hook: str = "", custom_rules: Optional[str] = None) -> str:
-        """Generates a highly descriptive visual prompt for Leonardo.ai (Phoenix 1.0 or GPT-1.5)."""
+    def generate_thumbnail_visual_prompt(self, script_snippet: str, style_desc: str, thumbnail_hook: str = "", custom_rules: Optional[str] = None, include_text_in_prompt: bool = False) -> str:
+        """Generates a highly descriptive visual prompt for AI image generators."""
         rules_text = f"\nFOLLOW THESE SPECIFIC STYLE RULES:\n{custom_rules}\n" if custom_rules else ""
         
+        text_instruction = ""
+        if include_text_in_prompt:
+            text_instruction = (
+                f"IMPORTANT: Explicitly describe the EXACT text to be included as 'The text \"{thumbnail_hook}\" is written in...'. "
+                "Use double quotes for the text itself. Mention it should be 'large, bold, and modern font'. "
+                "Describe the font color, outline, and placement based on the provided style rules if available. "
+            )
+        else:
+            text_instruction = (
+                "IMPORTANT: Do NOT describe any text or letters in the image. "
+                "Instead, describe a composition that leaves a clear, empty area (on the left or center) "
+                "where text will be overlayed later. Ensure the main subject is positioned to the side."
+            )
+
         system_msg = (
             "You are a creative visual director for high-impact YouTube thumbnails. "
             "Generate a highly descriptive visual prompt in English for an AI image generator. "
             "The prompt should describe a cinematic, professional composition. "
             "Describe central characters with specific emotions, dramatic lighting, and vibrant colors. "
             f"{rules_text}"
-            "IMPORTANT: Explicitly describe the EXACT text to be included as 'The text \"HOOK_HERE\" is written in...'. "
-            "Use double quotes for the text itself. Mention it should be 'large, bold, and modern font'. "
-            "Describe the font color, outline, and placement based on the provided style rules if available. "
+            f"{text_instruction}"
             "CRITICAL RULES: Output ONLY the final AI visual prompt. Do NOT use any line breaks or paragraphs (single block of text). "
-            "The prompt MUST BE UNDER 800 CHARACTERS in total length."
+            "The prompt MUST BE UNDER 1000 CHARACTERS in total length."
         )
         user_msg = (
             f"Style/Niche: {style_desc}\n"

@@ -2,8 +2,8 @@
   "3": {
     "inputs": {
       "seed": 0,
-      "steps": 25,
-      "cfg": 7.5,
+      "steps": 20,
+      "cfg": 7,
       "sampler_name": "euler",
       "scheduler": "normal",
       "denoise": 1,
@@ -26,7 +26,7 @@
     },
     "class_type": "KSampler",
     "_meta": {
-      "title": "KSampler"
+      "title": "Base KSampler"
     }
   },
   "4": {
@@ -78,7 +78,7 @@
   "8": {
     "inputs": {
       "samples": [
-        "3",
+        "11",
         0
       ],
       "vae": [
@@ -93,7 +93,7 @@
   },
   "9": {
     "inputs": {
-      "filename_prefix": "HorrorComic",
+      "filename_prefix": "HorrorComic_Ultra",
       "images": [
         "8",
         0
@@ -102,6 +102,50 @@
     "class_type": "SaveImage",
     "_meta": {
       "title": "Save Image"
+    }
+  },
+  "10": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "scale_by": 1.25,
+      "samples": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "LatentUpscaleBy",
+    "_meta": {
+      "title": "Latent Upscale"
+    }
+  },
+  "11": {
+    "inputs": {
+      "seed": 0,
+      "steps": 15,
+      "cfg": 7,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 0.45,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "Refinement KSampler"
     }
   }
 }
