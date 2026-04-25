@@ -599,7 +599,7 @@ class ApiClient {
     return res.json();
   }
 
-  async regenerateImage(videoId: number, paragraphId: number, imageId: number, customPrompt?: string, modelId?: string, generationMode?: string, workflowName?: string): Promise<{ ok: boolean, url: string }> {
+  async regenerateImage(videoId: number, paragraphId: number, imageId: number, customPrompt?: string, modelId?: string, generationMode?: string, workflowName?: string, seed?: number): Promise<{ ok: boolean, url: string }> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/regenerate-image`, {
       method: 'POST',
       headers: this.getHeaders(true),
@@ -609,7 +609,8 @@ class ApiClient {
         custom_prompt: customPrompt,
         model_id: modelId,
         generation_mode: generationMode,
-        workflow_name: workflowName
+        workflow_name: workflowName,
+        seed: seed
       })
     });
     if (!res.ok) throw new Error('Error al regenerar imagen');

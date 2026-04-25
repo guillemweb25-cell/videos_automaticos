@@ -73,7 +73,15 @@ def get_available_config():
     eleven_voices = [{"id": name, "name": name} for name in ELEVEN_VOICES.keys()]
     
     # Styles
-    styles = [{"id": alias, "name": alias.replace("_", " ").capitalize()} for alias in ALIASES.keys()]
+    styles = []
+    from app.services.style_service import ALIASES, STYLES
+    for alias, style_key in ALIASES.items():
+        style_info = STYLES.get(style_key, {})
+        display_name = style_info.get("display_name", alias.replace("_", " ").capitalize())
+        styles.append({"id": alias, "name": display_name})
+    
+    # Sort styles by name
+    styles.sort(key=lambda x: x["name"])
 
 
     # Leonardo Models
@@ -696,7 +704,11 @@ async def regenerate_image(
     # Save JSON with prompt and cost update
     images_json.write_text(json.dumps(data, indent=2))
     
-    return {"ok": True, "url": f"/{video.base_dir}/images/{out_path.name}?t={int(datetime.now().timestamp())}"}
+    return {
+        "ok": True, 
+        "url": f"/{video.base_dir}/images/{out_path.name}?t={int(datetime.now().timestamp())}",
+        "seed": cost_info.get("seed") if cost_info else None
+    }
 
 @router.post("/{video_id}/add-image")
 async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(get_db)):

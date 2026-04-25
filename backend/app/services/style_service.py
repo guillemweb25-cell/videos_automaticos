@@ -81,9 +81,19 @@ STYLES: Dict[str, StyleSpec] = {
         "negative_prompt": NEGATIVE_BASE + ", human, sky, sun, landscape, boat",
     },
     "sombras_horror_nocturno": {
-        "display_name": "Horror Nocturno",
-        "image_style_prompt": "Dark horror atmosphere, heavy shadows, night time, eerie lighting, cinematic horror",
-        "negative_prompt": NEGATIVE_BASE + ", bright, happy, sunshine",
+        "display_name": "Terror Cómic (México)",
+        "image_style_prompt": "Dark horror atmosphere, heavy shadows, night time, eerie lighting, comic book horror style, detailed ink, dramatic shading",
+        "negative_prompt": NEGATIVE_BASE + ", bright, happy, sunshine, photorealistic, photography",
+    },
+    "sombras_realismo_sucio": {
+        "extends": "epic_base",
+        "display_name": "Realismo Sucio (México)",
+        "image_style_prompt": (
+            "Gritty realistic Mexican rural setting; desolate dusty roads, weathered faces, "
+            "rustic textures; dramatic shadows, cinematic chiaroscuro; "
+            "hyper-realistic, high contrast, filmic texture; no comic style, no drawing"
+        ),
+        "negative_prompt": NEGATIVE_BASE + ", illustration, drawing, painting, comic, anime, sketch, cartoony",
     },
     "grabovoi_aurora": {
         "display_name": "Aurora Borealis",
@@ -147,6 +157,9 @@ ALIASES = {
     "epic": "epic_cinema",
     "epicjudea": "epic_cinema_judea",
     "horror": "sombras_horror_nocturno",
+    "sombras_comic": "sombras_horror_nocturno",
+    "realismo_mexicano": "sombras_realismo_sucio",
+    "sombras_real": "sombras_realismo_sucio",
     "aurora": "grabovoi_aurora",
     "cabala": "cabala_luz_divina",
     "deepsea": "deepsea",

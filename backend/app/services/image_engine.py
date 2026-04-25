@@ -139,7 +139,7 @@ class ImageEngine:
         
         return image_id
 
-    async def generate_leonardo_image(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, model_id: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY") -> Optional[Dict[str, Any]]:
+    async def generate_leonardo_image(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, model_id: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY", seed: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Generates an image using Leonardo.ai with optional model selection and image guidance. Defaults to V2."""
         use_v2 = os.getenv("LEONARDO_API_VERSION", "v2").lower() == "v2"
         
@@ -154,7 +154,7 @@ class ImageEngine:
         
         if (use_v2 and not mid) or is_explicit_v2:
             print(f"Routing to Leonardo V2: model={mid or 'default'}")
-            return await self.generate_leonardo_v2(prompt, out_path, size=size, negative_prompt=negative_prompt, init_image_id=init_image_id, mode=mode, model_id=mid)
+            return await self.generate_leonardo_v2(prompt, out_path, size=size, negative_prompt=negative_prompt, init_image_id=init_image_id, mode=mode, model_id=mid, seed=seed)
 
             
         # V1 logic
@@ -211,6 +211,9 @@ class ImageEngine:
         if negative_prompt:
             payload["negative_prompt"] = negative_prompt
 
+        if seed is not None:
+            payload["seed"] = seed
+
         if init_image_id and not is_lucid:
             payload["init_image_id"] = init_image_id
             payload["imagePrompts"] = [init_image_id]
@@ -227,12 +230,13 @@ class ImageEngine:
         gen_id = resp.json()["sdGenerationJob"]["generationId"]
         
         # 2. Poll for completion
-        img_url = self._poll_leonardo(gen_id, headers)
+        img_data = self._poll_leonardo(gen_id, headers)
+        img_url = img_data["url"]
         
         # 3. Download
         self._download_image(img_url, out_path)
         
-        return {"amount": cost_amount}
+        return {"amount": cost_amount, "seed": img_data.get("seed")}
 
     async def generate_comfy_image(self, prompt: str, out_path: Path, size: str = "1024x1024", negative_prompt: Optional[str] = None, workflow_name: str = "Comic-Horror.json", seed: Optional[int] = None) -> Dict[str, Any]:
         """Generates an image using local ComfyUI via ComfyService."""
@@ -272,7 +276,7 @@ class ImageEngine:
         
         return {"amount": 0.0, "seed": result.get("seed")}
 
-    async def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY", model_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    async def generate_leonardo_v2(self, prompt: str, out_path: Path, size: str = "1024x1792", negative_prompt: Optional[str] = None, init_image_id: Optional[str] = None, mode: str = "QUALITY", model_id: Optional[str] = None, seed: Optional[int] = None) -> Optional[Dict[str, Any]]:
 
         """Generates an image using Leonardo.ai V2 API with GPT Image-1.5 model."""
         if not self.leonardo_api_key:
@@ -304,7 +308,8 @@ class ImageEngine:
                 "height": height,
                 "quantity": 1,
                 "mode": mode,
-                "prompt_enhance": "OFF"
+                "prompt_enhance": "OFF",
+                "seed": seed if seed is not None else random.randint(0, 2**31-1)
             },
             "public": False
         }
@@ -352,7 +357,8 @@ class ImageEngine:
         cost_info = resp_data.get("generate", {}).get("cost") or resp_data.get("generations", {}).get("cost")
         
         # 2. Poll for completion (Leonardo retrieval endpoint is always in V1)
-        img_url = self._poll_leonardo(gen_id, headers)
+        img_data = self._poll_leonardo(gen_id, headers)
+        img_url = img_data["url"]
         
         # 3. Download
         self._download_image(img_url, out_path)
@@ -364,7 +370,7 @@ class ImageEngine:
             "ULTRA": 0.0852 # Or whatever the user provided
         }
         
-        return {"amount": v2_costs.get(mode, 0.0852)}
+        return {"amount": v2_costs.get(mode, 0.0852), "seed": img_data.get("seed")}
         
 
     def _normalize_size(self, size: str, model_id: Optional[str] = None) -> tuple[int, int]:
@@ -403,7 +409,10 @@ class ImageEngine:
             resp.raise_for_status()
             data = resp.json()["generations_by_pk"]
             if data["status"] == "COMPLETE":
-                return data["generated_images"][0]["url"]
+                return {
+                    "url": data["generated_images"][0]["url"],
+                    "seed": data.get("seed")
+                }
             if data["status"] in ["FAILED", "ERROR"]:
                 raise RuntimeError(f"Leonardo generation failed: {data}")
             time.sleep(3)
@@ -438,13 +447,32 @@ class ImageEngine:
         """Generates a professional thumbnail. Blends visual prompt with text instructions. 
         """
 
-        # Ensure the subject is on the right to leave space for text on the left
-        if "right side" not in visual_prompt.lower():
-            visual_prompt = f"Subject on the right side of the frame, empty space on the left for text overlay. {visual_prompt}"
-        
-        # Ensure it mentions cinematic/8k for quality
+        # Add quality and detail keywords
         if "8k" not in visual_prompt.lower():
-            visual_prompt += " Extreme detail, 8k resolution, cinematic lighting."
+            visual_prompt += ", extreme detail, 8k resolution, cinematic lighting"
+        
+        # Add hand boosters if hands are mentioned
+        if "hand" in visual_prompt.lower() or "finger" in visual_prompt.lower() or "gesturing" in visual_prompt.lower():
+            visual_prompt += ", (perfect hands:1.2), (detailed fingers:1.3), natural hand pose"
+        
+        # Add age boosters if child/young age mentioned
+        vp_lower = visual_prompt.lower()
+        if any(x in vp_lower for x in ["child", "girl", "boy", "ten", "aged 10", "young"]):
+            if "child" not in visual_prompt.lower():
+                visual_prompt += ", (child:1.4), (small child:1.2), youthful features"
+            else:
+                visual_prompt = visual_prompt.replace("child", "(child:1.5)")
+        
+        # Detect channel style
+        style = "default"
+        if channel_name and ("jesus" in channel_name.lower() or "jesús" in channel_name.lower()):
+            style = "jesus"
+        elif channel_name and "sombras" in channel_name.lower():
+            style = "sombras"
+
+        # Ensure the subject is on the right to leave space for text on the left
+        if "right side" not in visual_prompt.lower() and style != "jesus":
+            visual_prompt = f"Subject on the right side of the frame, empty space on the left for text overlay. {visual_prompt}"
 
         # Generate base image
         if self.comfy_url:
@@ -455,6 +483,8 @@ class ImageEngine:
                 workflow = "Biblical-Epic-Ultra.json"
             elif "anime" in vp_lower or "illustration" in vp_lower or "hentai" in vp_lower:
                 workflow = "Anime-Illustration-Ultra.json"
+            elif "photorealistic" in vp_lower or "cinematic horror" in vp_lower or "film still" in vp_lower:
+                workflow = "Cinematic-Horror-Ultra.json"
             else:
                 workflow = "Comic-Horror-Ultra.json"
             

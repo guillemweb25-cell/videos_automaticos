@@ -14,6 +14,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [converting, setConverting] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
   const [prompts, setPrompts] = useState<{ [key: string]: string }>({});
+  const [seeds, setSeeds] = useState<{ [key: string]: number }>({});
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [thumbnailHook, setThumbnailHook] = useState('');
   const [thumbnailVisualPrompt, setThumbnailVisualPrompt] = useState('');
@@ -39,12 +40,15 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
       
       // Initialize prompts state
       const initialPrompts: { [key: string]: string } = {};
+      const initialSeeds: { [key: string]: number } = {};
       res.items?.forEach((item: any) => {
         item.prompts?.forEach((p: any) => {
           initialPrompts[`${item.paragraph_id}_${p.id}`] = p.prompt;
+          initialSeeds[`${item.paragraph_id}_${p.id}`] = p.seed || -1;
         });
       });
       setPrompts(initialPrompts);
+      setSeeds(initialSeeds);
       setThumbnailUrl(res.thumbnail_url || null);
       setThumbnailHook(res.thumbnail?.hook || '');
       setThumbnailVisualPrompt(res.thumbnail?.visual_prompt || '');
@@ -112,9 +116,10 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleRegenerate = async (paraId: number, imgId: number) => {
     const key = `${paraId}_${imgId}`;
     const prompt = prompts[key];
+    const seed = seeds[key];
     setRegenerating(key);
     try {
-      const res = await api.regenerateImage(videoId, paraId, imgId, prompt, selectedModel, generationMode, selectedWorkflow);
+      const res = await api.regenerateImage(videoId, paraId, imgId, prompt, selectedModel, generationMode, selectedWorkflow, seed === -1 ? undefined : seed);
       if (res.ok) {
         const newData = { ...data };
         for (const item of newData.items) {
@@ -122,6 +127,10 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
             for (const p of item.prompts) {
               if (p.id === imgId) {
                 p.url = res.url;
+                // If the backend returned a new seed (e.g. from random), update it
+                if (res.seed) {
+                  setSeeds(prev => ({ ...prev, [key]: res.seed }));
+                }
               }
             }
           }
@@ -636,23 +645,45 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                           outline: 'none'
                         }}
                       />
-                      <button
-                        onClick={() => handleRegenerate(item.paragraph_id, p.id)}
-                        disabled={!!regenerating || !!converting}
-                        style={{
-                          backgroundColor: '#9333ea',
-                          color: 'white',
-                          padding: '10px',
-                          borderRadius: '8px',
-                          fontWeight: 'bold',
-                          cursor: 'pointer',
-                          border: 'none',
-                          opacity: (regenerating || converting) ? 0.5 : 1,
-                          marginTop: '8px'
-                        }}
-                      >
-                        Regenerar esta imagen
-                      </button>
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>SEMILLA (SEED)</label>
+                            <input 
+                              type="number"
+                              value={seeds[key] || -1}
+                              onChange={(e) => setSeeds({ ...seeds, [key]: parseInt(e.target.value) })}
+                              style={{
+                                backgroundColor: 'rgba(0,0,0,0.3)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                borderRadius: '6px',
+                                padding: '8px',
+                                color: 'white',
+                                width: '100%',
+                                fontSize: '0.85rem',
+                                outline: 'none'
+                              }}
+                              placeholder="-1 para aleatorio"
+                            />
+                          </div>
+                          <button
+                            onClick={() => handleRegenerate(item.paragraph_id, p.id)}
+                            disabled={!!regenerating || !!converting}
+                            style={{
+                              flex: 2,
+                              backgroundColor: '#9333ea',
+                              color: 'white',
+                              padding: '10px',
+                              borderRadius: '8px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              border: 'none',
+                              opacity: (regenerating || converting) ? 0.5 : 1,
+                              alignSelf: 'flex-end'
+                            }}
+                          >
+                            Regenerar esta imagen
+                          </button>
+                        </div>
                       {!p.is_video && (
                         <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                           <button

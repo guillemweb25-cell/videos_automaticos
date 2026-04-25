@@ -137,8 +137,8 @@ class ComfyService:
         
         if pos_node:
             existing_text = pos_node["inputs"].get("text", "")
-            # Append prompt to existing text (style)
-            pos_node["inputs"]["text"] = f"{existing_text}, {prompt}" if existing_text else prompt
+            # Put the user prompt first to give it more weight
+            pos_node["inputs"]["text"] = f"{prompt}, {existing_text}" if existing_text else prompt
 
         # 2. Find Negative Prompt Node
         neg_node = None

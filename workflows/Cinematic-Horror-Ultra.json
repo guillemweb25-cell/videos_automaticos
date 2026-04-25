@@ -51,7 +51,7 @@
   },
   "6": {
     "inputs": {
-      "text": "(biblical epic scene, hyper-realistic, masterpiece:1.3), divine golden hour lighting, cinematic atmosphere, 8k resolution, historical authenticity, religious art style, highly detailed textures, majestic composition, (realistic skin:1.2), (detailed hands:1.2)",
+      "text": "(photorealistic cinematic horror:1.2), (gritty realistic film still:1.2), sharp focus, detailed textures, natural skin pores, dramatic chiaroscuro lighting, volumetric fog, (masterpiece:1.2), (mexican rural gothic:1.1), muted palette of cold blues and dark ambers, (single subject:1.1), high dynamic range, 8k resolution",
       "clip": [
         "4",
         1
@@ -64,7 +64,7 @@
   },
   "7": {
     "inputs": {
-      "text": "nsfw, nude, naked, nipples, breasts, erotic, bare skin, embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), (polydactyly:2.0), (multiple hands:1.8), (fused fingers:1.8), (malformed limbs:1.8), (extra limbs:1.8), (extra arms:1.8), (poorly drawn hands:1.8), (missing fingers:1.8), (mutated hands:1.8), (deformed fingers:1.8), (extra digits:1.8), (fewer digits:1.8), (bad anatomy:1.5), (extra wheels, multiple wheels, extra tires, deformed car, fused wheels:1.4), (text, watermark, low quality, blurry, bright starburst sun, lens flare:1.2), cartoon, drawing, anime, 3d render, plastic, neon, cheerful, bright, modern buildings, electricity, cars, technology, out of frame, cropped",
+      "text": "nsfw, nude, naked, nipples, breasts, erotic, bare skin, embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), (polydactyly:2.0), (multiple hands:1.8), (fused fingers:1.8), (malformed limbs:1.8), (extra limbs:1.8), (extra arms:1.8), (poorly drawn hands:1.8), (missing fingers:1.8), (extra wheels, multiple wheels, extra tires, deformed car, fused wheels:1.4), (duplicate persons, twin characters, group of people, multiple characters, cloned face:1.4), (cropped, out of frame, cut off:1.3), (comic, drawing, illustration, painting, anime, sketch, cartoon, plastic, CGI:1.4), text, watermark, blurry, low quality, bad anatomy",
       "clip": [
         "4",
         1
@@ -93,7 +93,7 @@
   },
   "9": {
     "inputs": {
-      "filename_prefix": "Biblical_Ultra",
+      "filename_prefix": "CinematicHorror_Ultra",
       "images": [
         "8",
         0
@@ -125,7 +125,7 @@
       "cfg": 7,
       "sampler_name": "euler",
       "scheduler": "normal",
-      "denoise": 0.4,
+      "denoise": 0.45,
       "model": [
         "4",
         0
