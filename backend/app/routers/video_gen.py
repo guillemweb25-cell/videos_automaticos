@@ -74,11 +74,14 @@ def get_available_config():
     
     # Styles
     styles = []
+    seen_names = set()
     from app.services.style_service import ALIASES, STYLES
     for alias, style_key in ALIASES.items():
         style_info = STYLES.get(style_key, {})
         display_name = style_info.get("display_name", alias.replace("_", " ").capitalize())
-        styles.append({"id": alias, "name": display_name})
+        if display_name not in seen_names:
+            styles.append({"id": alias, "name": display_name})
+            seen_names.add(display_name)
     
     # Sort styles by name
     styles.sort(key=lambda x: x["name"])
@@ -476,11 +479,24 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                                     print(f"Warning: Failed to upload reference image for paragraph {idx} image {img_idx}: {e}")
                         
                         if gen_mode.upper() == "COMFYUI":
-                            # Use custom workflow name if provided
-                            if wf_n:
-                                result = await engine.generate_comfy_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg, workflow_name=wf_n)
-                            else:
-                                result = await engine.generate_comfy_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg)
+                            # Use custom workflow name if provided, or auto-select based on style
+                            current_wf = wf_n
+                            if not current_wf:
+                                if "ultra" in sty.lower():
+                                    current_wf = "Cinematic-Horror-Ultra.json"
+                                elif "cinematico" in sty.lower() or "realismo" in sty.lower():
+                                    current_wf = "Cinematic-Horror.json"
+                                elif "onirico" in sty.lower() or "suenos" in sty.lower():
+                                    current_wf = "Dreamy-Oniric.json"
+                                else:
+                                    current_wf = "Comic-Horror.json"
+
+                            result = await engine.generate_comfy_image(
+                                p_text, out_path, 
+                                size=f"{vid.width}x{vid.height}", 
+                                negative_prompt=neg, 
+                                workflow_name=current_wf
+                            )
                             cost_info = result
                         else:
                             cost_info = await engine.generate_leonardo_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=m_id, mode=gen_mode)
@@ -686,6 +702,16 @@ async def regenerate_image(
     # Check if a specific model was requested (passed as a query param or from somewhere)
     # For now, we'll allow an optional model_id in the regenerate call too if we want
     if generation_mode.upper() == "COMFYUI":
+        if not wf_name:
+            if "ultra" in style_name.lower():
+                wf_name = "Cinematic-Horror-Ultra.json"
+            elif "cinematico" in style_name.lower() or "realismo" in style_name.lower():
+                wf_name = "Cinematic-Horror.json"
+            elif "onirico" in style_name.lower() or "suenos" in style_name.lower():
+                wf_name = "Dreamy-Oniric.json"
+            else:
+                wf_name = "Comic-Horror.json"
+
         result = await engine.generate_comfy_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, workflow_name=wf_name, seed=req.seed)
         cost_info = result
     else:
@@ -794,6 +820,16 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
     neg = style.get("negative_prompt")
     
     if generation_mode.upper() == "COMFYUI":
+        if not wf_name:
+            if "ultra" in style_name.lower():
+                wf_name = "Cinematic-Horror-Ultra.json"
+            elif "cinematico" in style_name.lower() or "realismo" in style_name.lower():
+                wf_name = "Cinematic-Horror.json"
+            elif "onirico" in style_name.lower() or "suenos" in style_name.lower():
+                wf_name = "Dreamy-Oniric.json"
+            else:
+                wf_name = "Comic-Horror.json"
+
         cost_info = await engine.generate_comfy_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, workflow_name=wf_name)
     else:
         cost_info = await engine.generate_leonardo_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=model_id, mode=generation_mode)

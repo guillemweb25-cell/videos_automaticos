@@ -93,9 +93,34 @@ class ComfyService:
         # 4. Download
         data = await self.download_image(filename, img_type)
 
-        # 5. Save
+        # 5. Save and Optimize
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Save raw first
         out_path.write_bytes(data)
+        
+        # Post-processing optimization: Convert to compressed JPEG (even if extension is .png)
+        # This drastically reduces file size and server load during video rendering.
+        try:
+            from PIL import Image
+            with Image.open(out_path) as img:
+                # Convert to RGB (remove alpha)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                
+                # Sane max resolution: 1920 on the long side
+                max_dim = 1920
+                if max(img.size) > max_dim:
+                    scale = max_dim / max(img.size)
+                    new_size = (int(img.width * scale), int(img.height * scale))
+                    img = img.resize(new_size, Image.LANCZOS)
+                
+                # Save as JPEG with 90% quality
+                # We keep the original filename (likely .png) to avoid breaking app references
+                img.save(out_path, "JPEG", quality=90, optimize=True)
+                print(f"[INFO] Optimized image saved to {out_path} ({img.width}x{img.height})")
+        except Exception as e:
+            print(f"[ERROR] Could not optimize image {out_path}: {e}")
         
         return {"out_path": out_path, "seed": seed}
 

@@ -158,6 +158,8 @@ async def upload_video_to_youtube(
                 
         return {"status": "success", "youtube_id": youtube_id}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{video_id}/update-metadata")

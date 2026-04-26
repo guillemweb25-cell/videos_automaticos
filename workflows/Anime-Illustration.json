@@ -31,7 +31,7 @@
   },
   "4": {
     "inputs": {
-      "ckpt_name": "SDXL/autismmixSDXL_autismmixPony.safetensors"
+      "ckpt_name": "SDXL/lustifySDXLNSFW_apexV8.safetensors"
     },
     "class_type": "CheckpointLoaderSimple",
     "_meta": {

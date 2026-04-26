@@ -21,6 +21,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    user: "1000:1000"
     restart: unless-stopped
     ports:
       - "${BACKEND_PORT:-8500}:8000"

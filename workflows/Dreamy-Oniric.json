@@ -3,9 +3,9 @@
     "inputs": {
       "seed": 0,
       "steps": 25,
-      "cfg": 8,
-      "sampler_name": "euler",
-      "scheduler": "normal",
+      "cfg": 7.5,
+      "sampler_name": "dpmpp_sde",
+      "scheduler": "karras",
       "denoise": 1,
       "model": [
         "4",
@@ -26,12 +26,12 @@
     },
     "class_type": "KSampler",
     "_meta": {
-      "title": "Base KSampler"
+      "title": "Base Generation"
     }
   },
   "4": {
     "inputs": {
-      "ckpt_name": "SDXL/lustifySDXLNSFW_apexV8.safetensors"
+      "ckpt_name": "SDXL/juggernautXL_ragnarokBy.safetensors"
     },
     "class_type": "CheckpointLoaderSimple",
     "_meta": {
@@ -40,8 +40,8 @@
   },
   "5": {
     "inputs": {
-      "width": 832,
-      "height": 1216,
+      "width": 1024,
+      "height": 1024,
       "batch_size": 1
     },
     "class_type": "EmptyLatentImage",
@@ -51,7 +51,7 @@
   },
   "6": {
     "inputs": {
-      "text": "(masterpiece:1.2), (high quality:1.2), (anime style illustration:1.3), (manga style:1.2), vibrant colors, clean lines, detailed eyes, sharp focus, digital art, 4k, cinematic lighting",
+      "text": "surreal oniric dream, (ethereal mystical atmosphere:1.3), (dream-like:1.2), (double exposure:0.8), glowing soft highlights, hazy fog, mystical lighting, transcendental, floating particles, (painterly texture:1.1), (soft focus:0.8), cinematic, masterpiece",
       "clip": [
         "4",
         1
@@ -59,12 +59,12 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "positive"
+      "title": "Oniric Positive"
     }
   },
   "7": {
     "inputs": {
-      "text": "embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), (polydactyly:2.0), (multiple hands:1.8), (fused fingers:1.8), (malformed limbs:1.8), (extra limbs:1.8), (poorly drawn hands:1.8), (missing fingers:1.8), text, watermark, blurry, low quality, bad anatomy, photorealistic, 3d render, real life, photography",
+      "text": "nsfw, nude, sharp edges, high contrast, harsh lighting, hyper-realistic, photography, mundane, boring, realistic skin, ordinary, embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), text, watermark",
       "clip": [
         "4",
         1
@@ -72,7 +72,51 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "negative"
+      "title": "Negative"
+    }
+  },
+  "10": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "scale_by": 1.25,
+      "samples": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "LatentUpscaleBy",
+    "_meta": {
+      "title": "Latent Upscale"
+    }
+  },
+  "11": {
+    "inputs": {
+      "seed": 0,
+      "steps": 20,
+      "cfg": 8,
+      "sampler_name": "dpmpp_sde",
+      "scheduler": "karras",
+      "denoise": 0.55,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "Oniric Refiner (Melting Realism)"
     }
   },
   "8": {
@@ -93,7 +137,7 @@
   },
   "9": {
     "inputs": {
-      "filename_prefix": "AnimeIllustration_Ultra",
+      "filename_prefix": "DreamyOniric",
       "images": [
         "8",
         0
@@ -102,50 +146,6 @@
     "class_type": "SaveImage",
     "_meta": {
       "title": "Save Image"
-    }
-  },
-  "10": {
-    "inputs": {
-      "upscale_method": "nearest-exact",
-      "scale_by": 1.25,
-      "samples": [
-        "3",
-        0
-      ]
-    },
-    "class_type": "LatentUpscaleBy",
-    "_meta": {
-      "title": "Latent Upscale"
-    }
-  },
-  "11": {
-    "inputs": {
-      "seed": 0,
-      "steps": 15,
-      "cfg": 8,
-      "sampler_name": "euler",
-      "scheduler": "normal",
-      "denoise": 0.45,
-      "model": [
-        "4",
-        0
-      ],
-      "positive": [
-        "6",
-        0
-      ],
-      "negative": [
-        "7",
-        0
-      ],
-      "latent_image": [
-        "10",
-        0
-      ]
-    },
-    "class_type": "KSampler",
-    "_meta": {
-      "title": "Refinement KSampler"
     }
   }
 }

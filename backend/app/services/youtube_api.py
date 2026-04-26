@@ -250,13 +250,18 @@ class YouTubeService:
             media_body=media
         )
         
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                print(f"Uploaded {int(status.progress() * 100)}%")
-        
-        return response
+        try:
+            response = None
+            while response is None:
+                status, response = request.next_chunk()
+                if status:
+                    print(f"Uploaded {int(status.progress() * 100)}%")
+            
+            return response
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise e
 
     def update_video_metadata(self, video_id: str, metadata: Dict[str, Any]):
         """Updates metadata for an existing YouTube video."""
@@ -298,16 +303,44 @@ class YouTubeService:
         return response
 
     def set_thumbnail(self, video_id: str, thumbnail_path: Path):
-        """Sets a custom thumbnail for a video."""
+        """Sets a custom thumbnail for a video. Automatically compresses if > 2MB."""
         creds = self.get_credentials()
         if not creds:
             raise RuntimeError("Not authenticated with YouTube")
         
+        # YouTube limit is 2MB
+        MAX_SIZE = 2 * 1024 * 1024
+        upload_path = thumbnail_path
+        
+        if thumbnail_path.stat().st_size > MAX_SIZE:
+            print(f"[youtube] Thumbnail {thumbnail_path.name} is too large ({thumbnail_path.stat().st_size / 1024 / 1024:.2f}MB). Compressing...", flush=True)
+            from PIL import Image
+            img = Image.open(thumbnail_path)
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            
+            # Save as JPEG with decreasing quality until < 2MB
+            tmp_thumb = thumbnail_path.parent / f"__tmp_thumb_{video_id}.jpg"
+            quality = 95
+            img.save(tmp_thumb, "JPEG", quality=quality, optimize=True)
+            
+            while tmp_thumb.stat().st_size > MAX_SIZE and quality > 10:
+                quality -= 5
+                img.save(tmp_thumb, "JPEG", quality=quality, optimize=True)
+                print(f"[youtube] Retrying compression: quality={quality}, size={tmp_thumb.stat().st_size / 1024:.1f}KB")
+            
+            upload_path = tmp_thumb
+        
         youtube = build("youtube", "v3", credentials=creds)
         
-        request = youtube.thumbnails().set(
-            videoId=video_id,
-            media_body=MediaFileUpload(str(thumbnail_path))
-        )
-        response = request.execute()
-        return response
+        try:
+            request = youtube.thumbnails().set(
+                videoId=video_id,
+                media_body=MediaFileUpload(str(upload_path))
+            )
+            response = request.execute()
+            return response
+        finally:
+            # Clean up temporary compressed thumbnail if it was created
+            if upload_path != thumbnail_path and upload_path.exists():
+                upload_path.unlink()

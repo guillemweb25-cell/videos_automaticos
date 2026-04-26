@@ -89,7 +89,8 @@ class RenderingEngine:
             scale = base_scale * z
             nw, nh = int(W0 * scale), int(H0 * scale)
             
-            img_resized = base.resize((nw, nh), Image.LANCZOS)
+            # Using BILINEAR instead of LANCZOS for a huge speed boost during per-frame resizing
+            img_resized = base.resize((nw, nh), Image.BILINEAR)
             arr = np.array(img_resized)
             
             x1 = (nw - W) // 2
@@ -157,29 +158,10 @@ class RenderingEngine:
             
         video = CompositeVideoClip(clips, size=out_size).set_duration(t_cursor)
         
-        # 4. Apply Overlay
-        if overlay_video_path and overlay_video_path.exists():
-            from moviepy.video.io.VideoFileClip import VideoFileClip
-            from moviepy.video.fx.all import mask_color, loop, resize
-            
-            overlay_clip = VideoFileClip(str(overlay_video_path))
-            
-            # Loop overhead handling
-            if overlay_clip.duration < t_cursor:
-                overlay_clip = overlay_clip.fx(loop, duration=t_cursor)
-            else:
-                overlay_clip = overlay_clip.subclip(0, t_cursor)
-            
-            # Apply alpha keying for pitch black background #000000 
-            # thr=30 grabs near-blacks. Lower opacity to make artifacts less blinding.
-            overlay_clip = (
-                overlay_clip
-                .fx(resize, newsize=out_size)
-                .fx(mask_color, color=[0, 0, 0], thr=30, s=5)
-                .set_opacity(0.65)
-                .set_start(0)
-            )
-            video = CompositeVideoClip([video, overlay_clip], size=out_size).set_duration(t_cursor)
+        video = CompositeVideoClip(clips, size=out_size).set_duration(t_cursor)
+        
+        # NOTE: Overlay and Audio normalization are handled in FFmpeg post-process for maximum speed.
+        # MoviePy's mask_color is too slow for 1080p+ renders.
         
         # ── Audio: boost voice + duck music ──
         audio_clips = [AudioFileClip(str(p)) for p in audio_paths]
@@ -207,6 +189,32 @@ class RenderingEngine:
         # ── Render with moviepy (verbose=True for Docker-visible progress) ──
         out_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_render = out_path.parent / "__tmp_render__.mp4"
+        stats_path = out_path.parent / "render_stats.txt"
+
+        import datetime
+        start_time = datetime.datetime.now()
+        with open(stats_path, "a") as f:
+            f.write(f"\n--- RENDER START: {start_time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+
+        from proglog import ProgressBarLogger
+        class SimpleProgressLogger(ProgressBarLogger):
+            def __init__(self):
+                super().__init__()
+                self.last_pct = -1
+            def callback(self, **kwargs):
+                # The bar we care about is usually named 'chunk' or 't' in MoviePy
+                bars = self.state.get('bars', {})
+                if not bars: return
+                
+                # Get the first active bar
+                bar = next(iter(bars.values()))
+                index = bar.get('index', 0)
+                total = bar.get('total', 1)
+                if total > 0:
+                    pct = int(index * 100 / total)
+                    if pct > self.last_pct:
+                        print(f"[render] Progress: {pct}%", flush=True)
+                        self.last_pct = pct
 
         print(f"[render] Writing video to {out_path} ({t_cursor:.1f}s, {fps}fps) ...", flush=True)
         video.write_videofile(
@@ -215,8 +223,8 @@ class RenderingEngine:
             codec="libx264",
             audio_codec="aac",
             audio_bitrate="192k",
-            threads=4,
-            preset="medium",
+            threads=8,
+            preset="superfast",
             ffmpeg_params=[
                 "-crf", "22",
                 "-pix_fmt", "yuv420p",
@@ -224,28 +232,64 @@ class RenderingEngine:
                 "-movflags", "+faststart",
                 "-g", str(max(1, fps * 2)),
             ],
-            verbose=True,
+            verbose=False,
+            logger=SimpleProgressLogger(),
             temp_audiofile=str(out_path.parent / "__tmp_audio__.m4a"),
             remove_temp=True,
         )
+        print(f"[render] MoviePy render finished. Proceeding to post-process...", flush=True)
 
-        # ── Post-process: normalize loudness with ffmpeg ──
-        print("[render] Normalizing audio loudness...", flush=True)
-        norm_cmd = [
-            "ffmpeg", "-y",
-            "-i", str(tmp_render),
-            "-c:v", "copy",
-            "-af", "loudnorm=I=-14:TP=-1:LRA=11",
-            "-c:a", "aac", "-b:a", "192k",
-            "-movflags", "+faststart",
-            str(out_path),
-        ]
-        result = subprocess.run(norm_cmd, capture_output=True, text=True)
+        # ── Post-process: Apply Overlay (if any) + Normalize loudness with ffmpeg ──
+        print("[render] Post-processing (Overlay + Loudnorm)...", flush=True)
+        
+        # Base command for loudnorm
+        norm_filter = "loudnorm=I=-14:TP=-1:LRA=11"
+        
+        if overlay_video_path and overlay_video_path.exists():
+            # Use FFmpeg filter_complex to key out black and overlay. This is 100x faster than MoviePy mask_color.
+            # [1:v]colorkey=black:0.1:0.1[ck];[0:v][ck]overlay=shortest=1[outv]
+            # We also scale the overlay to match output size if needed.
+            ov_cmd = [
+                "ffmpeg", "-y",
+                "-i", str(tmp_render),
+                "-i", str(overlay_video_path),
+                "-filter_complex", 
+                f"[1:v]scale={out_size[0]}:{out_size[1]},colorkey=black:0.3:0.1[ovl];"
+                f"[0:v][ovl]overlay=shortest=1[v_out];"
+                f"[0:a]{norm_filter}[a_out]",
+                "-map", "[v_out]",
+                "-map", "[a_out]",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                "-c:a", "aac", "-b:a", "192k",
+                "-movflags", "+faststart",
+                str(out_path),
+            ]
+        else:
+            ov_cmd = [
+                "ffmpeg", "-y",
+                "-i", str(tmp_render),
+                "-c:v", "copy",
+                "-af", norm_filter,
+                "-c:a", "aac", "-b:a", "192k",
+                "-movflags", "+faststart",
+                str(out_path),
+            ]
+            
+            
+        import subprocess
+        # Run without capture_output to see ffmpeg progress in logs
+        result = subprocess.run(ov_cmd)
         if result.returncode != 0:
-            print(f"[render] loudnorm warning: {result.stderr[-500:]}", flush=True)
+            print(f"[render] Post-process error (ffmpeg failed)", flush=True)
             # Fallback: just rename tmp to final
             tmp_render.rename(out_path)
         else:
             tmp_render.unlink(missing_ok=True)
+
+        end_time = datetime.datetime.now()
+        total_time = end_time - start_time
+        with open(stats_path, "a") as f:
+            f.write(f"--- RENDER END: {end_time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+            f.write(f"--- TOTAL DURATION: {total_time} ---\n")
 
         print(f"[render] Done! {out_path} ({out_path.stat().st_size / 1024 / 1024:.1f} MB)", flush=True)

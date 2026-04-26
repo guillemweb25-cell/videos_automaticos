@@ -97,6 +97,14 @@ STYLES: Dict[str, StyleSpec] = {
         ),
         "negative_prompt": NEGATIVE_BASE + ", illustration, drawing, painting, comic, anime, sketch, cartoony",
     },
+    "sombras_cinematico": {
+        "extends": "sombras_realismo_sucio",
+        "display_name": "Realismo Cinemático",
+    },
+    "sombras_cinematico_ultra": {
+        "extends": "sombras_realismo_sucio",
+        "display_name": "Realismo Cinemático (Ultra)",
+    },
     "grabovoi_aurora": {
         "display_name": "Aurora Borealis",
         "image_style_prompt": "Beautiful aurora borealis lights, mystical atmosphere, vibrant colors, grabovoi style",
@@ -152,6 +160,16 @@ STYLES: Dict[str, StyleSpec] = {
         "display_name": "Biblical Classic",
         "image_style_prompt": "Epic cinematic biblical photography, soft natural lighting, historically accurate textures and robes, desert landscapes of ancient Judea, majestic atmosphere, high contrast, photorealistic, 8k, sharp focus on faces and respectful expressions.",
         "negative_prompt": "modern architecture, technology, cars, electrical lines, text, watermarks, frames, borders, cartoon, anime, plastic CGI, extra limbs, deformed hands, stained glass, kitsch glow, church murals, framed paintings, distorted anatomy, low quality, lens flare, bright starburst sun.",
+    },
+    "onirico_suenos": {
+        "display_name": "Onírico (Sueños)",
+        "image_style_prompt": (
+            "Surreal oniric atmosphere, ethereal soft lighting, mystical glowing particles, "
+            "dream-like composition, hazy backgrounds, blurred edges, floating elements, "
+            "soft pastel accents amidst deep shadows, transcendental and symbolic; "
+            "hyper-detailed but mystical; cinematic film grain; masterpiece"
+        ),
+        "negative_prompt": NEGATIVE_BASE + ", sharp edges, harsh lighting, boring, realistic photography, ordinary life",
     }
 }
 
@@ -162,6 +180,8 @@ ALIASES = {
     "sombras_comic": "sombras_horror_nocturno",
     "realismo_mexicano": "sombras_realismo_sucio",
     "sombras_real": "sombras_realismo_sucio",
+    "cinematico": "sombras_cinematico",
+    "cinematico_ultra": "sombras_cinematico_ultra",
     "aurora": "grabovoi_aurora",
     "cabala": "cabala_luz_divina",
     "deepsea": "deepsea",
@@ -176,6 +196,8 @@ ALIASES = {
     "cabalalegacy": "cabala_legacy_master",
     "legacy": "cabala_legacy_master",
     "biblical_classic": "biblical_classic",
+    "onirico": "onirico_suenos",
+    "suenos": "onirico_suenos",
     "canal_personalizado": "canal_personalizado",
 }
 
