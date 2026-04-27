@@ -4,8 +4,19 @@ from typing import List, Optional
 from openai import OpenAI
 
 class SEOEngine:
-    def __init__(self, api_key: Optional[str] = None):
-        self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
+    def __init__(self, api_key: Optional[str] = None, provider: str = "openai"):
+        self.provider = provider.lower()
+        base_url = None
+        
+        if self.provider == "grok":
+            base_url = "https://api.x.ai/v1"
+            api_key = api_key or os.getenv("GROK_API_KEY")
+            self.model = "grok-4.20-beta"
+        else:
+            api_key = api_key or os.getenv("OPENAI_API_KEY")
+            self.model = "gpt-4o-mini"
+            
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
 
     def generate_description(self, script_snippet: str, lang: str = "es", custom_rules: Optional[str] = None) -> str:
         """Generates a rich video description."""
@@ -19,7 +30,7 @@ class SEOEngine:
         user_msg = f"Language: {lang}\nScript snippet:\n{script_snippet}\n\nWrite an SEO description with key points."
         
         response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=self.model,
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}
@@ -42,7 +53,7 @@ class SEOEngine:
         user_msg = f"Language: {lang}\nScript snippet:\n{script_snippet}\n\nWrite an optimized YouTube title."
         
         response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=self.model,
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}
@@ -64,7 +75,7 @@ class SEOEngine:
         user_msg = f"Language: {lang}\nCount: {count}\nContext:\n{script_snippet}"
         
         response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=self.model,
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}
@@ -84,7 +95,7 @@ class SEOEngine:
         user_msg = f"Language: {lang}\nCount: {count}\nContext:\n{script_snippet}"
         
         response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=self.model,
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}
@@ -137,7 +148,7 @@ class SEOEngine:
         user_msg = f"Script snippet:\n{script_snippet}\n\nWrite a short thumbnail hook."
         
         response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=self.model,
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}
@@ -182,7 +193,7 @@ class SEOEngine:
         )
         
         response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=self.model,
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}

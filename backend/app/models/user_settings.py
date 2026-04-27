@@ -11,6 +11,7 @@ class UserSettings(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     
     openai_api_key = Column(String(255), nullable=True)
+    grok_api_key = Column(String(255), nullable=True)
     leonardo_api_key = Column(String(255), nullable=True)
     assemblyai_api_key = Column(String(255), nullable=True)
     elevenlabs_api_key = Column(String(255), nullable=True)

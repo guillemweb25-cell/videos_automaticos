@@ -15,6 +15,7 @@ class VideoBase(BaseModel):
     voice: Optional[str] = None
     style: Optional[str] = None
     max_images_per_paragraph: int = 2
+    llm_provider: str = "openai"
 
 class VideoCreate(VideoBase):
     pass
@@ -29,6 +30,7 @@ class VideoUpdate(BaseModel):
     width: Optional[int] = None
     height: Optional[int] = None
     max_images_per_paragraph: Optional[int] = None
+    llm_provider: Optional[str] = None
 
 class VideoResponse(VideoBase):
     id: int

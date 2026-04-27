@@ -22,6 +22,7 @@ class Video(Base):
     voice = Column(String(100), nullable=True)
     style = Column(String(100), nullable=True)
     max_images_per_paragraph = Column(Integer, default=2)
+    llm_provider = Column(String(50), default="openai")
     
     # YouTube SEO Persistence
     youtube_title = Column(String(100), nullable=True)

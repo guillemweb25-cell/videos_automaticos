@@ -11,8 +11,19 @@ import asyncio
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 class ImageEngine:
-    def __init__(self, openai_api_key: Optional[str] = None, leonardo_api_key: Optional[str] = None):
-        self.openai_client = OpenAI(api_key=openai_api_key or os.getenv("OPENAI_API_KEY"))
+    def __init__(self, openai_api_key: Optional[str] = None, leonardo_api_key: Optional[str] = None, grok_api_key: Optional[str] = None, provider: str = "openai"):
+        self.provider = provider.lower()
+        base_url = None
+        
+        if self.provider == "grok":
+            base_url = "https://api.x.ai/v1"
+            api_key = grok_api_key or os.getenv("GROK_API_KEY")
+            self.model = "grok-4.20-beta"
+        else:
+            api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+            self.model = "gpt-4o-mini"
+
+        self.openai_client = OpenAI(api_key=api_key, base_url=base_url)
         self.leonardo_api_key = leonardo_api_key or os.getenv("LEONARDO_API_KEY")
         self.leonardo_v1_url = "https://cloud.leonardo.ai/api/rest/v1"
         self.leonardo_v2_url = "https://cloud.leonardo.ai/api/rest/v2"
@@ -56,7 +67,7 @@ class ImageEngine:
 
         
         response = self.openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=self.model,
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}
@@ -98,7 +109,7 @@ class ImageEngine:
         )
         
         response = self.openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=self.model,
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}

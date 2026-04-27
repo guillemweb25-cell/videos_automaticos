@@ -13,12 +13,14 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 class SettingsUpdate(BaseModel):
     openai_api_key: Optional[str] = None
+    grok_api_key: Optional[str] = None
     leonardo_api_key: Optional[str] = None
     assemblyai_api_key: Optional[str] = None
     elevenlabs_api_key: Optional[str] = None
 
 class SettingsResponse(BaseModel):
     has_openai: bool
+    has_grok: bool
     has_leonardo: bool
     has_assemblyai: bool
     has_elevenlabs: bool
@@ -37,10 +39,11 @@ class GlobalSettingsUpdate(BaseModel):
 def get_user_settings(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     settings = current_user.settings
     if not settings:
-        return SettingsResponse(has_openai=False, has_leonardo=False, has_assemblyai=False, has_elevenlabs=False)
+        return SettingsResponse(has_openai=False, has_grok=False, has_leonardo=False, has_assemblyai=False, has_elevenlabs=False)
     
     return SettingsResponse(
         has_openai=bool(settings.openai_api_key),
+        has_grok=bool(settings.grok_api_key),
         has_leonardo=bool(settings.leonardo_api_key),
         has_assemblyai=bool(settings.assemblyai_api_key),
         has_elevenlabs=bool(settings.elevenlabs_api_key)
@@ -55,6 +58,8 @@ def update_user_settings(data: SettingsUpdate, current_user: User = Depends(get_
     
     if data.openai_api_key is not None:
         settings.openai_api_key = data.openai_api_key
+    if data.grok_api_key is not None:
+        settings.grok_api_key = data.grok_api_key
     if data.leonardo_api_key is not None:
         settings.leonardo_api_key = data.leonardo_api_key
     if data.assemblyai_api_key is not None:
@@ -67,6 +72,7 @@ def update_user_settings(data: SettingsUpdate, current_user: User = Depends(get_
     
     return SettingsResponse(
         has_openai=bool(settings.openai_api_key),
+        has_grok=bool(settings.grok_api_key),
         has_leonardo=bool(settings.leonardo_api_key),
         has_assemblyai=bool(settings.assemblyai_api_key),
         has_elevenlabs=bool(settings.elevenlabs_api_key)

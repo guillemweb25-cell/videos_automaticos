@@ -13,6 +13,7 @@ from pathlib import Path
 import json
 from pydantic import BaseModel
 from typing import Optional
+from app.routers.video_gen import get_user_settings_for_video
 
 router = APIRouter(prefix="/youtube", tags=["YouTube"])
 
@@ -231,7 +232,11 @@ async def regenerate_youtube_title(
     plan = json.loads(plan_path.read_text())
     script_snippet = "\n".join([item.get("spoken", "") for item in plan[:5]]) # First 5 paragraphs
     
-    seo = SEOEngine()
+    settings = get_user_settings_for_video(video, db)
+    seo = SEOEngine(
+        api_key=(settings.grok_api_key if video.llm_provider == "grok" else settings.openai_api_key), 
+        provider=video.llm_provider
+    )
     title = seo.generate_video_title(script_snippet)
     
     # Save to DB
@@ -270,7 +275,11 @@ async def regenerate_youtube_description(
     plan = json.loads(plan_path.read_text())
     script_snippet = "\n".join([item.get("spoken", "") for item in plan])
     
-    seo = SEOEngine()
+    settings = get_user_settings_for_video(video, db)
+    seo = SEOEngine(
+        api_key=(settings.grok_api_key if video.llm_provider == "grok" else settings.openai_api_key), 
+        provider=video.llm_provider
+    )
     description = seo.generate_description(script_snippet[:4000])
     
     # Save to DB
@@ -309,7 +318,11 @@ async def regenerate_youtube_tags(
     plan = json.loads(plan_path.read_text())
     script_snippet = "\n".join([item.get("spoken", "") for item in plan])
     
-    seo = SEOEngine()
+    settings = get_user_settings_for_video(video, db)
+    seo = SEOEngine(
+        api_key=(settings.grok_api_key if video.llm_provider == "grok" else settings.openai_api_key), 
+        provider=video.llm_provider
+    )
     tags = seo.generate_video_questions_tags(script_snippet[:4000])
     
     # Save to DB

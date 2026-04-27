@@ -236,7 +236,12 @@ async def upload_script(video_id: int, request: Request, script: str = None, db:
     (base_dir / "script.txt").write_text(script_text, encoding="utf-8")
     
     settings = get_user_settings_for_video(video, db)
-    engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
+    engine = ImageEngine(
+        openai_api_key=settings.openai_api_key, 
+        leonardo_api_key=settings.leonardo_api_key,
+        grok_api_key=settings.grok_api_key,
+        provider=video.llm_provider
+    )
     
     paragraphs = [p.strip() for p in script_text.split("\n\n") if p.strip()]
     (base_dir / "plan.json").write_text(json.dumps([{"idx": i+1, "spoken": p} for i, p in enumerate(paragraphs)], indent=2), encoding="utf-8")
@@ -331,14 +336,16 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
     
     # Extract keys to pass to thread
     openai_key = settings.openai_api_key
+    grok_key = settings.grok_api_key
     leonardo_key = settings.leonardo_api_key
+    llm_p = video.llm_provider
     wf_name = req.workflow_name # New field
     
     # Run image generation in background thread to avoid proxy timeouts
     import threading
     from app.database import SessionLocal
     
-    async def _generate_images_background(vid_id, sty, max_imgs, m_id, gen_mode, openai_k, leonardo_k, wf_n):
+    async def _generate_images_background(vid_id, sty, max_imgs, m_id, gen_mode, openai_k, leonardo_k, grok_k, llm_prov, wf_n):
 
         db_bg = SessionLocal()
         try:
@@ -361,8 +368,8 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             dur_map = {d["id"]: d["seconds"] for d in durations}
 
             plan = json.loads(plan_path.read_text())
-            engine = ImageEngine(openai_api_key=openai_k, leonardo_api_key=leonardo_k)
-            seo = SEOEngine(api_key=openai_k)
+            engine = ImageEngine(openai_api_key=openai_k, leonardo_api_key=leonardo_k, grok_api_key=grok_k, provider=llm_prov)
+            seo = SEOEngine(api_key=(grok_k if llm_prov == "grok" else openai_k), provider=llm_prov)
             
             # Load channel for custom style
             channel = db_bg.query(Channel).filter(Channel.id == vid.channel_id).first()
@@ -538,7 +545,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             thumbnail_path = base_dir / "output" / "thumbnail.png"
             if not thumbnail_path.exists():
                 try:
-                    seo = SEOEngine(api_key=openai_k)
+                    seo = SEOEngine(api_key=(grok_k if llm_prov == "grok" else openai_k), provider=llm_prov)
                     script_snippet = "\n".join([item.get("spoken", "") for item in plan])
                     # NEW: use custom rules from guide for hook
                     custom_title_rules = StyleService.get_custom_title_rules(base_dir)
@@ -575,7 +582,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             db_bg.close()
     
     # Use asyncio.create_task instead of threading.Thread for async background task
-    asyncio.create_task(_generate_images_background(video_id, req.style_name, req.max_images_per_paragraph, req.model_id, req.generation_mode, openai_key, leonardo_key, wf_name))
+    asyncio.create_task(_generate_images_background(video_id, req.style_name, req.max_images_per_paragraph, req.model_id, req.generation_mode, openai_key, leonardo_key, grok_key, llm_p, wf_name))
     
     return {"ok": True, "background": True, "count": 0}
 
@@ -690,7 +697,12 @@ async def regenerate_image(
         out_path.unlink()
     
     settings = get_user_settings_for_video(video, db)
-    engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
+    engine = ImageEngine(
+        openai_api_key=settings.openai_api_key, 
+        leonardo_api_key=settings.leonardo_api_key,
+        grok_api_key=settings.grok_api_key,
+        provider=video.llm_provider
+    )
     style_name = data.get("style", "stocksenior")
     # New: get workflow from request or json
     wf_name = req.workflow_name or data.get("workflow_name")
@@ -785,7 +797,12 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
 
     # 2. Logic for continuity
     settings = get_user_settings_for_video(video, db)
-    engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
+    engine = ImageEngine(
+        openai_api_key=settings.openai_api_key, 
+        leonardo_api_key=settings.leonardo_api_key,
+        grok_api_key=settings.grok_api_key,
+        provider=video.llm_provider
+    )
     init_image_id = None
     if last_img_path.exists():
         try:
@@ -1182,7 +1199,13 @@ async def regenerate_prompt_api(
     channel_style = StyleService.get_channel_style(channel, style_name)
     
     # 3. Generate 1 new prompt
-    engine = ImageEngine()
+    settings = get_user_settings_for_video(video, db)
+    engine = ImageEngine(
+        openai_api_key=settings.openai_api_key,
+        leonardo_api_key=settings.leonardo_api_key,
+        grok_api_key=settings.grok_api_key,
+        provider=video.llm_provider
+    )
     script_full = "\n".join([item.get("spoken", "") for item in plan])
     
     # NEW: Load custom niche rules
@@ -1237,9 +1260,11 @@ async def regenerate_thumbnail_hook(video_id: int, db: Session = Depends(get_db)
     
     script_full = "\n".join([item.get("spoken", "") for item in plan])
     settings = get_user_settings_for_video(video, db)
-    if not settings or not settings.openai_api_key:
-        raise HTTPException(status_code=400, detail="Falta API Key de OpenAI.")
-    seo = SEOEngine(api_key=settings.openai_api_key)
+    llm_prov = video.llm_provider
+    api_key = settings.grok_api_key if llm_prov == "grok" else settings.openai_api_key
+    if not api_key:
+        raise HTTPException(status_code=400, detail=f"Falta API Key para {llm_prov.upper()}.")
+    seo = SEOEngine(api_key=api_key, provider=llm_prov)
     # NEW: use custom rules from guide for hook
     custom_title_rules = StyleService.get_custom_title_rules(base_dir)
     hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules)
@@ -1270,9 +1295,11 @@ async def regenerate_thumbnail_visual_prompt(video_id: int, db: Session = Depend
     script_full = "\n".join([item.get("spoken", "") for item in plan])
     style_name = data.get("style", "stocksenior")
     settings = get_user_settings_for_video(video, db)
-    if not settings or not settings.openai_api_key:
-        raise HTTPException(status_code=400, detail="Falta API Key de OpenAI.")
-    seo = SEOEngine(api_key=settings.openai_api_key)
+    llm_prov = video.llm_provider
+    api_key = settings.grok_api_key if llm_prov == "grok" else settings.openai_api_key
+    if not api_key:
+        raise HTTPException(status_code=400, detail=f"Falta API Key para {llm_prov.upper()}.")
+    seo = SEOEngine(api_key=api_key, provider=llm_prov)
     hook = data.get("thumbnail", {}).get("hook", "")
     
     # Use custom thumbnail rules if available
@@ -1343,9 +1370,12 @@ async def generate_thumbnail_api(
             plan = json.loads(plan_path.read_text())
             script_full = "\n".join([item.get("spoken", "") for item in plan])
             settings = get_user_settings_for_video(video, db)
-            if not settings or not settings.openai_api_key:
-                raise HTTPException(status_code=400, detail="Falta API Key de OpenAI.")
-            seo = SEOEngine(api_key=settings.openai_api_key)
+            llm_prov = video.llm_provider
+            api_key = settings.grok_api_key if llm_prov == "grok" else settings.openai_api_key
+            if not api_key:
+                raise HTTPException(status_code=400, detail=f"Falta API Key para {llm_prov.upper()}.")
+            
+            seo = SEOEngine(api_key=api_key, provider=llm_prov)
             if not current_hook:
                 custom_title_rules = get_style_rules(video.channel_id, "title-rules")
                 current_hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules, channel_name=video.channel.name)
@@ -1369,9 +1399,15 @@ async def generate_thumbnail_api(
 
     thumbnail_path = base_dir / "output" / "thumbnail.png"
     settings = get_user_settings_for_video(video, db)
-    if not settings or not settings.openai_api_key or not settings.leonardo_api_key:
-        raise HTTPException(status_code=400, detail="Faltan API Keys. Ve a la pantalla de Ajustes.")
-    engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
+    if not settings:
+         raise HTTPException(status_code=400, detail="Faltan ajustes de usuario.")
+         
+    engine = ImageEngine(
+        openai_api_key=settings.openai_api_key, 
+        leonardo_api_key=settings.leonardo_api_key,
+        grok_api_key=settings.grok_api_key,
+        provider=video.llm_provider
+    )
     await engine.generate_thumbnail(
         current_hook, current_visual, thumbnail_path, 
         size=f"{video.width}x{video.height}", 
@@ -1427,9 +1463,13 @@ async def generate_seo(video_id: int, db: Session = Depends(get_db)):
     
     script = script_path.read_text()
     settings = get_user_settings_for_video(video, db)
-    if not settings or not settings.openai_api_key:
-        raise HTTPException(status_code=400, detail="Falta API Key de OpenAI.")
-    engine = SEOEngine(api_key=settings.openai_api_key)
+    llm_prov = video.llm_provider
+    api_key = settings.grok_api_key if llm_prov == "grok" else settings.openai_api_key
+    
+    if not api_key:
+        raise HTTPException(status_code=400, detail=f"Falta API Key para {llm_prov.upper()}.")
+    
+    engine = SEOEngine(api_key=api_key, provider=llm_prov)
     
     # Fetch custom rules
     desc_rules = StyleService.get_custom_description_rules(base_dir)

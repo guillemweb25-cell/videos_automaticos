@@ -31,6 +31,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [selectedOverlay, setSelectedOverlay] = useState<string>('');
   const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('Comic-Horror.json');
+  const [llmProvider, setLlmProvider] = useState('openai');
 
   const loadData = async () => {
     try {
@@ -85,6 +86,9 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
       }
       if (res.workflow_name) {
         setSelectedWorkflow(res.workflow_name);
+      }
+      if (res.llm_provider) {
+        setLlmProvider(res.llm_provider);
       }
     } catch (err) {
       console.error("Error loading data:", err);
@@ -325,6 +329,34 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                 {leonardoModels.map((m: any) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold' }}>MOTOR IA (PROMPTS)</label>
+              <select 
+                value={llmProvider}
+                onChange={async (e: React.ChangeEvent<HTMLSelectElement>) => {
+                  const newVal = e.target.value;
+                  setLlmProvider(newVal);
+                  try {
+                    await api.updateVideo(videoId, { llm_provider: newVal });
+                  } catch (err) {
+                    console.error("Error updating llm_provider", err);
+                  }
+                }}
+                style={{
+                  backgroundColor: '#111827',
+                  color: 'white',
+                  border: '1px solid #4b5563',
+                  borderRadius: '6px',
+                  padding: '6px 10px',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  minWidth: '120px'
+                }}
+              >
+                <option value="openai">OpenAI</option>
+                <option value="grok">Grok</option>
               </select>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>

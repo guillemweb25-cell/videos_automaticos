@@ -17,6 +17,7 @@ export interface VideoResponse extends Video {
   voice?: string;
   style?: string;
   max_images_per_paragraph?: number;
+  llm_provider?: string;
 }
 
 export interface ParagraphPrompt {
@@ -368,7 +369,7 @@ class ApiClient {
     return res.json();
   }
 
-  async createVideo(data: { channel_id: number; title: string; voice?: string; style?: string; width?: number; height?: number; max_images_per_paragraph?: number }): Promise<VideoResponse> {
+  async createVideo(data: { channel_id: number; title: string; voice?: string; style?: string; width?: number; height?: number; max_images_per_paragraph?: number; llm_provider?: string }): Promise<VideoResponse> {
     const res = await fetch(`${this.baseUrl}/videos/`, {
       method: 'POST',
       headers: this.getHeaders(true),
@@ -803,7 +804,7 @@ class ApiClient {
     return res.json();
   }
 
-  async getSettings(): Promise<{ has_openai: boolean, has_leonardo: boolean, has_assemblyai: boolean, has_elevenlabs: boolean }> {
+  async getSettings(): Promise<{ has_openai: boolean, has_grok: boolean, has_leonardo: boolean, has_assemblyai: boolean, has_elevenlabs: boolean }> {
     const res = await fetch(`${this.baseUrl}/settings/`, {
       headers: this.getHeaders(true),
     });
@@ -811,7 +812,13 @@ class ApiClient {
     return res.json();
   }
 
-  async updateSettings(data: { openai_api_key?: string, leonardo_api_key?: string, assemblyai_api_key?: string, elevenlabs_api_key?: string }): Promise<{ has_openai: boolean, has_leonardo: boolean, has_assemblyai: boolean, has_elevenlabs: boolean }> {
+  async updateSettings(data: { 
+    openai_api_key?: string, 
+    grok_api_key?: string, 
+    leonardo_api_key?: string, 
+    assemblyai_api_key?: string, 
+    elevenlabs_api_key?: string 
+  }): Promise<{ has_openai: boolean, has_grok: boolean, has_leonardo: boolean, has_assemblyai: boolean, has_elevenlabs: boolean }> {
     const res = await fetch(`${this.baseUrl}/settings/`, {
       method: 'PUT',
       headers: this.getHeaders(true),

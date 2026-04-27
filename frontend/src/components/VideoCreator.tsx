@@ -16,6 +16,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
   const [voice, setVoice] = useState('Dipemo');
   const [provider, setProvider] = useState<'tiktok' | 'elevenlabs'>('elevenlabs');
   const [style, setStyle] = useState('epic');
+  const [llmProvider, setLlmProvider] = useState('openai');
   const [status, setStatus] = useState<GenerationStep>('idle');
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState('');
@@ -56,6 +57,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
           if (data.maxImagesPerParagraph) setMaxImagesPerParagraph(data.maxImagesPerParagraph);
           if (data.selectedModel) setSelectedModel(data.selectedModel);
           if (data.generationMode) setGenerationMode(data.generationMode);
+          if (data.llmProvider) setLlmProvider(data.llmProvider);
         } catch (e) {
           console.error("Error loading draft", e);
         }
@@ -68,7 +70,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
     if (!initialVideo && status === 'idle') {
       const draft = {
         title, script, voice, provider, style, orientation, 
-        maxImagesPerParagraph, selectedModel, generationMode, selectedWorkflow
+        maxImagesPerParagraph, selectedModel, generationMode, selectedWorkflow, llmProvider
       };
       localStorage.setItem('yt_auto_creator_draft', JSON.stringify(draft));
     }
@@ -140,6 +142,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
           }
           if (initialVideo.style) setStyle(initialVideo.style);
           if (initialVideo.max_images_per_paragraph) setMaxImagesPerParagraph(initialVideo.max_images_per_paragraph);
+          if (initialVideo.llm_provider) setLlmProvider(initialVideo.llm_provider);
           
           // Determine starting step based on status
           if (initialVideo.status === 'generating_audio') {
@@ -221,7 +224,8 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
           height,
           voice,
           style,
-          max_images_per_paragraph: maxImagesPerParagraph
+          max_images_per_paragraph: maxImagesPerParagraph,
+          llm_provider: llmProvider
         });
         currentId = video.id;
         setVideoId(currentId);
@@ -239,7 +243,8 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
             height,
             voice,
             style,
-            max_images_per_paragraph: maxImagesPerParagraph
+            max_images_per_paragraph: maxImagesPerParagraph,
+            llm_provider: llmProvider
         });
         addLog('Registro actualizado con los ajustes actuales.');
       }
@@ -400,6 +405,20 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-300">Motor de Prompts (IA)</label>
+            <select
+              value={llmProvider}
+              onChange={(e) => setLlmProvider(e.target.value)}
+              className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isBusy || isLocked}
+            >
+              <option value="openai">OpenAI (GPT-4o Mini)</option>
+              <option value="grok">Grok (xAI)</option>
+            </select>
+            <p className="text-xs text-gray-400">IA que redactará los prompts de imagen y SEO.</p>
           </div>
 
           <div className="space-y-2">

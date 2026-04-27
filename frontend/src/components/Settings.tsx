@@ -9,6 +9,7 @@ export const Settings: React.FC = () => {
   
   const [keys, setKeys] = useState<{
     openai_api_key?: string;
+    grok_api_key?: string;
     leonardo_api_key?: string;
     assemblyai_api_key?: string;
     elevenlabs_api_key?: string;
@@ -16,6 +17,7 @@ export const Settings: React.FC = () => {
   
   const [status, setStatus] = useState({
     has_openai: false,
+    has_grok: false,
     has_leonardo: false,
     has_assemblyai: false,
     has_elevenlabs: false,
@@ -105,6 +107,20 @@ export const Settings: React.FC = () => {
               placeholder={status.has_openai ? "•••••••••••••••••••••••• (Configurada)" : "sk-..."}
             />
             {status.has_openai && <span style={{ color: '#22c55e', fontSize: '1.2rem' }}>✓</span>}
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label>Grok (xAI) API Key</label>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <input 
+              type="password" 
+              name="grok_api_key" 
+              value={keys.grok_api_key || ''} 
+              onChange={handleChange}
+              placeholder={status.has_grok ? "•••••••••••••••••••••••• (Configurada)" : "xai-..."}
+            />
+            {status.has_grok && <span style={{ color: '#22c55e', fontSize: '1.2rem' }}>✓</span>}
           </div>
         </div>
 
