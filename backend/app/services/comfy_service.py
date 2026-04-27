@@ -163,7 +163,9 @@ class ComfyService:
         if pos_node:
             existing_text = pos_node["inputs"].get("text", "")
             # Put the user prompt first to give it more weight
-            pos_node["inputs"]["text"] = f"{prompt}, {existing_text}" if existing_text else prompt
+            final_pos = f"{prompt}, {existing_text}" if existing_text else prompt
+            pos_node["inputs"]["text"] = final_pos
+            print(f"[DEBUG] Final Positive Prompt: {final_pos}")
 
         # 2. Find Negative Prompt Node
         neg_node = None
@@ -179,7 +181,9 @@ class ComfyService:
         if neg_node and negative_prompt:
             existing_neg = neg_node["inputs"].get("text", "")
             # Append negative prompt
-            neg_node["inputs"]["text"] = f"{existing_neg}, {negative_prompt}" if existing_neg else negative_prompt
+            final_neg = f"{existing_neg}, {negative_prompt}" if existing_neg else negative_prompt
+            neg_node["inputs"]["text"] = final_neg
+            print(f"[DEBUG] Final Negative Prompt: {final_neg}")
 
         # 3. Find Latent Node (Width/Height)
         latent_node = None
