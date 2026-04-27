@@ -124,6 +124,27 @@ class ComfyService:
         
         return {"out_path": out_path, "seed": seed}
 
+    def get_optimal_sdxl_size(self, width: int, height: int) -> tuple[int, int]:
+        """Snaps dimensions to the nearest standard SDXL bucket to avoid deformities."""
+        buckets = [
+            (1024, 1024), # 1:1
+            (1152, 896),  # 9:7
+            (896, 1152),  # 7:9
+            (1216, 832),  # 19:13
+            (832, 1216),  # 13:19
+            (1344, 768),  # 7:4
+            (768, 1344),  # 4:7
+            (1536, 640),  # 12:5
+            (640, 1536),  # 5:12
+        ]
+        
+        target_ratio = width / height
+        # Find bucket with closest ratio
+        best_bucket = min(buckets, key=lambda b: abs((b[0] / b[1]) - target_ratio))
+        
+        print(f"[DEBUG] Snapping {width}x{height} (ratio {target_ratio:.2f}) to SDXL bucket {best_bucket[0]}x{best_bucket[1]} (ratio {best_bucket[0]/best_bucket[1]:.2f})")
+        return best_bucket
+
     def prepare_workflow(self, 
         base_workflow: Dict[str, Any], 
         prompt: str, 
@@ -185,21 +206,24 @@ class ComfyService:
             neg_node["inputs"]["text"] = final_neg
             print(f"[DEBUG] Final Negative Prompt: {final_neg}")
 
-        # 3. Find Latent Node (Width/Height)
+        # 3. Optimize dimensions for SDXL
+        opt_w, opt_h = self.get_optimal_sdxl_size(width, height)
+
+        # 4. Find Latent Node (Width/Height)
         latent_node = None
         if latent_node_id and latent_node_id in workflow:
             latent_node = workflow[latent_node_id]
         else:
             for node in workflow.values():
-                if node.get("class_type") in ("EmptyLatentImage", "EmptySD3LatentImage"):
+                if node.get("class_type") in ("EmptyLatentImage", "EmptySD3LatentImage", "EmptyLatentImage (rgthree)"):
                     latent_node = node
                     break
         
         if latent_node:
-            latent_node["inputs"]["width"] = width
-            latent_node["inputs"]["height"] = height
+            latent_node["inputs"]["width"] = opt_w
+            latent_node["inputs"]["height"] = opt_h
 
-        # 4. Find and Randomize Seed Nodes (Can be multiple)
+        # 5. Find and Randomize Seed Nodes (Can be multiple)
         if seed is None:
             seed = settings.COMFY_SEED if settings.COMFY_SEED is not None else random.randrange(0, 2**63)
         
