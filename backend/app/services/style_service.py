@@ -170,6 +170,16 @@ STYLES: Dict[str, StyleSpec] = {
             "hyper-detailed but mystical; cinematic film grain; masterpiece"
         ),
         "negative_prompt": NEGATIVE_BASE + ", sharp edges, harsh lighting, boring, realistic photography, ordinary life",
+    },
+    "anime_hentai": {
+        "display_name": "Anime / Hentai",
+        "image_style_prompt": (
+            "High-quality anime illustration, vibrant colors, clean lineart, "
+            "cel shaded, cinematic anime lighting, detailed eyes, expressive characters, "
+            "masterpiece, anime key visual style; no on-image text"
+        ),
+        "negative_prompt": NEGATIVE_BASE + ", photorealistic, realistic, 3d render, western cartoon, fat, muscular, ugly, old, low quality, bad anatomy",
+        "post_note": "Keep features clean and stylized.",
     }
 }
 
@@ -199,6 +209,8 @@ ALIASES = {
     "onirico": "onirico_suenos",
     "suenos": "onirico_suenos",
     "canal_personalizado": "canal_personalizado",
+    "anime": "anime_hentai",
+    "hentai": "anime_hentai",
 }
 
 
