@@ -31,7 +31,7 @@
   },
   "4": {
     "inputs": {
-      "ckpt_name": "novaAnimeXL_xlV10.safetensors"
+      "ckpt_name": "SDXL/novaAnimeXL_xlV10.safetensors"
     },
     "class_type": "CheckpointLoaderSimple",
     "_meta": {
