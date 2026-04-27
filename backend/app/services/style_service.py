@@ -17,7 +17,8 @@ NEGATIVE_BASE = (
     "fused fingers, extra fingers, missing limbs, cross-eyed, ugly, morbid, "
     "mutation, gross proportions, backwards feet, inverted limbs, floating limbs, "
     "elongated limbs, disproportionate arms, long arms, lanky, rubbery limbs, "
-    "deformed body, anatomical nonsense"
+    "deformed body, anatomical nonsense, nudity, naked, nsfw, nipple, breast, buttocks, "
+    "erotic, sexual, explicit, genitals"
 )
 
 
@@ -47,8 +48,8 @@ BASES: Dict[str, StyleSpec] = {
             "Photorealistic biblical epic; historically coherent wardrobe; desert/stone landscapes; "
             "golden-hour or moonlit lighting; immersive, reverent; no on-image text"
         ),
-        "negative_prompt": NEGATIVE_BASE + ", stained glass, church murals, framed paintings",
-        "post_note": "Respectful tone; no kitsch glow.",
+        "negative_prompt": NEGATIVE_BASE + ", stained glass, church murals, framed paintings, nudity, shirtless, naked",
+        "post_note": "Respectful tone; no kitsch glow; ensure characters are fully clothed in period-accurate robes.",
     },
     "stock_base": {
         "display_name": "Stock Photo (base)",
@@ -158,8 +159,8 @@ STYLES: Dict[str, StyleSpec] = {
     },
     "biblical_classic": {
         "display_name": "Biblical Classic",
-        "image_style_prompt": "Epic cinematic biblical photography, soft natural lighting, historically accurate textures and robes, desert landscapes of ancient Judea, majestic atmosphere, high contrast, photorealistic, 8k, sharp focus on faces and respectful expressions.",
-        "negative_prompt": "modern architecture, technology, cars, electrical lines, text, watermarks, frames, borders, cartoon, anime, plastic CGI, extra limbs, deformed hands, stained glass, kitsch glow, church murals, framed paintings, distorted anatomy, low quality, lens flare, bright starburst sun.",
+        "image_style_prompt": "Epic cinematic biblical photography, soft natural lighting, historically accurate textures and fully-covered robes, desert landscapes of ancient Judea, majestic atmosphere, high contrast, photorealistic, 8k, sharp focus on faces and respectful expressions.",
+        "negative_prompt": NEGATIVE_BASE + ", modern architecture, technology, cars, electrical lines, text, watermarks, frames, borders, cartoon, anime, plastic CGI, extra limbs, deformed hands, stained glass, kitsch glow, church murals, framed paintings, distorted anatomy, low quality, lens flare, bright starburst sun, nudity, naked, shirtless, bare skin.",
     },
     "onirico_suenos": {
         "display_name": "Onírico (Sueños)",
