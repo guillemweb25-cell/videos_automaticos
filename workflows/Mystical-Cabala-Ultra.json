@@ -2,10 +2,10 @@
   "3": {
     "inputs": {
       "seed": 0,
-      "steps": 20,
-      "cfg": 7.5,
-      "sampler_name": "dpmpp_2m",
-      "scheduler": "karras",
+      "steps": 15,
+      "cfg": 7,
+      "sampler_name": "euler",
+      "scheduler": "normal",
       "denoise": 1,
       "model": [
         "4",
@@ -26,7 +26,7 @@
     },
     "class_type": "KSampler",
     "_meta": {
-      "title": "Base Generation"
+      "title": "Base KSampler"
     }
   },
   "4": {
@@ -51,7 +51,7 @@
   },
   "6": {
     "inputs": {
-      "text": "surreal oniric dream, (ethereal mystical atmosphere:1.3), (dream-like:1.2), (double exposure:0.8), glowing soft highlights, hazy fog, mystical lighting, transcendental, floating particles, (painterly texture:1.1), (soft focus:0.8), cinematic, masterpiece",
+      "text": "(masterpiece:1.2), (hyper-realistic mystical atmosphere:1.3), ancient sandstone sanctuaries with intricate hand-carved spiritual engravings, blinding ethereal light emanations, shimmering crystalline diffraction, divine cosmic dust particles, glowing Hebrew letters of liquid fire floating in a dramatic chiaroscuro composition, interconnected golden threads of reality, 8k resolution, cinematic high-end film grading, profound spiritual immersion",
       "clip": [
         "4",
         1
@@ -59,12 +59,12 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "Oniric Positive"
+      "title": "positive"
     }
   },
   "7": {
     "inputs": {
-      "text": "nsfw, nude, sharp edges, high contrast, harsh lighting, hyper-realistic, photography, mundane, boring, realistic skin, ordinary, embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), text, watermark",
+      "text": "modern architecture, technology, cars, electrical lines, text, watermarks, frames, borders, cartoon, anime, plastic CGI, extra limbs, deformed hands, stained glass, kitsch glow, church murals, framed paintings, distorted anatomy, low quality, lens flare, bright starburst sun, (extra fingers:2.0), (deformed hands:2.0)",
       "clip": [
         "4",
         1
@@ -72,51 +72,7 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "Negative"
-    }
-  },
-  "10": {
-    "inputs": {
-      "upscale_method": "nearest-exact",
-      "scale_by": 1.25,
-      "samples": [
-        "3",
-        0
-      ]
-    },
-    "class_type": "LatentUpscaleBy",
-    "_meta": {
-      "title": "Latent Upscale"
-    }
-  },
-  "11": {
-    "inputs": {
-      "seed": 0,
-      "steps": 12,
-      "cfg": 8,
-      "sampler_name": "dpmpp_2m",
-      "scheduler": "karras",
-      "denoise": 0.45,
-      "model": [
-        "4",
-        0
-      ],
-      "positive": [
-        "6",
-        0
-      ],
-      "negative": [
-        "7",
-        0
-      ],
-      "latent_image": [
-        "10",
-        0
-      ]
-    },
-    "class_type": "KSampler",
-    "_meta": {
-      "title": "Oniric Refiner (Melting Realism)"
+      "title": "negative"
     }
   },
   "8": {
@@ -137,7 +93,7 @@
   },
   "9": {
     "inputs": {
-      "filename_prefix": "DreamyOniric",
+      "filename_prefix": "MysticalCabala_Ultra",
       "images": [
         "8",
         0
@@ -146,6 +102,50 @@
     "class_type": "SaveImage",
     "_meta": {
       "title": "Save Image"
+    }
+  },
+  "10": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "scale_by": 1.25,
+      "samples": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "LatentUpscaleBy",
+    "_meta": {
+      "title": "Latent Upscale"
+    }
+  },
+  "11": {
+    "inputs": {
+      "seed": 0,
+      "steps": 10,
+      "cfg": 7,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 0.45,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "Refinement KSampler"
     }
   }
 }

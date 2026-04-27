@@ -90,3 +90,11 @@ def update_global_settings(data: GlobalSettingsUpdate, current_user: User = Depe
     db.commit()
     db.refresh(gs)
     return PublicSettingsResponse(registration_enabled=gs.registration_enabled)
+
+@router.post("/cleanup")
+def run_cleanup(current_user: User = Depends(get_current_user)):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    from app.services.maintenance_service import MaintenanceService
+    return MaintenanceService.cleanup_cache(days=15)

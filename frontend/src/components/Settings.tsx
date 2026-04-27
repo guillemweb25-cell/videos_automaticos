@@ -180,6 +180,32 @@ export const Settings: React.FC = () => {
               {globalStatus.registration_enabled ? 'Activado' : 'Desactivado'}
             </button>
           </div>
+
+          <div className="form-group" style={{ marginTop: '24px' }}>
+            <label>Mantenimiento de Caché</label>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '12px' }}>
+              Elimina vídeos de más de 15 días y optimiza imágenes pesadas para liberar espacio en disco.
+            </p>
+            <button 
+              className="btn btn-secondary"
+              disabled={saving}
+              onClick={async () => {
+                if (!confirm('¿Quieres iniciar la limpieza de caché? Esto borrará vídeos antiguos y optimizará imágenes.')) return;
+                setSaving(true);
+                setError('');
+                try {
+                  const res = await api.cleanupCache();
+                  setSuccess(`Limpieza completada: ${res.deleted_videos} vídeos borrados (${res.freed_space_mb}MB) y ${res.optimized_images} imágenes optimizadas (${res.image_reduction_mb}MB liberados).`);
+                } catch(e: any) {
+                  setError(e.message);
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? 'Procesando...' : '🔥 Limpiar Carpetas y Optimizar'}
+            </button>
+          </div>
         </div>
       )}
     </div>

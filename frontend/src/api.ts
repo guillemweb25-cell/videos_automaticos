@@ -821,6 +821,21 @@ class ApiClient {
     return res.json();
   }
 
+  async cleanupCache(): Promise<{
+    deleted_videos: number,
+    freed_space_mb: number,
+    optimized_images: number,
+    image_reduction_mb: number,
+    status: string
+  }> {
+    const res = await fetch(`${this.baseUrl}/settings/cleanup`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al limpiar caché');
+    return res.json();
+  }
+
   // Payment Methods
   async getBalance(): Promise<{ credits: number, euros: number }> {
     const res = await fetch(`${this.baseUrl}/payments/balance`, {
