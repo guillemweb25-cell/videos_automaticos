@@ -209,6 +209,60 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
     }
   };
 
+  const handleRegenerateAll = async () => {
+    if (!confirm("¿Seguro que quieres regenerar TODAS las imágenes? Esto consumirá créditos si no usas ComfyUI.")) return;
+    
+    setRendering(true); // Reuse rendering state for simplicity in header disable
+    try {
+      const allPrompts = [];
+      for (const item of data.items) {
+        for (const p of item.prompts) {
+          const key = `${item.paragraph_id}_${p.id}`;
+          allPrompts.push({ paraId: item.paragraph_id, imgId: p.id, prompt: prompts[key] });
+        }
+      }
+      
+      // We process them one by one to avoid overloading or handling timeouts better
+      for (const pTask of allPrompts) {
+        setRegenerating(`${pTask.paraId}_${pTask.imgId}`);
+        const res = await api.regenerateImage(
+          videoId, 
+          pTask.paraId, 
+          pTask.imgId, 
+          pTask.prompt, 
+          selectedModel, 
+          generationMode, 
+          selectedWorkflow,
+          undefined // Forced random seed
+        );
+        if (res.ok) {
+           // Update local state for this specific image
+           setData((prev: any) => {
+             const newData = { ...prev };
+             const item = newData.items.find((i: any) => i.paragraph_id === pTask.paraId);
+             if (item) {
+               const p = item.prompts.find((pr: any) => pr.id === pTask.imgId);
+               if (p) {
+                 p.url = res.url;
+                 if (res.seed) {
+                   setSeeds(prevSeeds => ({ ...prevSeeds, [`${pTask.paraId}_${pTask.imgId}`]: res.seed }));
+                 }
+               }
+             }
+             return newData;
+           });
+        }
+      }
+      alert("Todas las imágenes han sido regeneradas.");
+    } catch (error) {
+      console.error("Error regenerating all:", error);
+      alert("Error al regenerar algunas imágenes.");
+    } finally {
+      setRegenerating(null);
+      setRendering(false);
+    }
+  };
+
   const handleRender = async () => {
     try {
       setRendering(true);
@@ -459,6 +513,22 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                 ))}
               </select>
             </div>
+            <button 
+              onClick={handleRegenerateAll}
+              disabled={rendering || !!regenerating}
+              style={{
+                backgroundColor: '#9333ea',
+                color: 'white',
+                padding: '8px 20px',
+                borderRadius: '8px',
+                fontWeight: 'bold',
+                border: 'none',
+                cursor: 'pointer',
+                opacity: (rendering || regenerating) ? 0.5 : 1
+              }}
+            >
+              Regenerar TODO (Seeds Random)
+            </button>
             <button 
               onClick={handleRender}
               disabled={rendering}

@@ -183,6 +183,7 @@ class SEOEngine:
             f"{rules_text}"
             f"{text_instruction}"
             "CRITICAL RULES: Output ONLY the final AI visual prompt. Do NOT use any line breaks or paragraphs (single block of text). "
+            "POSE RESTRICTION: Keep character poses simple and natural. AVOID complex limb positions like lifting legs or crossing legs, as they often lead to AI artifacts. "
             "The prompt MUST BE UNDER 1000 CHARACTERS in total length."
         )
         user_msg = (
