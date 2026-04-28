@@ -14,7 +14,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
   const [title, setTitle] = useState(initialVideo?.title || '');
   const [script, setScript] = useState('');
   const [voice, setVoice] = useState('Dipemo');
-  const [provider, setProvider] = useState<'tiktok' | 'elevenlabs'>('elevenlabs');
+  const [provider, setProvider] = useState<'tiktok' | 'elevenlabs' | 'local_xtts'>('elevenlabs');
   const [style, setStyle] = useState('epic');
   const [llmProvider, setLlmProvider] = useState('openai');
   const [status, setStatus] = useState<GenerationStep>('idle');
@@ -25,7 +25,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
   const [isBusy, setIsBusy] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
 
-  const [availableVoices, setAvailableVoices] = useState<{ tiktok: any[], elevenlabs: any[] }>({ tiktok: [], elevenlabs: [] });
+  const [availableVoices, setAvailableVoices] = useState<{ tiktok: any[], elevenlabs: any[], local_xtts: any[] }>({ tiktok: [], elevenlabs: [], local_xtts: [] });
   const [availableStyles, setAvailableStyles] = useState<{ id: string, name: string }[]>([]);
   const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
   const [maxImagesPerParagraph, setMaxImagesPerParagraph] = useState(0);
@@ -82,7 +82,12 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
     const loadConfig = async () => {
       try {
         const config = await api.getConfig();
-        setAvailableVoices(config.voices);
+        // Ensure local_xtts voices are objects with id and name
+        const xtts = (config.voices.local_xtts || []).map((v: string | any) => typeof v === 'string' ? {id: v, name: v} : v);
+        setAvailableVoices({
+          ...config.voices,
+          local_xtts: xtts
+        });
         setAvailableStyles(config.styles);
         setLeonardoModels(config.leonardo_models || []);
         setGenerationModes(config.generation_modes || []);
@@ -194,7 +199,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
     }
   }, [provider, availableVoices]);
 
-  const currentVoices = provider === 'tiktok' ? availableVoices.tiktok : availableVoices.elevenlabs;
+  const currentVoices = provider === 'tiktok' ? availableVoices.tiktok : (provider === 'local_xtts' ? availableVoices.local_xtts : availableVoices.elevenlabs);
 
   const handleResetImages = async () => {
     if (!videoId) return;
@@ -416,6 +421,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
             <select value={provider} onChange={(e: ChangeEvent<HTMLSelectElement>) => setProvider(e.target.value as any)} disabled={isBusy}>
               <option value="tiktok">TikTok (Gratis)</option>
               <option value="elevenlabs">ElevenLabs (Premium/Lento)</option>
+              <option value="local_xtts">Local XTTS (Gratis/Clonación)</option>
             </select>
           </div>
           <div className="form-group">
