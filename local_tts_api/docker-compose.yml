@@ -4,7 +4,7 @@ services:
   tts_api:
     build: .
     ports:
-      - "8000:8000"
+      - "8022:8000"
     environment:
       - COQUI_TOS_AGREED=1
     deploy:
