@@ -45,7 +45,7 @@ BASES: Dict[str, StyleSpec] = {
     "biblical_base": {
         "display_name": "Biblical Epic (base)",
         "image_style_prompt": (
-            "Photorealistic biblical epic; historically coherent wardrobe; desert/stone landscapes; "
+            "Photorealistic biblical epic; historically coherent wardrobe; modest fully-clothed characters, completely covered bodies; desert/stone landscapes; "
             "golden-hour or moonlit lighting; immersive, reverent; no on-image text"
         ),
         "negative_prompt": NEGATIVE_BASE + ", stained glass, church murals, framed paintings, nudity, shirtless, naked",
@@ -159,7 +159,7 @@ STYLES: Dict[str, StyleSpec] = {
     },
     "biblical_classic": {
         "display_name": "Biblical Classic",
-        "image_style_prompt": "Epic cinematic biblical photography, soft natural lighting, historically accurate textures and fully-covered robes, desert landscapes of ancient Judea, majestic atmosphere, high contrast, photorealistic, 8k, sharp focus on faces and respectful expressions.",
+        "image_style_prompt": "Epic cinematic biblical photography, modest fully-clothed characters, all bodies covered with tunics, soft natural lighting, historically accurate textures and fully-covered robes, desert landscapes of ancient Judea, majestic atmosphere, high contrast, photorealistic, 8k, sharp focus on faces and respectful expressions.",
         "negative_prompt": NEGATIVE_BASE + ", modern architecture, technology, cars, electrical lines, text, watermarks, frames, borders, cartoon, anime, plastic CGI, extra limbs, deformed hands, stained glass, kitsch glow, church murals, framed paintings, distorted anatomy, low quality, lens flare, bright starburst sun, nudity, naked, shirtless, bare skin.",
     },
     "onirico_suenos": {
