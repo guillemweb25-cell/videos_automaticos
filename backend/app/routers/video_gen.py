@@ -163,6 +163,7 @@ def create_video(video_in: VideoCreate, db: Session = Depends(get_db), current_u
     base_dir.mkdir(parents=True, exist_ok=True)
     
     (base_dir / "audio/chunks").mkdir(parents=True, exist_ok=True)
+    (base_dir / "audio_seed").mkdir(parents=True, exist_ok=True)
     (base_dir / "images").mkdir(parents=True, exist_ok=True)
     (base_dir / "output").mkdir(parents=True, exist_ok=True)
     (base_dir / "seo").mkdir(parents=True, exist_ok=True)
