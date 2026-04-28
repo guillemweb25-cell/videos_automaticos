@@ -18,6 +18,9 @@ COPY requirements.txt .
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Accept Coqui TOS for model download
+ENV COQUI_TOS_AGREED=1
+
 # Pre-download the XTTS_v2 model to bake it into the docker image (optional but saves time on first run)
 RUN python -c "from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')"
 
