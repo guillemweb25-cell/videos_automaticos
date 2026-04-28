@@ -104,13 +104,16 @@ def get_available_config():
         {"id": "COMFYUI", "name": "ComfyUI (Local/Gratis)", "cost": 0.0},
     ]
     
-    # Local XTTS Voices
+    # Local XTTS Voices from the separate API
     local_xtts_voices = []
-    seed_dir = Path("app/audio_seeds")
-    if seed_dir.exists():
-        for f in seed_dir.glob("*"):
-            if f.suffix in [".mp3", ".wav", ".m4a", ".ogg"]:
-                local_xtts_voices.append(f.stem)
+    try:
+        settings = get_settings()
+        url = getattr(settings, "LOCAL_TTS_URL", "http://192.168.1.46:8022") 
+        r = requests.get(f"{url}/voices", timeout=2)
+        if r.ok:
+            local_xtts_voices = r.json().get("voices", [])
+    except Exception as e:
+        print(f"Warning: Could not fetch local_xtts voices: {e}")
                 
     return {
         "voices": {

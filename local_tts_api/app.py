@@ -1,9 +1,10 @@
 import os
 import tempfile
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Form, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse, JSONResponse
 import torch
 from TTS.api import TTS
+from pathlib import Path
 
 # Accept Coqui TOS automatically
 os.environ["COQUI_TOS_AGREED"] = "1"
@@ -22,33 +23,47 @@ def remove_file(path: str):
     except Exception as e:
         print(f"Failed to remove file {path}: {e}")
 
+@app.get("/voices")
+def get_voices():
+    seed_dir = Path("audio_seeds")
+    voices = []
+    if seed_dir.exists():
+        for f in seed_dir.glob("*"):
+            if f.suffix in [".mp3", ".wav", ".m4a", ".ogg"]:
+                voices.append(f.stem)
+    return JSONResponse(content={"voices": sorted(voices)})
+
 @app.post("/generate")
 async def generate_audio(
     background_tasks: BackgroundTasks,
     text: str = Form(...),
     language: str = Form("es"),
-    speaker_wav: UploadFile = File(...)
+    voice_id: str = Form(...)
 ):
     try:
-        # Save uploaded reference audio temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
-            tmp_wav.write(await speaker_wav.read())
-            tmp_path = tmp_wav.name
+        # Resolve reference audio path
+        seed_dir = Path("audio_seeds")
+        ref_path = None
+        for ext in [".mp3", ".wav", ".m4a", ".ogg"]:
+            p = seed_dir / f"{voice_id}{ext}"
+            if p.exists():
+                ref_path = p
+                break
+                
+        if not ref_path:
+            raise HTTPException(status_code=404, detail=f"Voice reference '{voice_id}' not found in audio_seeds/")
 
         output_path = tempfile.mktemp(suffix=".wav")
 
-        print(f"Generating audio for text: {text[:50]}... in {language}")
+        print(f"Generating audio for text: {text[:50]}... in {language} with voice {voice_id}")
         
         # Generate audio using XTTSv2
         tts.tts_to_file(
             text=text,
-            speaker_wav=tmp_path,
+            speaker_wav=str(ref_path),
             language=language,
             file_path=output_path
         )
-
-        # Cleanup reference audio
-        remove_file(tmp_path)
 
         # Return the generated file and schedule its deletion
         background_tasks.add_task(remove_file, output_path)
