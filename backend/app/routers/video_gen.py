@@ -11,6 +11,7 @@ import random
 import math
 from datetime import datetime
 from typing import List, Optional
+import requests
 
 from app.database import get_db
 from app.models.video import Video
