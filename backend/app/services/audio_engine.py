@@ -186,7 +186,8 @@ class AudioEngine:
     def _concat_chunks(paths: List[Path], out_path: Path, gap_ms: int) -> None:
         final = AudioSegment.silent(duration=0)
         for p in paths:
-            seg = AudioSegment.from_file(p, format="mp3")
+            fmt = p.suffix.lstrip(".")
+            seg = AudioSegment.from_file(p, format=fmt if fmt else "mp3")
             final += seg
             if gap_ms > 0:
                 final += AudioSegment.silent(duration=gap_ms)
