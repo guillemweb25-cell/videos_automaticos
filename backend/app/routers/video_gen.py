@@ -21,6 +21,8 @@ from app.schemas.video import (
     AddImageRequest, ThumbnailGenerationRequest, ConvertToVideoRequest
 )
 
+from app.config import get_settings
+
 from app.services.audio_engine import AudioEngine
 from app.services.image_engine import ImageEngine
 from app.services.rendering_engine import RenderingEngine
