@@ -104,10 +104,19 @@ def get_available_config():
         {"id": "COMFYUI", "name": "ComfyUI (Local/Gratis)", "cost": 0.0},
     ]
     
+    # Local XTTS Voices
+    local_xtts_voices = []
+    seed_dir = Path("app/audio_seeds")
+    if seed_dir.exists():
+        for f in seed_dir.glob("*"):
+            if f.suffix in [".mp3", ".wav", ".m4a", ".ogg"]:
+                local_xtts_voices.append(f.stem)
+                
     return {
         "voices": {
             "tiktok": tiktok_voices,
-            "elevenlabs": eleven_voices
+            "elevenlabs": eleven_voices,
+            "local_xtts": sorted(local_xtts_voices)
         },
         "styles": styles,
         "leonardo_models": leonardo_models,
@@ -298,6 +307,8 @@ async def generate_audio(
                     if not settings or not settings.elevenlabs_api_key:
                         raise ValueError("No has configurado tu API Key de ElevenLabs en Ajustes.")
                     AudioEngine.synthesize_elevenlabs(text, voice, out_path, api_key=settings.elevenlabs_api_key)
+                elif provider.lower() == "local_xtts":
+                    AudioEngine.synthesize_local_xtts(text, voice, out_path)
                 else:
                     AudioEngine.synthesize_tiktok(text, voice, out_path)
             

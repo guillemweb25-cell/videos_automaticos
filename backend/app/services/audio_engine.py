@@ -103,6 +103,49 @@ class AudioEngine:
         out_path.write_bytes(resp.content)
 
     @staticmethod
+    def synthesize_local_xtts(text: str, voice_id: str, out_path: Path, gap_ms: int = 0) -> None:
+        """Synthesizes text using Local XTTS API."""
+        if not text.strip():
+            raise ValueError("Empty text for TTS")
+            
+        settings = get_settings()
+        # Fallback to localhost if not set in .env
+        url = getattr(settings, "LOCAL_TTS_URL", "http://192.168.1.46:8022") 
+        endpoint = f"{url}/generate"
+        
+        # We split text if it's too long, but XTTSv2 usually handles sentences well.
+        # It's safer to split to avoid VRAM OOM on the local GPU
+        parts = AudioEngine._split_text(text, 250)
+        tmp_dir = out_path.parent / "__tts_tmp_xtts__"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        
+        chunk_paths = []
+        try:
+            for i, part in enumerate(parts):
+                print(f"Generating XTTS chunk {i+1}/{len(parts)} ({len(part)} chars)...")
+                data = {
+                    "text": part,
+                    "language": "es",  # We can make this dynamic later
+                    "voice_id": voice_id
+                }
+                r = requests.post(endpoint, data=data, timeout=120)
+                if not r.ok:
+                    raise RuntimeError(f"XTTS API error {r.status_code}: {r.text}")
+                    
+                chunk_path = tmp_dir / f"{out_path.stem}_{i:03d}.wav"
+                chunk_path.write_bytes(r.content)
+                chunk_paths.append(chunk_path)
+                time.sleep(0.5) # throttle to avoid overloading GPU
+                
+            AudioEngine._concat_chunks(chunk_paths, out_path, gap_ms)
+        finally:
+            for p in chunk_paths:
+                p.unlink(missing_ok=True)
+            if tmp_dir.exists():
+                try: tmp_dir.rmdir()
+                except: pass
+
+    @staticmethod
     def _split_text(s: str, limit: int) -> List[str]:
         parts = []
         while s:
