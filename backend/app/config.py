@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     COMFY_URL: str = "http://192.168.1.184:8188"
     COMFY_IS_WINDOWS: bool = False
     COMFY_SEED: int | None = None
+    LOCAL_TTS_URL: str = "http://192.168.1.32:8022"
 
     # Stripe
     STRIPE_SECRET_KEY: str | None = None
