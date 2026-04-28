@@ -196,6 +196,39 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
 
   const currentVoices = provider === 'tiktok' ? availableVoices.tiktok : availableVoices.elevenlabs;
 
+  const handleResetImages = async () => {
+    if (!videoId) return;
+    if (!confirm("¿Seguro que quieres borrar todas las imágenes actuales y volver a generarlas desde cero?")) return;
+
+    setIsBusy(true);
+    setLog([]);
+    setError('');
+    setStatus('creating');
+    addLog('Borrando imágenes previas y reiniciando estado...');
+    
+    try {
+      // 1. Reset state on server
+      await api.resetImages(videoId);
+      addLog("Estado reiniciado. Relanzando pipeline...");
+      
+      // 2. Clear our "initialVideo.status" so the handleGenerate doesn't skip
+      if (initialVideo) {
+         initialVideo.status = 'audio_ready'; 
+      }
+      setStatus('audio_ready');
+      
+      // Give a tiny delay for React to settle, then run standard generate
+      setTimeout(() => {
+         setIsBusy(false);
+         handleGenerate();
+      }, 500);
+
+    } catch (err: any) {
+      addLog(`Error al reiniciar imágenes: ${err.message}`);
+      setIsBusy(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!title || !script) {
       alert('Por favor, indica un título y un guion.');
@@ -546,6 +579,16 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
               }}
             >
               Detener ⛔
+            </button>
+          )}
+          {initialVideo && !isBusy && status !== 'idle' && (
+            <button 
+              className="btn" 
+              style={{ background: '#f59e0b', color: 'white', minWidth: '150px' }}
+              onClick={handleResetImages}
+              title="Borra las imágenes actuales y fuerza su regeneración"
+            >
+              🔄 Forzar Regenerar Imágenes
             </button>
           )}
           <button 

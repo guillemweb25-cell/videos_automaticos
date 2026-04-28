@@ -217,6 +217,8 @@ async def reset_youtube_upload(
 @router.post("/{video_id}/regenerate/title")
 async def regenerate_youtube_title(
     video_id: int,
+    lang: str = "es",
+    provider: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
@@ -233,11 +235,12 @@ async def regenerate_youtube_title(
     script_snippet = "\n".join([item.get("spoken", "") for item in plan[:5]]) # First 5 paragraphs
     
     settings = get_user_settings_for_video(video, db)
+    target_provider = provider if provider else video.llm_provider
     seo = SEOEngine(
-        api_key=(settings.grok_api_key if video.llm_provider == "grok" else settings.openai_api_key), 
-        provider=video.llm_provider
+        api_key=(settings.grok_api_key if target_provider == "grok" else settings.openai_api_key), 
+        provider=target_provider
     )
-    title = seo.generate_video_title(script_snippet)
+    title = seo.generate_video_title(script_snippet, lang=lang)
     
     # Save to DB
     video.youtube_title = title
@@ -260,6 +263,8 @@ async def regenerate_youtube_title(
 @router.post("/{video_id}/regenerate/description")
 async def regenerate_youtube_description(
     video_id: int,
+    lang: str = "es",
+    provider: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
@@ -276,11 +281,12 @@ async def regenerate_youtube_description(
     script_snippet = "\n".join([item.get("spoken", "") for item in plan])
     
     settings = get_user_settings_for_video(video, db)
+    target_provider = provider if provider else video.llm_provider
     seo = SEOEngine(
-        api_key=(settings.grok_api_key if video.llm_provider == "grok" else settings.openai_api_key), 
-        provider=video.llm_provider
+        api_key=(settings.grok_api_key if target_provider == "grok" else settings.openai_api_key), 
+        provider=target_provider
     )
-    description = seo.generate_description(script_snippet[:4000])
+    description = seo.generate_description(script_snippet[:4000], lang=lang)
     
     # Save to DB
     video.youtube_description = description
@@ -303,6 +309,8 @@ async def regenerate_youtube_description(
 @router.post("/{video_id}/regenerate/tags")
 async def regenerate_youtube_tags(
     video_id: int,
+    lang: str = "es",
+    provider: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
@@ -319,11 +327,12 @@ async def regenerate_youtube_tags(
     script_snippet = "\n".join([item.get("spoken", "") for item in plan])
     
     settings = get_user_settings_for_video(video, db)
+    target_provider = provider if provider else video.llm_provider
     seo = SEOEngine(
-        api_key=(settings.grok_api_key if video.llm_provider == "grok" else settings.openai_api_key), 
-        provider=video.llm_provider
+        api_key=(settings.grok_api_key if target_provider == "grok" else settings.openai_api_key), 
+        provider=target_provider
     )
-    tags = seo.generate_video_questions_tags(script_snippet[:4000])
+    tags = seo.generate_video_questions_tags(script_snippet[:4000], lang=lang)
     
     # Save to DB
     video.youtube_tags = tags

@@ -436,6 +436,15 @@ class ApiClient {
     return res.json();
   }
 
+  async resetImages(videoId: number): Promise<{ ok: boolean; message: string }> {
+    const response = await fetch(`${this.baseUrl}/videos/${videoId}/reset-images`, {
+      method: 'POST',
+      headers: this.getHeaders(true)
+    });
+    if (!response.ok) throw new Error('Error al reiniciar el estado de imágenes');
+    return response.json();
+  }
+
   async generateImages(videoId: number, style: string, maxImages: number, modelId?: string, generationMode?: string, workflowName?: string): Promise<{ ok: boolean; count: number }> {
     const response = await fetch(`${this.baseUrl}/videos/${videoId}/images`, {
       method: 'POST',
@@ -746,8 +755,12 @@ class ApiClient {
     return res.json();
   }
 
-  async regenerateYoutubeTitle(videoId: number): Promise<{ title: string }> {
-    const res = await fetch(`${this.baseUrl}/youtube/${videoId}/regenerate/title`, {
+  async regenerateYoutubeTitle(videoId: number, lang: string = "es", provider?: string): Promise<{ title: string }> {
+    const url = new URL(`${this.baseUrl}/youtube/${videoId}/regenerate/title`);
+    url.searchParams.append("lang", lang);
+    if (provider) url.searchParams.append("provider", provider);
+
+    const res = await fetch(url.toString(), {
       method: 'POST',
       headers: this.getHeaders(true),
     });
@@ -755,8 +768,12 @@ class ApiClient {
     return res.json();
   }
 
-  async regenerateYoutubeDescription(videoId: number): Promise<{ description: string }> {
-    const res = await fetch(`${this.baseUrl}/youtube/${videoId}/regenerate/description`, {
+  async regenerateYoutubeDescription(videoId: number, lang: string = "es", provider?: string): Promise<{ description: string }> {
+    const url = new URL(`${this.baseUrl}/youtube/${videoId}/regenerate/description`);
+    url.searchParams.append("lang", lang);
+    if (provider) url.searchParams.append("provider", provider);
+
+    const res = await fetch(url.toString(), {
       method: 'POST',
       headers: this.getHeaders(true),
     });
@@ -764,8 +781,12 @@ class ApiClient {
     return res.json();
   }
 
-  async regenerateYoutubeTags(videoId: number): Promise<{ tags: string }> {
-    const res = await fetch(`${this.baseUrl}/youtube/${videoId}/regenerate/tags`, {
+  async regenerateYoutubeTags(videoId: number, lang: string = "es", provider?: string): Promise<{ tags: string }> {
+    const url = new URL(`${this.baseUrl}/youtube/${videoId}/regenerate/tags`);
+    url.searchParams.append("lang", lang);
+    if (provider) url.searchParams.append("provider", provider);
+
+    const res = await fetch(url.toString(), {
       method: 'POST',
       headers: this.getHeaders(true),
     });

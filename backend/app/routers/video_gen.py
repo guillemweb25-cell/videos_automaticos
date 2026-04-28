@@ -321,6 +321,33 @@ async def generate_audio(
         db.commit()
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/{video_id}/reset-images")
+async def reset_images(video_id: int, db: Session = Depends(get_db)):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    # Reset status
+    if video.status in ["images_ready", "seo", "rendering", "ready", "completed", "error", "failed"]:
+        video.status = "audio_ready"
+        video.last_error = None
+        db.commit()
+        
+    # Delete image prompts cache and existing images
+    import shutil
+    base_dir = Path(video.base_dir)
+    images_dir = base_dir / "images"
+    prompts_cache = base_dir / "image_prompts_all.json"
+    
+    if prompts_cache.exists():
+        prompts_cache.unlink()
+        
+    if images_dir.exists():
+        for f in images_dir.glob("*.png"):
+            f.unlink()
+            
+    return {"ok": True, "message": "Imágenes borradas. Estado reiniciado a audio_ready."}
+
 @router.post("/{video_id}/images")
 async def generate_images(video_id: int, req: ImageGenerationRequest, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()

@@ -21,6 +21,10 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const [tags, setTags] = useState('');
   const [privacyStatus, setPrivacyStatus] = useState('private');
   const [publishAt, setPublishAt] = useState('');
+  
+  // SEO options
+  const [seoLanguage, setSeoLanguage] = useState('es');
+  const [seoProvider, setSeoProvider] = useState('openai');
 
   const loadMetadata = async () => {
     try {
@@ -46,7 +50,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const handleRegenerateTitle = async () => {
     setRegenerating('title');
     try {
-      const res = await api.regenerateYoutubeTitle(videoId);
+      const res = await api.regenerateYoutubeTitle(videoId, seoLanguage, seoProvider);
       setTitle(res.title);
     } catch (err) {
       alert("Error al regenerar el título");
@@ -58,7 +62,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const handleRegenerateDescription = async () => {
     setRegenerating('description');
     try {
-      const res = await api.regenerateYoutubeDescription(videoId);
+      const res = await api.regenerateYoutubeDescription(videoId, seoLanguage, seoProvider);
       setDescription(res.description);
     } catch (err) {
       alert("Error al regenerar la descripción");
@@ -70,7 +74,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const handleRegenerateTags = async () => {
     setRegenerating('tags');
     try {
-      const res = await api.regenerateYoutubeTags(videoId);
+      const res = await api.regenerateYoutubeTags(videoId, seoLanguage, seoProvider);
       setTags(res.tags);
     } catch (err) {
       alert("Error al regenerar las etiquetas");
@@ -78,6 +82,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
       setRegenerating(null);
     }
   };
+
 
   const handleUpload = async () => {
     setUploading(true);
@@ -209,6 +214,31 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
 
             {/* Right Column */}
             <div className="yt-metadata-section">
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                <div style={{ flex: 1 }}>
+                  <label className="yt-section-label" style={{ fontSize: '0.7rem' }}>Idioma SEO</label>
+                  <select 
+                    className="yt-select"
+                    value={seoLanguage}
+                    onChange={(e) => setSeoLanguage(e.target.value)}
+                  >
+                    <option value="es">Español</option>
+                    <option value="en">Inglés</option>
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label className="yt-section-label" style={{ fontSize: '0.7rem' }}>Motor IA</label>
+                  <select 
+                    className="yt-select"
+                    value={seoProvider}
+                    onChange={(e) => setSeoProvider(e.target.value)}
+                  >
+                    <option value="openai">OpenAI (GPT-4o Mini)</option>
+                    <option value="grok">Grok (xAI)</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="yt-form-group">
                 <div className="yt-input-header">
                   <label className="yt-section-label">Título (SEO)</label>
