@@ -16,4 +16,4 @@ services:
               capabilities: [gpu]
     volumes:
       - ~/.local/share/tts:/root/.local/share/tts  # Cache downloaded models
-      - ./audio_seeds:/app/audio_seeds             # Reference audios
+      - ../backend/app/audio_seeds:/app/audio_seeds             # Reference audios
