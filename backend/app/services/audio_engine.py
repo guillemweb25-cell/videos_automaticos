@@ -113,8 +113,18 @@ class AudioEngine:
         url = getattr(settings, "LOCAL_TTS_URL", "http://192.168.1.46:8022") 
         endpoint = f"{url}/generate"
         
-        # We split text if it's too long, but XTTSv2 usually handles sentences well.
-        # It's safer to split to avoid VRAM OOM on the local GPU
+        # Resolve reference audio path in the backend
+        seed_dir = Path("app/audio_seeds")
+        ref_path = None
+        for ext in [".mp3", ".wav", ".m4a", ".ogg"]:
+            p = seed_dir / f"{voice_id}{ext}"
+            if p.exists():
+                ref_path = p
+                break
+                
+        if not ref_path:
+            raise ValueError(f"Voice reference '{voice_id}' not found in backend/app/audio_seeds/")
+
         parts = AudioEngine._split_text(text, 250)
         tmp_dir = out_path.parent / "__tts_tmp_xtts__"
         tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -123,12 +133,17 @@ class AudioEngine:
         try:
             for i, part in enumerate(parts):
                 print(f"Generating XTTS chunk {i+1}/{len(parts)} ({len(part)} chars)...")
-                data = {
-                    "text": part,
-                    "language": "es",  # We can make this dynamic later
-                    "voice_id": voice_id
-                }
-                r = requests.post(endpoint, data=data, timeout=120)
+                
+                with open(ref_path, "rb") as f:
+                    files = {
+                        "speaker_wav": (ref_path.name, f, "audio/mpeg" if ref_path.suffix == ".mp3" else "audio/wav")
+                    }
+                    data = {
+                        "text": part,
+                        "language": "es"
+                    }
+                    r = requests.post(endpoint, data=data, files=files, timeout=120)
+                    
                 if not r.ok:
                     raise RuntimeError(f"XTTS API error {r.status_code}: {r.text}")
                     
