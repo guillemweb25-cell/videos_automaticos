@@ -53,8 +53,7 @@ class ImageEngine:
             "- For elderly characters, PRIORITIZE slow, gentle, and stable movements. "
             "- ABSOLUTELY AVOID: jumping, running, high-impact movements, acrobatics. "
             "- POSE RESTRICTION: Keep poses simple and natural. AVOID complex limb arrangements like lifting legs, crossing legs in mid-air, or extremely twisted torsos. "
-            "- CLOTHING STRICTNESS: You MUST explicitly describe the clothing for ALL characters (e.g., 'wearing a thick woolen tunic', 'fully clothed in period-accurate robes'). NEVER leave clothing unspecified. ABSOLUTELY NO nakedness, no bare chests, no exposed skin other than face/hands. "
-
+            f"\nSTYLE SPECIFIC RULES:\n{style.get('post_note', '')}\n"
 
             "PROMPT SPECIFICATIONS: "
             "- Describe the scene, lighting, and composition (e.g., close-up, wide shot, bird's eye view). "
@@ -100,7 +99,7 @@ class ImageEngine:
             "STRICTLY follow the age and demographic described in the Style. "
             "- For elderly characters, ensure movements are calm, slow, and realistic. No jumping or acrobatic poses. "
             "- POSE RESTRICTION: Keep poses simple and natural. AVOID complex limb arrangements like lifting legs, crossing legs in mid-air, or extremely twisted torsos. "
-            "- CLOTHING STRICTNESS: You MUST explicitly describe the clothing for ALL characters (e.g., 'wearing a thick woolen tunic', 'fully clothed in period-accurate robes'). NEVER leave clothing unspecified. ABSOLUTELY NO nakedness, no bare chests, no exposed skin other than face/hands. "
+            f"\nSTYLE SPECIFIC RULES:\n{style.get('post_note', '')}\n"
             "Output ONLY the prompt text in English."
         )
         
