@@ -1465,7 +1465,7 @@ async def generate_thumbnail_api(
         negative_prompt=neg,
         mode=gen_mode,
         channel_name=video.channel.name,
-        workflow_name=video.workflow_name
+        workflow_name=data.get("workflow_name")
     )
     
     # Save updates
