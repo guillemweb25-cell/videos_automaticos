@@ -588,26 +588,36 @@ class ImageEngine:
             draw_obj.text((x, y), text_str, font=font_obj, fill=fill_color)
             return x, y
 
+        def get_fitting_font(text_str, font_path, max_width, start_size):
+            size = start_size
+            font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
+            if not font_path: return font
+            while size > 10:
+                bbox = draw.textbbox((0, 0), text_str, font=font)
+                if (bbox[2] - bbox[0]) <= max_width:
+                    break
+                size -= 4
+                font = ImageFont.truetype(font_path, size)
+            return font
+
         if style == "jesus":
             # 3-line style for Jesus channel
-            # Top: White bold (Label)
-            # Center: Gold Heavy (Main Title)
-            # Bottom: White Italic (Subtitle)
-            
-            # Split text: "LABEL...TITLE...SUBTITLE" or "LABEL...TITLE"
             parts = text.split("...")
             label = parts[0].strip().upper() if len(parts) > 0 else "MENSAJE DE"
             title = parts[1].strip().upper() if len(parts) > 1 else ""
             subtitle = parts[2].strip().lower() if len(parts) > 2 else ""
 
-            # Sizes
-            size_top = int(height * 0.07)
-            size_center = int(height * 0.15)
-            size_bottom = int(height * 0.06)
+            # Use min(width, height) to avoid massive fonts on vertical videos
+            base_dim = min(width, height)
+            size_top = int(base_dim * 0.08)
+            size_center = int(base_dim * 0.18)
+            size_bottom = int(base_dim * 0.07)
+            
+            max_w = width * 0.95
 
-            font_top = ImageFont.truetype(font_path_bold, size_top) if font_path_bold else ImageFont.load_default()
-            font_center = ImageFont.truetype(font_path_heavy, size_center) if font_path_heavy else ImageFont.load_default()
-            font_bottom = ImageFont.truetype(font_path_bold, size_bottom) if font_path_bold else ImageFont.load_default()
+            font_top = get_fitting_font(label, font_path_bold, max_w, size_top)
+            font_center = get_fitting_font(title, font_path_heavy, max_w, size_center)
+            font_bottom = get_fitting_font(subtitle, font_path_bold, max_w, size_bottom)
 
             # Draw Top (18% from top)
             draw_text_with_outline(draw, label, (0, int(height * 0.18)), font_top, "white", "black", outline_width=4, align="center")
@@ -635,13 +645,16 @@ class ImageEngine:
                     line1 = text
                     line2 = ""
 
-            font_size_1 = int(height * 0.12)
-            font_size_2 = int(height * 0.10)
+            base_dim = min(width, height)
+            font_size_1 = int(base_dim * 0.15)
+            font_size_2 = int(base_dim * 0.13)
             
-            font1 = ImageFont.truetype(font_path_bold, font_size_1) if font_path_bold else ImageFont.load_default()
-            font2 = ImageFont.truetype(font_path_bold, font_size_2) if font_path_bold else ImageFont.load_default()
+            max_w = width * 0.95
+            
+            font1 = get_fitting_font(line1.upper(), font_path_bold, max_w, font_size_1)
+            font2 = get_fitting_font(line2.upper(), font_path_bold, max_w, font_size_2)
 
-            margin_x = int(width * 0.05)
+            margin_x = int(width * 0.025)
             curr_y = int(height * 0.35)
 
             # Colors based on style
@@ -649,12 +662,17 @@ class ImageEngine:
             if style == "sombras":
                 color1, color2 = ("#ff3333", "#33ff33") # Red and Green for horror
 
+            # Always center for vertical videos to look better, left for horizontal
+            is_vertical = height > width
+            align_mode = "center" if is_vertical else "left"
+            draw_x = 0 if is_vertical else margin_x
+
             if line1:
-                draw_text_with_outline(draw, line1.upper(), (margin_x, curr_y), font1, color1, "black", outline_width=6)
-                curr_y += int(font_size_1 * 1.2)
+                _, draw_y = draw_text_with_outline(draw, line1.upper(), (draw_x, curr_y), font1, color1, "black", outline_width=6, align=align_mode)
+                curr_y = draw_y + int(font_size_1 * 1.1)
 
             if line2:
-                draw_text_with_outline(draw, line2.upper(), (margin_x, curr_y), font2, color2, "black", outline_width=6)
+                draw_text_with_outline(draw, line2.upper(), (draw_x, curr_y), font2, color2, "black", outline_width=6, align=align_mode)
 
         # Save back
         img.convert("RGB").save(image_path, "PNG")
