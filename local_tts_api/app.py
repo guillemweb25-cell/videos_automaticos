@@ -76,3 +76,33 @@ async def generate_audio(
 @app.get("/health")
 def health():
     return {"status": "ok", "device": device}
+
+@app.post("/trim-seeds")
+def trim_seeds(duration: int = 10):
+    import subprocess
+    seed_dir = Path("audio_seeds")
+    if not seed_dir.exists():
+        return {"status": "error", "detail": "No audio_seeds directory found"}
+    
+    trimmed = []
+    for f in seed_dir.glob("*"):
+        if f.suffix.lower() in [".mp3", ".wav", ".m4a", ".ogg"]:
+            tmp_path = str(f) + ".tmp.wav"
+            # Extract first 'duration' seconds and force convert to high quality WAV for XTTS
+            cmd = [
+                "ffmpeg", "-y", "-i", str(f), 
+                "-t", str(duration), 
+                "-ar", "22050", # optimal sample rate for XTTS
+                "-ac", "1",     # mono
+                tmp_path
+            ]
+            try:
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                os.replace(tmp_path, str(f))
+                trimmed.append(f.name)
+            except Exception as e:
+                print(f"Failed to trim {f.name}: {e}")
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+                
+    return {"status": "ok", "message": f"Trimmed {len(trimmed)} files to {duration} seconds.", "files": trimmed}
