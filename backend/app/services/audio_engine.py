@@ -149,15 +149,55 @@ class AudioEngine:
 
     @staticmethod
     def _split_text(s: str, limit: int) -> List[str]:
+        # Split by natural sentence boundaries to avoid TTS stuttering
+        import re
         parts = []
-        while s:
-            if len(s) <= limit:
-                parts.append(s)
-                break
-            cut = s.rfind(" ", 0, limit)
-            if cut < 0: cut = limit
-            parts.append(s[:cut].strip())
-            s = s[cut:].lstrip()
+        # First, split by major punctuation
+        sentences = re.split(r'(?<=[.!?])\s+', s.strip())
+        
+        current_part = ""
+        for sentence in sentences:
+            if not sentence.strip():
+                continue
+                
+            if len(current_part) + len(sentence) <= limit:
+                current_part += (sentence + " ")
+            else:
+                if current_part:
+                    parts.append(current_part.strip())
+                # If a single sentence is longer than the limit, we have to hard-split it by commas or spaces
+                if len(sentence) > limit:
+                    sub_parts = re.split(r'(?<=[,;:…])\s+', sentence)
+                    sub_current = ""
+                    for sub in sub_parts:
+                        if len(sub_current) + len(sub) <= limit:
+                            sub_current += (sub + " ")
+                        else:
+                            if sub_current:
+                                parts.append(sub_current.strip())
+                            if len(sub) > limit:
+                                # Absolute fallback: split by space
+                                words = sub.split()
+                                w_curr = ""
+                                for w in words:
+                                    if len(w_curr) + len(w) <= limit:
+                                        w_curr += (w + " ")
+                                    else:
+                                        if w_curr: parts.append(w_curr.strip())
+                                        w_curr = w + " "
+                                if w_curr: parts.append(w_curr.strip())
+                                sub_current = ""
+                            else:
+                                sub_current = sub + " "
+                    if sub_current:
+                        parts.append(sub_current.strip())
+                    current_part = ""
+                else:
+                    current_part = sentence + " "
+                    
+        if current_part:
+            parts.append(current_part.strip())
+            
         return parts
 
     @staticmethod
