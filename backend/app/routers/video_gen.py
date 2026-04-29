@@ -609,7 +609,12 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                     all_prompts_data["thumbnail"]["hook"] = hook
                     all_prompts_data["thumbnail"]["visual_prompt"] = visual_prompt
                     
-                    await engine.generate_thumbnail(hook, visual_prompt, thumbnail_path, size=f"{vid.width}x{vid.height}")
+                    await engine.generate_thumbnail(
+                        hook, visual_prompt, thumbnail_path, 
+                        size=f"{vid.width}x{vid.height}",
+                        channel_name=channel.name,
+                        workflow_name=vid.workflow_name
+                    )
                 except Exception as e:
                     print(f"Warning: Thumbnail generation failed: {e}")
 
@@ -1459,7 +1464,8 @@ async def generate_thumbnail_api(
         model_id=model_id,
         negative_prompt=neg,
         mode=gen_mode,
-        channel_name=video.channel.name
+        channel_name=video.channel.name,
+        workflow_name=video.workflow_name
     )
     
     # Save updates

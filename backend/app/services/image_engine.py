@@ -456,7 +456,7 @@ class ImageEngine:
             time.sleep(3)
         raise TimeoutError("Leonardo V2 timeout")
 
-    async def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY", channel_name: Optional[str] = None) -> None:
+    async def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY", channel_name: Optional[str] = None, workflow_name: Optional[str] = None) -> None:
         """Generates a professional thumbnail. Blends visual prompt with text instructions. 
         """
 
@@ -491,15 +491,18 @@ class ImageEngine:
         if self.comfy_url:
             # Dynamic workflow selection
             vp_lower = visual_prompt.lower()
-            biblical_keywords = ["biblical", "jesus", "apostle", "god", "divine", "revelation", "prophecy", "bible", "sacred"]
-            if any(k in vp_lower for k in biblical_keywords):
-                workflow = "Biblical-Epic-Ultra.json"
-            elif "anime" in vp_lower or "illustration" in vp_lower or "hentai" in vp_lower:
-                workflow = "Anime-Illustration-Ultra.json"
-            elif "photorealistic" in vp_lower or "cinematic horror" in vp_lower or "film still" in vp_lower:
-                workflow = "Cinematic-Horror-Ultra.json"
-            else:
-                workflow = "Comic-Horror-Ultra.json"
+            biblical_keywords = ["biblical", "jesus", "apostle", "god", "divine", "revelation", "prophecy", "bible", "sacred", "angel", "miracle", "christ", "mary"]
+            
+            workflow = workflow_name
+            if not workflow:
+                if any(k in vp_lower for k in biblical_keywords):
+                    workflow = "Biblical-Epic-Ultra.json"
+                elif "anime" in vp_lower or "illustration" in vp_lower or "hentai" in vp_lower:
+                    workflow = "Anime-Illustration-Ultra.json"
+                elif "photorealistic" in vp_lower or "cinematic horror" in vp_lower or "film still" in vp_lower:
+                    workflow = "Cinematic-Horror-Ultra.json"
+                else:
+                    workflow = "Comic-Horror-Ultra.json"
             
             await self.generate_comfy_image(
                 prompt=visual_prompt, 
