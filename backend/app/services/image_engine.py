@@ -45,6 +45,7 @@ class ImageEngine:
             "- If the narration describes a specific event (e.g., 'fleeing to Egypt', 'working wood'), DO NOT show a generic summary scene. "
             "- Maintain character consistency (age, face, clothes) but CHANGE the composition, angle, and specific interaction for every prompt. "
             "- VARIETY is mandatory. If you see in the 'Recent History' that a setting has been used, MOVE the camera or CHANGE the scene elements. "
+            "- IF THE VIDEO INVOLVES SUPERNATURAL/CELESTIAL BEINGS (like Angels, Demons, Spirits), YOU MUST EXPLICITLY DESCRIBE THEIR SUPERNATURAL FEATURES (e.g., large majestic wings, glowing ethereal light, celestial aura) so the image generator does not render them as ordinary humans. "
             
             "STRICT RULES for anatomical correctness: "
             "- Ensure human figures have exactly two arms, two legs, and five fingers per hand. "
