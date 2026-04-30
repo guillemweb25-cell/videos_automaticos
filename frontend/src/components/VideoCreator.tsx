@@ -308,19 +308,41 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         addLog('Saltando: Guion ya procesado.');
       }
 
-      // 3. Generate Audio
+      // 3. Generate Audio (background + polling)
       const skipAudio = ['audio_ready', 'generating_images', 'images_ready', 'seo', 'rendering', 'ready'].includes(vStatus);
       if (!skipAudio) {
         if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
         setStatus('audio');
         addLog(`Generando audio con ${provider} (voz: ${voice})...`);
         await api.generateAudio(currentId, voice, provider);
-        addLog('Audio generado con éxito.');
+
+        let lastLoggedAudioPct = -1;
+        while (true) {
+          if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
+          await new Promise(r => setTimeout(r, 2000));
+          let p;
+          try {
+            p = await api.getAudioProgress(currentId);
+          } catch (e) {
+            continue;
+          }
+          if (p.progress > lastLoggedAudioPct && p.progress % 20 === 0) {
+            addLog(`Audio ${p.progress}%`);
+            lastLoggedAudioPct = p.progress;
+          }
+          if (p.status === 'audio_ready') {
+            addLog('Audio generado con éxito.');
+            break;
+          }
+          if (p.status === 'failed') {
+            throw new Error(p.last_error || 'Audio falló');
+          }
+        }
       } else {
         addLog('Saltando: Audio ya generado.');
       }
 
-      // 4. Generate Images
+      // 4. Generate Images (background + polling)
       const skipImages = ['images_ready', 'seo', 'rendering', 'ready'].includes(vStatus);
       if (!skipImages) {
         if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
@@ -328,7 +350,45 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         addLog(`Generando imágenes (${maxImagesPerParagraph} por párrafo) usando modelo: ${selectedModel} (${generationMode})...`);
         setStatus('generating_images');
         await api.generateImages(currentId!, style, maxImagesPerParagraph, selectedModel, generationMode, selectedWorkflow);
-        addLog('Imágenes generadas con éxito.');
+
+        let lastLoggedImagesPct = -1;
+        let lastLoggedParagraph = -1;
+        while (true) {
+          if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
+          await new Promise(r => setTimeout(r, 3000));
+          let p;
+          try {
+            p = await api.getImagesProgress(currentId!);
+          } catch (e) {
+            continue;
+          }
+          // Log every new paragraph completed (more granular than %)
+          if (p.paragraphs_done > lastLoggedParagraph && p.total_paragraphs > 0) {
+            addLog(`Imágenes: párrafo ${p.paragraphs_done}/${p.total_paragraphs} (${p.total_images} imágenes generadas)`);
+            lastLoggedParagraph = p.paragraphs_done;
+          } else if (p.progress > lastLoggedImagesPct && p.progress % 20 === 0) {
+            addLog(`Imágenes ${p.progress}%`);
+            lastLoggedImagesPct = p.progress;
+          }
+          if (p.status === 'images_ready' || p.status === 'audio_ready') {
+            // images_ready = explicit done; audio_ready can happen if reset-images was called
+            if (p.status === 'images_ready') {
+              addLog(`Imágenes generadas con éxito (${p.total_images} totales).`);
+              break;
+            }
+          }
+          if (p.status === 'images_ready') {
+            break;
+          }
+          if (p.status === 'failed') {
+            throw new Error(p.last_error || 'Generación de imágenes falló');
+          }
+          // If status changed past images_ready (e.g. seo, rendering, ready) we're past this step
+          if (['seo', 'rendering', 'ready', 'completed'].includes(p.status)) {
+            addLog('Imágenes generadas con éxito.');
+            break;
+          }
+        }
       } else {
         addLog('Saltando: Imágenes ya generadas.');
       }
@@ -349,10 +409,33 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
         setStatus('rendering');
         addLog('Iniciando renderizado del vídeo final (esto puede tardar)...');
         const overlayArg = selectedOverlay === '' ? undefined : selectedOverlay;
-        const renderRes = await api.renderVideo(currentId, enableSubtitles, overlayArg);
-        addLog('¡Renderizado completado!');
-        setFinalVideo(renderRes.output);
-        setStatus('completed');
+        await api.renderVideo(currentId, enableSubtitles, overlayArg);
+
+        // Poll progress until ready or failed (background render on backend)
+        let lastLoggedPct = -1;
+        while (true) {
+          if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
+          await new Promise(r => setTimeout(r, 2000));
+          let p;
+          try {
+            p = await api.getRenderProgress(currentId);
+          } catch (e) {
+            continue;
+          }
+          if (p.progress > lastLoggedPct && p.progress % 10 === 0) {
+            addLog(`Render ${p.progress}%`);
+            lastLoggedPct = p.progress;
+          }
+          if (p.status === 'ready') {
+            addLog('¡Renderizado completado!');
+            setFinalVideo(`output/final_video.mp4`);
+            setStatus('completed');
+            break;
+          }
+          if (p.status === 'failed') {
+            throw new Error(p.last_error || 'Render falló');
+          }
+        }
       } else {
         addLog('Pipeline pausado. Revisa las imágenes antes de renderizar.');
         setStatus('images_ready');

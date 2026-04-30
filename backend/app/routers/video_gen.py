@@ -146,20 +146,10 @@ def create_video(video_in: VideoCreate, db: Session = Depends(get_db), current_u
     from app.config import get_settings
     settings = get_settings()
 
-    # 1. Check credits
-    if current_user.credits < settings.VIDEO_COST_CREDITS:
-        raise HTTPException(
-            status_code=402, 
-            detail=f"Saldo insuficiente. Necesitas {settings.VIDEO_COST_CREDITS} créditos (0.50€) y tienes {current_user.credits}."
-        )
-
     # 2. Check channel exists
     channel = db.query(Channel).filter(Channel.id == video_in.channel_id).first()
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-
-    # 3. Deduct credits
-    current_user.credits -= settings.VIDEO_COST_CREDITS
     
     # 4. Create DB record
     video = Video(**video_in.model_dump())
@@ -278,66 +268,155 @@ def get_script(video_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{video_id}/audio")
 async def generate_audio(
-    video_id: int, 
-    voice: str = "es_mx_002", 
+    video_id: int,
+    voice: str = "es_mx_002",
     provider: str = "tiktok",
     db: Session = Depends(get_db)
 ):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
-    
+
+    base_dir = Path(video.base_dir)
+    plan_path = base_dir / "plan.json"
+    if not plan_path.exists():
+        raise HTTPException(status_code=400, detail="Script not uploaded")
+
+    # Pre-validate ElevenLabs key here (sync) so we fail fast before kicking off bg task
+    if provider.lower() == "elevenlabs":
+        settings = get_user_settings_for_video(video, db)
+        if not settings or not settings.elevenlabs_api_key:
+            raise HTTPException(status_code=400, detail="No has configurado tu API Key de ElevenLabs en Ajustes.")
+
+    # Reset progress file
+    progress_file = base_dir / "audio_progress.txt"
+    progress_file.parent.mkdir(parents=True, exist_ok=True)
+    progress_file.write_text("0")
+
     video.status = "generating_audio"
     video.voice = voice
+    video.last_error = None
     db.commit()
-    
-    try:
+
+    async def _do_audio(vid_id: int, vc: str, prov: str):
+        from app.database import SessionLocal
+        db_bg = SessionLocal()
+        try:
+            vid = db_bg.query(Video).filter(Video.id == vid_id).first()
+            if not vid:
+                return
+            base_dir_bg = Path(vid.base_dir)
+            plan = json.loads((base_dir_bg / "plan.json").read_text())
+            results = []
+            total_sec = 0
+            total_chunks = max(1, len(plan))
+
+            for i, item in enumerate(plan):
+                idx = item["idx"]
+                text = item["spoken"]
+                out_path = base_dir_bg / "audio/chunks" / f"{idx:03d}.mp3"
+
+                if not out_path.exists():
+                    if prov.lower() == "elevenlabs":
+                        s = get_user_settings_for_video(vid, db_bg)
+                        AudioEngine.synthesize_elevenlabs(text, vc, out_path, api_key=s.elevenlabs_api_key)
+                    elif prov.lower() == "local_xtts":
+                        AudioEngine.synthesize_local_xtts(text, vc, out_path)
+                    else:
+                        AudioEngine.synthesize_tiktok(text, vc, out_path)
+
+                dur = AudioEngine.get_duration(out_path)
+                total_sec += dur
+                results.append({"id": idx, "seconds": dur, "file": out_path.name})
+
+                pct = int((i + 1) * 100 / total_chunks)
+                try:
+                    (base_dir_bg / "audio_progress.txt").write_text(str(pct))
+                except Exception:
+                    pass
+                print(f"[audio] Progress: {pct}% ({i + 1}/{total_chunks})", flush=True)
+
+            (base_dir_bg / "paragraphs_durations.json").write_text(json.dumps(results, indent=2))
+
+            vid.duration_seconds = total_sec
+            vid.status = "audio_ready"
+            db_bg.commit()
+        except Exception as e:
+            print(f"[BG audio] FAILED for video {vid_id}: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            vid = db_bg.query(Video).filter(Video.id == vid_id).first()
+            if vid:
+                vid.status = "failed"
+                vid.last_error = str(e)
+                db_bg.commit()
+        finally:
+            db_bg.close()
+
+    asyncio.create_task(_do_audio(video_id, voice, provider))
+
+    return {"ok": True, "background": True, "status": "generating_audio"}
+
+
+@router.get("/{video_id}/audio-progress")
+def get_audio_progress(video_id: int, db: Session = Depends(get_db)):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    progress = 0
+    if video.base_dir:
+        progress_file = Path(video.base_dir) / "audio_progress.txt"
+        if progress_file.exists():
+            try:
+                progress = int(progress_file.read_text().strip() or 0)
+            except Exception:
+                progress = 0
+
+    return {
+        "progress": progress,
+        "status": video.status,
+        "last_error": video.last_error,
+    }
+
+
+@router.get("/{video_id}/images-progress")
+def get_images_progress(video_id: int, db: Session = Depends(get_db)):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    progress = 0
+    paragraphs_done = 0
+    total_paragraphs = 0
+    total_images = 0
+    if video.base_dir:
         base_dir = Path(video.base_dir)
-        plan_path = base_dir / "plan.json"
-        if not plan_path.exists():
-            raise HTTPException(status_code=400, detail="Script not uploaded")
-        
-        plan = json.loads(plan_path.read_text())
-        results = []
-        total_sec = 0
-        
-        for item in plan:
-            idx = item["idx"]
-            text = item["spoken"]
-            out_path = base_dir / "audio/chunks" / f"{idx:03d}.mp3"
-            
-            # Caching: Skip if file already exists
-            if not out_path.exists():
-                if provider.lower() == "elevenlabs":
-                    settings = get_user_settings_for_video(video, db)
-                    if not settings or not settings.elevenlabs_api_key:
-                        raise ValueError("No has configurado tu API Key de ElevenLabs en Ajustes.")
-                    AudioEngine.synthesize_elevenlabs(text, voice, out_path, api_key=settings.elevenlabs_api_key)
-                elif provider.lower() == "local_xtts":
-                    AudioEngine.synthesize_local_xtts(text, voice, out_path)
-                else:
-                    AudioEngine.synthesize_tiktok(text, voice, out_path)
-            
-            dur = AudioEngine.get_duration(out_path)
-            total_sec += dur
-            results.append({"id": idx, "seconds": dur, "file": out_path.name})
-        
-        (base_dir / "paragraphs_durations.json").write_text(json.dumps(results, indent=2))
-        
-        video.duration_seconds = total_sec
-        video.status = "audio_ready"
-        db.commit()
-        return {"ok": True, "total_seconds": total_sec, "chunks": len(results)}
-    except ValueError as e:
-        video.status = "failed"
-        video.last_error = str(e)
-        db.commit()
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        video.status = "failed"
-        video.last_error = "Error al generar audio. Revisa consola o intenta otro proveedor."
-        db.commit()
-        raise HTTPException(status_code=500, detail=str(e))
+        pf = base_dir / "images_progress.txt"
+        if pf.exists():
+            try:
+                progress = int(pf.read_text().strip() or 0)
+            except Exception:
+                progress = 0
+        # Pull rich detail from the JSON state if present
+        meta_path = base_dir / "image_prompts_all.json"
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text())
+                paragraphs_done = int(meta.get("processed_paragraphs", 0))
+                total_paragraphs = int(meta.get("total_paragraphs", 0))
+                total_images = int(meta.get("total_images", 0))
+            except Exception:
+                pass
+
+    return {
+        "progress": progress,
+        "paragraphs_done": paragraphs_done,
+        "total_paragraphs": total_paragraphs,
+        "total_images": total_images,
+        "status": video.status,
+        "last_error": video.last_error,
+    }
 
 @router.post("/{video_id}/reset-images")
 async def reset_images(video_id: int, db: Session = Depends(get_db)):
@@ -375,7 +454,17 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
     video.status = "generating_images"
     video.style = req.style_name
     video.max_images_per_paragraph = req.max_images_per_paragraph
+    video.last_error = None
     db.commit()
+
+    # Reset progress file
+    if video.base_dir:
+        try:
+            progress_file = Path(video.base_dir) / "images_progress.txt"
+            progress_file.parent.mkdir(parents=True, exist_ok=True)
+            progress_file.write_text("0")
+        except Exception:
+            pass
 
     settings = get_user_settings_for_video(video, db)
     
@@ -582,6 +671,14 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                 # Save progress after each paragraph
                 all_prompts_data["total_images"] = total_images
                 all_prompts_all_path.write_text(json.dumps(all_prompts_data, indent=2))
+
+                # Write progress file (paragraph-level progress)
+                images_pct = int(all_prompts_data["processed_paragraphs"] * 100 / max(1, all_prompts_data["total_paragraphs"]))
+                try:
+                    (base_dir / "images_progress.txt").write_text(str(images_pct))
+                except Exception:
+                    pass
+                print(f"[images] Progress: {images_pct}% ({all_prompts_data['processed_paragraphs']}/{all_prompts_data['total_paragraphs']} párrafos, {total_images} imágenes)", flush=True)
             
             all_prompts_data["total_images"] = total_images
             all_prompts_all_path.write_text(json.dumps(all_prompts_data, indent=2))
@@ -662,16 +759,36 @@ def get_images_data(video_id: int, db: Session = Depends(get_db)):
     data["orientation"] = "horizontal" if video.width > video.height else "vertical"
     data["is_short"] = video.is_short
 
-    # Add relative path for frontend access via /cache
-    # base_dir is like "cache/0001-channel/..."
-    # We want "cache/0001-channel/.../images/p001_01.png"
+    # Add relative path for frontend access via /cache.
+    # Self-heal: si el JSON dice is_video=true pero el .mp4 ya no existe en disco
+    # (el usuario lo borró), volvemos a apuntar al .png si existe y reseteamos el flag.
+    images_dir = base_dir / "images"
+    json_changed = False
     for item in data.get("items", []):
         p_idx = item["paragraph_id"]
         item["audio_url"] = f"/{video.base_dir}/audio/chunks/{p_idx:03d}.mp3"
         for p_info in item.get("prompts", []):
             img_idx = p_info["id"]
-            rel_path = f"{video.base_dir}/images/p{p_idx:03d}_{img_idx:02d}.png"
-            p_info["url"] = f"/{rel_path}"
+            mp4_path = images_dir / f"p{p_idx:03d}_{img_idx:02d}.mp4"
+            png_path = images_dir / f"p{p_idx:03d}_{img_idx:02d}.png"
+
+            if p_info.get("is_video"):
+                if mp4_path.exists():
+                    p_info["url"] = f"/{video.base_dir}/images/{mp4_path.name}"
+                else:
+                    # mp4 missing → fall back to png and unset video flag
+                    p_info["is_video"] = False
+                    p_info.pop("video_model", None)
+                    json_changed = True
+                    p_info["url"] = f"/{video.base_dir}/images/{png_path.name}"
+            else:
+                p_info["url"] = f"/{video.base_dir}/images/{png_path.name}"
+
+    if json_changed:
+        try:
+            images_json.write_text(json.dumps(data, indent=2))
+        except Exception:
+            pass
     
     # Add thumbnail info if exists
     thumb_path = base_dir / "output" / "thumbnail.png"
@@ -1029,17 +1146,43 @@ async def convert_image_to_video(
     out_video_path = base_dir / "images" / f"p{paragraph_id:03d}_{image_id:02d}.mp4"
 
     settings = get_user_settings_for_video(video, db)
-    engine = ImageEngine(openai_api_key=settings.openai_api_key, leonardo_api_key=settings.leonardo_api_key)
-    
-    cost_info = engine.generate_leonardo_video(
-        prompt=target_prompt,
-        image_path=source_img_path,
-        out_path=out_video_path,
-        duration=req.duration,
-        video_model=req.model_id,
-        orientation=video.orientation if hasattr(video, "orientation") else "vertical"
+    engine = ImageEngine(
+        openai_api_key=settings.openai_api_key,
+        leonardo_api_key=settings.leonardo_api_key,
+        grok_api_key=settings.grok_api_key,
     )
-    
+
+    # Derive orientation from width/height (Video model has no orientation field)
+    if video.width and video.height:
+        if video.width > video.height:
+            orientation = "horizontal"
+        elif video.width < video.height:
+            orientation = "vertical"
+        else:
+            orientation = "square"
+    else:
+        orientation = "vertical"
+
+    if req.provider.lower() == "grok":
+        cost_info = engine.generate_grok_video(
+            prompt=target_prompt,
+            image_path=source_img_path,
+            out_path=out_video_path,
+            duration=req.duration,
+            orientation=orientation,
+        )
+        used_model = "grok-imagine-video"
+    else:
+        cost_info = engine.generate_leonardo_video(
+            prompt=target_prompt,
+            image_path=source_img_path,
+            out_path=out_video_path,
+            duration=req.duration,
+            video_model=req.model_id,
+            orientation=orientation,
+        )
+        used_model = req.model_id
+
     # Update JSON
     timestamp = int(datetime.now().timestamp())
     for item in data.get("items", []):
@@ -1047,7 +1190,7 @@ async def convert_image_to_video(
             for p_info in item.get("prompts", []):
                 if p_info["id"] == image_id:
                     p_info["is_video"] = True
-                    p_info["video_model"] = req.model_id
+                    p_info["video_model"] = used_model
                     p_info["url"] = f"/{video.base_dir}/images/{out_video_path.name}?t={timestamp}"
                     if cost_info:
                         existing_cost = p_info.get("cost", {"amount": 0})
@@ -1549,20 +1692,81 @@ async def generate_seo(video_id: int, db: Session = Depends(get_db)):
     return {"ok": True, "description": description, "hashtags": hashtags, "tags": question_tags}
 
 @router.post("/{video_id}/render")
-def render_video(video_id: int, subtitles: bool = False, overlay: str | None = None, db: Session = Depends(get_db)):
+async def render_video(video_id: int, subtitles: bool = False, overlay: str | None = None, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
-    
+
+    base_dir = Path(video.base_dir)
+    durations_path = base_dir / "paragraphs_durations.json"
+    if not durations_path.exists():
+        raise HTTPException(status_code=400, detail="Audio not generated")
+
+    # Reset progress file and mark status as rendering
+    output_dir = base_dir / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    progress_file = output_dir / "render_progress.txt"
+    progress_file.write_text("0")
+
     video.status = "rendering"
+    video.last_error = None
     db.commit()
-    
+
+    async def _do_render(vid_id: int, subs: bool, ovl: str | None):
+        from app.database import SessionLocal
+        db_bg = SessionLocal()
+        try:
+            vid = db_bg.query(Video).filter(Video.id == vid_id).first()
+            if not vid:
+                return
+            _render_video_blocking(vid, db_bg, subs, ovl)
+        except Exception as e:
+            print(f"[BG render] FAILED for video {vid_id}: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            vid = db_bg.query(Video).filter(Video.id == vid_id).first()
+            if vid:
+                vid.status = "failed"
+                vid.last_error = str(e)
+                db_bg.commit()
+        finally:
+            db_bg.close()
+
+    asyncio.create_task(_do_render(video_id, subtitles, overlay))
+
+    return {"ok": True, "background": True, "status": "rendering"}
+
+
+@router.get("/{video_id}/render-progress")
+def get_render_progress(video_id: int, db: Session = Depends(get_db)):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    progress = 0
+    if video.base_dir:
+        progress_file = Path(video.base_dir) / "output" / "render_progress.txt"
+        if progress_file.exists():
+            try:
+                progress = int(progress_file.read_text().strip() or 0)
+            except Exception:
+                progress = 0
+
+    return {
+        "progress": progress,
+        "status": video.status,
+        "last_error": video.last_error,
+    }
+
+
+def _render_video_blocking(video, db, subtitles: bool, overlay: str | None):
+    """Original synchronous render logic, callable from background tasks."""
     try:
         base_dir = Path(video.base_dir)
         durations_path = base_dir / "paragraphs_durations.json"
         if not durations_path.exists():
             raise HTTPException(status_code=400, detail="Audio not generated")
-        
+
         durations = json.loads(durations_path.read_text())
         
         image_paths = []
@@ -1701,13 +1905,19 @@ def render_video(video_id: int, subtitles: bool = False, overlay: str | None = N
                 print(f"[render] WARNING: Subtitle generation failed: {e}", flush=True)
                 # Don't fail the entire render if subtitles fail
         
+        # Ensure progress shows 100% at the very end
+        try:
+            (base_dir / "output" / "render_progress.txt").write_text("100")
+        except Exception:
+            pass
+
         video.status = "ready"
         db.commit()
-        
+
         return {"ok": True, "output": str(out_path), "bg_music": str(bg_music_path) if bg_music_path else None, "subtitles": subtitles}
     except Exception as e:
         video.status = "failed"
         video.last_error = str(e)
         db.commit()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise
 

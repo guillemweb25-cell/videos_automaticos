@@ -72,7 +72,8 @@ export interface YouTubeVideo {
   title: string;
   thumbnail: string;
   published_at: string;
-  view_count?: string;
+  view_count?: number;
+  duration_seconds?: number;
 }
 
 export const API_URL = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8500`;
@@ -311,10 +312,16 @@ class ApiClient {
     return res.json();
   }
 
-  async getYouTubeVideos(channelId: number): Promise<YouTubeVideo[]> {
-    const res = await fetch(`${this.baseUrl}/youtube/videos/${channelId}`, {
-      headers: this.getHeaders(true),
-    });
+  async getYouTubeVideos(
+    channelId: number,
+    opts?: { maxResults?: number; minSeconds?: number }
+  ): Promise<YouTubeVideo[]> {
+    const params = new URLSearchParams();
+    if (opts?.maxResults) params.set('max_results', String(opts.maxResults));
+    if (opts?.minSeconds !== undefined) params.set('min_seconds', String(opts.minSeconds));
+    const qs = params.toString();
+    const url = `${this.baseUrl}/youtube/videos/${channelId}${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, { headers: this.getHeaders(true) });
     if (!res.ok) throw new Error('Error al obtener vídeos de YouTube');
     return res.json();
   }
@@ -427,12 +434,38 @@ class ApiClient {
     return res.json();
   }
 
-  async generateAudio(videoId: number, voice: string, provider: string): Promise<{ ok: boolean; total_seconds: number }> {
+  async generateAudio(videoId: number, voice: string, provider: string): Promise<{ ok: boolean; background?: boolean; status?: string }> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/audio?voice=${voice}&provider=${provider}`, {
       method: 'POST',
       headers: this.getHeaders(true),
     });
-    if (!res.ok) throw new Error('Error al generar audio');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al generar audio');
+    }
+    return res.json();
+  }
+
+  async getAudioProgress(videoId: number): Promise<{ progress: number; status: string; last_error: string | null }> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/audio-progress`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener progreso de audio');
+    return res.json();
+  }
+
+  async getImagesProgress(videoId: number): Promise<{
+    progress: number;
+    paragraphs_done: number;
+    total_paragraphs: number;
+    total_images: number;
+    status: string;
+    last_error: string | null;
+  }> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/images-progress`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener progreso de imágenes');
     return res.json();
   }
 
@@ -445,7 +478,7 @@ class ApiClient {
     return response.json();
   }
 
-  async generateImages(videoId: number, style: string, maxImages: number, modelId?: string, generationMode?: string, workflowName?: string): Promise<{ ok: boolean; count: number }> {
+  async generateImages(videoId: number, style: string, maxImages: number, modelId?: string, generationMode?: string, workflowName?: string): Promise<{ ok: boolean; background?: boolean; count?: number }> {
     const response = await fetch(`${this.baseUrl}/videos/${videoId}/images`, {
       method: 'POST',
       headers: this.getHeaders(true),
@@ -458,15 +491,11 @@ class ApiClient {
       })
     });
 
-    if (!response.ok) throw new Error('Error al generar imágenes');
-    const data = await response.json();
-
-    
-    // If background processing, poll for completion
-    if (data.background) {
-      return this.pollVideoStatus(videoId);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al generar imágenes');
     }
-    return data;
+    return response.json();
   }
 
   async getVideoStatus(videoId: number): Promise<{ status: string; last_error?: string }> {
@@ -507,11 +536,11 @@ class ApiClient {
     return res.json();
   }
 
-  async renderVideo(videoId: number, subtitles: boolean = false, overlay?: string): Promise<{ ok: boolean; output: string }> {
+  async renderVideo(videoId: number, subtitles: boolean = false, overlay?: string): Promise<{ ok: boolean; background?: boolean; status?: string }> {
     const url = new URL(`${this.baseUrl}/videos/${videoId}/render`);
     if (subtitles) url.searchParams.append('subtitles', 'true');
     if (overlay) url.searchParams.append('overlay', overlay);
-    
+
     const res = await fetch(url.toString(), {
       method: 'POST',
       headers: this.getHeaders(true),
@@ -520,6 +549,14 @@ class ApiClient {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || 'Error al renderizar vídeo');
     }
+    return res.json();
+  }
+
+  async getRenderProgress(videoId: number): Promise<{ progress: number; status: string; last_error: string | null }> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/render-progress`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener progreso de render');
     return res.json();
   }
 
@@ -558,7 +595,7 @@ class ApiClient {
     return response.json();
   }
 
-  async convertImageToVideo(videoId: number, paragraphId: number, imageId: number, duration: number, modelId: string, customPrompt?: string): Promise<{ok: boolean, url: string}> {
+  async convertImageToVideo(videoId: number, paragraphId: number, imageId: number, duration: number, modelId: string, customPrompt?: string, provider: string = "leonardo"): Promise<{ok: boolean, url: string}> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/image-to-video`, {
       method: "POST",
       headers: this.getHeaders(true),
@@ -567,7 +604,8 @@ class ApiClient {
         image_id: imageId,
         duration: duration,
         model_id: modelId,
-        custom_prompt: customPrompt
+        custom_prompt: customPrompt,
+        provider: provider
       })
     });
     if (!res.ok) {

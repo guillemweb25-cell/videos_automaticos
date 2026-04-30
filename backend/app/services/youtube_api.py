@@ -138,42 +138,44 @@ class YouTubeService:
             return response["items"][0]
         return None
 
-    async def get_videos(self, max_results=50):
+    async def get_videos(self, max_results=50, exclude_title_tags: list[str] | None = None):
         creds = self.get_credentials()
         if not creds:
             return []
-        
+
         youtube = build("youtube", "v3", credentials=creds)
         # First get uploads playlist ID
         ch_request = youtube.channels().list(part="contentDetails", mine=True)
         ch_response = ch_request.execute()
-        
+
         uploads_playlist_id = ch_response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
-        
-        # Fetch videos from that playlist
-        playlist_request = youtube.playlistItems().list(
-            part="snippet,contentDetails",
-            playlistId=uploads_playlist_id,
-            maxResults=max_results
-        )
-        playlist_response = playlist_request.execute()
-        
-        items = playlist_response.get("items", [])
-        if not items:
+
+        # Paginate uploads playlist up to max_results
+        video_ids: list[str] = []
+        page_token = None
+        remaining = max_results
+        while remaining > 0:
+            batch = min(50, remaining)
+            playlist_response = youtube.playlistItems().list(
+                part="contentDetails",
+                playlistId=uploads_playlist_id,
+                maxResults=batch,
+                pageToken=page_token
+            ).execute()
+            for item in playlist_response.get("items", []):
+                vid = item.get("contentDetails", {}).get("videoId")
+                if vid:
+                    video_ids.append(vid)
+            page_token = playlist_response.get("nextPageToken")
+            remaining -= batch
+            if not page_token:
+                break
+
+        if not video_ids:
             return []
-            
-        video_ids = [item["contentDetails"]["videoId"] for item in items]
-        
-        # Enrich with duration and statistics
-        video_request = youtube.videos().list(
-            part="snippet,contentDetails,statistics",
-            id=",".join(video_ids)
-        )
-        video_response = video_request.execute()
-        
+
         def parse_duration(duration_str):
-            # PT1H2M3S
-            match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration_str)
+            match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration_str or "")
             if not match:
                 return 0
             hours = int(match.group(1) or 0)
@@ -181,18 +183,27 @@ class YouTubeService:
             seconds = int(match.group(3) or 0)
             return hours * 3600 + minutes * 60 + seconds
 
+        excluded = [t.strip().lower() for t in (exclude_title_tags or []) if t.strip()]
+
         videos = []
-        for v in video_response.get("items", []):
-            duration_sec = parse_duration(v["contentDetails"]["duration"])
-            videos.append({
-                "id": v["id"],
-                "title": v["snippet"]["title"],
-                "thumbnail": v["snippet"]["thumbnails"]["medium"]["url"],
-                "published_at": v["snippet"]["publishedAt"],
-                "duration_seconds": duration_sec,
-                # User specifically asked for visits (views) in the shorts tab earlier
-                "view_count": v["statistics"].get("viewCount", "0")
-            })
+        for i in range(0, len(video_ids), 50):
+            chunk = video_ids[i:i + 50]
+            video_response = youtube.videos().list(
+                part="snippet,contentDetails,statistics",
+                id=",".join(chunk)
+            ).execute()
+            for v in video_response.get("items", []):
+                title = v["snippet"]["title"]
+                if excluded and any(tag in title.lower() for tag in excluded):
+                    continue
+                videos.append({
+                    "id": v["id"],
+                    "title": title,
+                    "thumbnail": v["snippet"]["thumbnails"]["medium"]["url"],
+                    "published_at": v["snippet"]["publishedAt"],
+                    "duration_seconds": parse_duration(v["contentDetails"]["duration"]),
+                    "view_count": int(v["statistics"].get("viewCount") or 0)
+                })
         return videos
 
     def upload_video(self, video_path: Path, metadata: Dict[str, Any]):

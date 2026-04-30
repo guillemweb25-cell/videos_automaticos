@@ -24,6 +24,7 @@ class ImageEngine:
             self.model = "gpt-4o-mini"
 
         self.openai_client = OpenAI(api_key=api_key, base_url=base_url)
+        self.grok_api_key = grok_api_key or os.getenv("GROK_API_KEY")
         self.leonardo_api_key = leonardo_api_key or os.getenv("LEONARDO_API_KEY")
         self.leonardo_v1_url = "https://cloud.leonardo.ai/api/rest/v1"
         self.leonardo_v2_url = "https://cloud.leonardo.ai/api/rest/v2"
@@ -776,6 +777,80 @@ class ImageEngine:
         cost_amount = 0.08 if video_model == "VEO3FAST" else 0.20 # Approximate costs
         return {"amount": cost_amount}
         
+    def generate_grok_video(self, prompt: str, image_path: Path, out_path: Path, duration: int = 8, orientation: str = "vertical") -> dict:
+        """
+        Uses xAI grok-imagine-video to generate an mp4 video out of an image.
+        Returns an approximate cost object.
+        """
+        if not self.grok_api_key:
+            raise RuntimeError("GROK_API_KEY not configured")
+
+        import base64
+        ext = image_path.suffix.lower()
+        mime = "image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg")
+        img_b64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
+        data_uri = f"data:{mime};base64,{img_b64}"
+
+        clean_prompt = prompt.replace("\n", " ").strip()
+        if len(clean_prompt) > 1500:
+            clean_prompt = clean_prompt[:1497] + "..."
+
+        headers = {
+            "Authorization": f"Bearer {self.grok_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        # Step 1: Start generation
+        # NOTE 1: El campo REST es "image" y espera un struct ImageUrl: {"url": "..."}.
+        # (no string plano: xAI rechaza con 422 "expected struct ImageUrl").
+        # NOTE 2: No enviamos aspect_ratio en image-to-video — la doc de xAI dice que
+        # sobrescribe (estira) la imagen origen. Sin él, Grok hereda el aspect natural.
+        payload = {
+            "model": "grok-imagine-video",
+            "prompt": clean_prompt,
+            "image": {"url": data_uri},
+            "duration": duration,
+            "resolution": "720p",
+        }
+
+        resp = requests.post("https://api.x.ai/v1/videos/generations", headers=headers, json=payload, timeout=60)
+        if resp.status_code != 200:
+            print(f"!!! GROK VIDEO GEN ERROR ({resp.status_code}) !!! {resp.text}", flush=True)
+            raise RuntimeError(f"Grok video generation failed ({resp.status_code}): {resp.text}")
+
+        request_id = resp.json().get("request_id")
+        if not request_id:
+            raise RuntimeError("Grok video generation: no request_id returned")
+
+        print(f"[grok-video] Request started: {request_id}", flush=True)
+
+        # Step 2: Poll until done (up to 10 minutes)
+        t0 = time.time()
+        timeout_s = 600
+        while time.time() - t0 < timeout_s:
+            time.sleep(5)
+            poll_resp = requests.get(f"https://api.x.ai/v1/videos/{request_id}", headers=headers, timeout=30)
+            if poll_resp.status_code != 200:
+                print(f"[grok-video] Poll error ({poll_resp.status_code}): {poll_resp.text}", flush=True)
+                continue
+            data = poll_resp.json()
+            status = data.get("status")
+            print(f"[grok-video] Status: {status}", flush=True)
+            if status == "done":
+                video_url = (data.get("video") or {}).get("url")
+                if not video_url:
+                    raise RuntimeError(f"Grok video done but no URL: {data}")
+                self._download_image(video_url, out_path)
+                # Approximate cost: 720p ~= $0.10/s, 480p ~= $0.05/s. Using 0.10 for default 720p.
+                cost_amount = 0.10 * duration
+                return {"amount": cost_amount, "model": "grok-imagine-video"}
+            if status == "failed":
+                raise RuntimeError(f"Grok video generation failed: {data}")
+            if status == "expired":
+                raise RuntimeError("Grok video generation request expired")
+
+        raise TimeoutError("Grok video generation timeout (10 min)")
+
     def _poll_leonardo_video(self, gen_id: str, headers: dict, timeout=600) -> str:
         """Polls for video generation completion."""
         t0 = time.time()

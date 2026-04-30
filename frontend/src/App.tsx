@@ -276,7 +276,7 @@ function App() {
           >
             <div className="channel-icon" style={{ background: '#1e293b' }}>💳</div>
             <span>Créditos</span>
-            <span className="balance-badge">{(user.credits / 100).toFixed(2)}€</span>
+            <span className="balance-badge">{((user.credits ?? 0) / 100).toFixed(2)}€</span>
           </div>
 
           {user.is_admin && (

@@ -45,6 +45,10 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
   const [ytInfo, setYtInfo] = useState<YouTubeChannelInfo | null>(null);
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [shorts, setShorts] = useState<YouTubeVideo[]>([]);
+  const [videoSort, setVideoSort] = useState<'date' | 'views'>('date');
+  const [videoView, setVideoView] = useState<'grid' | 'list' | 'text'>('grid');
+  const [titlesCopied, setTitlesCopied] = useState(false);
+  const [videosLoadedExtended, setVideosLoadedExtended] = useState(false);
   const [generations, setGenerations] = useState<VideoResponse[]>([]);
   const [downloads, setDownloads] = useState<string[]>([]);
   const [musicFiles, setMusicFiles] = useState<string[]>([]);
@@ -159,10 +163,11 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
       ]);
 
       const [info, vids, shs] = await Promise.race([loadPromise, timeoutPromise]) as any;
-      
+
       setYtInfo(info);
       setVideos(vids);
       setShorts(shs);
+      setVideosLoadedExtended(false);
     } catch (err: any) {
       console.error(err);
       if (err.message === 'TIMEOUT') {
@@ -172,6 +177,28 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadVideosExtended = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const vids = await api.getYouTubeVideos(channel.id, { maxResults: 500, minSeconds: 180 });
+      setVideos(vids);
+      setVideosLoadedExtended(true);
+    } catch (err: any) {
+      console.error(err);
+      setError('No se pudieron cargar los vídeos extendidos.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVideoSortChange = (next: 'date' | 'views') => {
+    setVideoSort(next);
+    if (next === 'views' && !videosLoadedExtended) {
+      loadVideosExtended();
     }
   };
 
@@ -311,19 +338,40 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
     }
   };
 
-  const VideoCard = ({ video, isShort = false }: { video: YouTubeVideo, isShort?: boolean }) => (
-    <div className="video-card" onClick={() => setYtUrl(`https://www.youtube.com/watch?v=${video.id}`)}>
-      <div className={`video-thumbnail ${isShort ? 'short-thumbnail' : ''}`}>
-        <img src={video.thumbnail} alt={video.title} />
-        <div className="view-badge">
-          {video.view_count ? `${(parseInt(video.view_count) >= 1000 ? (parseInt(video.view_count)/1000).toFixed(1) + 'k' : video.view_count)} vistas` : new Date(video.published_at).toLocaleDateString()}
+  const formatViews = (n: number) => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+    return String(n);
+  };
+
+  const formatDuration = (sec?: number) => {
+    if (!sec || sec <= 0) return '';
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return h > 0
+      ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+      : `${m}:${String(s).padStart(2, '0')}`;
+  };
+
+  const VideoCard = ({ video, isShort = false }: { video: YouTubeVideo, isShort?: boolean }) => {
+    const views = typeof video.view_count === 'number' ? video.view_count : 0;
+    return (
+      <div className="video-card" onClick={() => setYtUrl(`https://www.youtube.com/watch?v=${video.id}`)}>
+        <div className={`video-thumbnail ${isShort ? 'short-thumbnail' : ''}`}>
+          <img src={video.thumbnail} alt={video.title} />
+          <div className="view-badge">
+            {video.view_count !== undefined
+              ? `${formatViews(views)} vistas`
+              : new Date(video.published_at).toLocaleDateString()}
+          </div>
+        </div>
+        <div className="video-info">
+          <h4>{video.title}</h4>
         </div>
       </div>
-      <div className="video-info">
-        <h4>{video.title}</h4>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -531,12 +579,134 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
           </div>
         )}
 
-        {activeTab === 'videos' && (
-          <div className="video-grid">
-            {loading ? <p>Cargando vídeos...</p> : videos.map(v => <VideoCard key={v.id} video={v} />)}
-            {!loading && videos.length === 0 && <p>No se encontraron vídeos.</p>}
-          </div>
-        )}
+        {activeTab === 'videos' && (() => {
+          const sortedVideos = videoSort === 'views'
+            ? [...videos].sort((a, b) => (b.view_count ?? 0) - (a.view_count ?? 0))
+            : videos;
+          return (
+            <div>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.9rem', opacity: 0.8 }}>Ordenar:</span>
+                <button
+                  className={`btn ${videoSort === 'date' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => handleVideoSortChange('date')}
+                >
+                  📅 Recientes
+                </button>
+                <button
+                  className={`btn ${videoSort === 'views' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => handleVideoSortChange('views')}
+                >
+                  👁 Más vistos
+                </button>
+
+                <span style={{ fontSize: '0.9rem', opacity: 0.8, marginLeft: '16px' }}>Vista:</span>
+                <button
+                  className={`btn ${videoView === 'grid' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setVideoView('grid')}
+                >
+                  🔲 Cuadrícula
+                </button>
+                <button
+                  className={`btn ${videoView === 'list' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setVideoView('list')}
+                >
+                  📋 Lista
+                </button>
+                <button
+                  className={`btn ${videoView === 'text' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setVideoView('text')}
+                >
+                  📝 Texto
+                </button>
+
+                {videoSort === 'views' && videosLoadedExtended && (
+                  <span style={{ fontSize: '0.85rem', opacity: 0.7, marginLeft: 'auto' }}>
+                    Mostrando {videos.length} vídeos largos (≥180s)
+                  </span>
+                )}
+              </div>
+
+              {loading ? (
+                <p>Cargando vídeos...</p>
+              ) : videos.length === 0 ? (
+                <p>No se encontraron vídeos.</p>
+              ) : videoView === 'grid' ? (
+                <div className="video-grid">
+                  {sortedVideos.map(v => <VideoCard key={v.id} video={v} />)}
+                </div>
+              ) : videoView === 'list' ? (
+                <div className="video-list">
+                  {sortedVideos.map((v, idx) => (
+                    <div
+                      key={v.id}
+                      className="video-row"
+                      onClick={() => window.open(`https://www.youtube.com/watch?v=${v.id}`, '_blank')}
+                    >
+                      {videoSort === 'views' && <div className="rank">#{idx + 1}</div>}
+                      <div className="thumb">
+                        <img src={v.thumbnail} alt={v.title} />
+                      </div>
+                      <div className="meta">
+                        <div className="title">{v.title}</div>
+                        <div className="stats">
+                          <span>👁 {formatViews(v.view_count ?? 0)} vistas</span>
+                          {v.duration_seconds ? <span>⏱ {formatDuration(v.duration_seconds)}</span> : null}
+                          <span>📅 {new Date(v.published_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (() => {
+                const textBlock = sortedVideos
+                  .map((v, i) => `${i + 1}. ${v.title} — ${formatViews(v.view_count ?? 0)} vistas`)
+                  .join('\n');
+                return (
+                  <div>
+                    <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        className="btn btn-primary"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(textBlock);
+                            setTitlesCopied(true);
+                            setTimeout(() => setTitlesCopied(false), 2000);
+                          } catch {
+                            alert('No se pudo copiar al portapapeles');
+                          }
+                        }}
+                      >
+                        {titlesCopied ? '✅ Copiado' : '📋 Copiar lista'}
+                      </button>
+                      <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>
+                        {sortedVideos.length} títulos · ordenados {videoSort === 'views' ? 'por vistas' : 'por fecha'}
+                      </span>
+                    </div>
+                    <textarea
+                      readOnly
+                      value={textBlock}
+                      style={{
+                        width: '100%',
+                        minHeight: '420px',
+                        padding: '12px',
+                        background: 'var(--card-bg)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '8px',
+                        color: 'inherit',
+                        fontFamily: 'monospace',
+                        fontSize: '0.9rem',
+                        lineHeight: '1.6',
+                        resize: 'vertical',
+                      }}
+                      onFocus={e => e.currentTarget.select()}
+                    />
+                  </div>
+                );
+              })()}
+            </div>
+          );
+        })()}
 
         {activeTab === 'shorts' && (
           <div className="shorts-grid">

@@ -85,5 +85,6 @@ class ConvertToVideoRequest(BaseModel):
     paragraph_id: int
     image_id: int
     duration: int = 8
-    model_id: str = "VEO3FAST" # "VEO3" or "VEO3FAST"
+    model_id: str = "VEO3FAST" # Leonardo: "VEO3" or "VEO3FAST". Ignored if provider=="grok".
     custom_prompt: Optional[str] = None
+    provider: str = "leonardo" # "leonardo" or "grok"

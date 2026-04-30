@@ -1,0 +1,107 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 0,
+      "steps": 32,
+      "cfg": 6,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "4": {
+    "inputs": {
+      "ckpt_name": "SDXL/juggernautXL_ragnarokBy.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "professional stock photography, candid lifestyle photo, healthy senior adults 65 plus years old, fully clothed in modest casual everyday outfit (long sleeves shirt or sweater, pants or skirt, fully covered torso and chest), natural soft daylight, warm tones, shallow depth of field, sharp focus on subject, photorealistic, DSLR shot, 50mm lens, authentic genuine expression, real skin texture with natural wrinkles, clean modern home or natural outdoor setting, magazine quality, high detail, 8k",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "positive"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "(nudity, naked, nude, topless, shirtless, undressed, bare chest, bare torso, exposed skin, exposed breasts, nipples, cleavage, lingerie, underwear, swimwear, bikini, sexual, erotic, suggestive:1.5), text, watermark, low quality, blurry, deformed, cartoon, drawing, anime, illustration, painting, 3d render, plastic skin, oversaturated, dramatic lighting, harsh shadows, glamour, fashion model pose, fake smile, airbrushed, young people, children, teenagers, ugly, bad anatomy, extra fingers, mutated hands, disfigured face, asymmetric eyes, towel only, bathrobe, bedroom intimate scene",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "negative"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "ComfyUI_StockSenior",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}

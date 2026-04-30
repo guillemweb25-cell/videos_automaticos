@@ -44,34 +44,34 @@ async def get_youtube_channel_info(
 @router.get("/videos/{channel_id}")
 async def get_youtube_videos(
     channel_id: int,
+    max_results: int = Query(50, ge=1, le=500),
+    min_seconds: int = Query(120, ge=0),
+    exclude_title_tags: str = Query("#short,#shorts"),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     channel = db.query(Channel).filter(Channel.id == channel_id, Channel.user_id == current_user.id).first()
     if not channel:
         raise HTTPException(status_code=404, detail="Canal no encontrado")
-    
+
     service = YouTubeService(channel.id, channel.user_id, channel.name)
-    videos = await service.get_videos()
-    # Regular videos: more than 120s
-    return [v for v in videos if v["duration_seconds"] > 120]
+    tags = [t for t in exclude_title_tags.split(",") if t.strip()]
+    videos = await service.get_videos(max_results=max_results, exclude_title_tags=tags)
+    return [v for v in videos if v["duration_seconds"] > min_seconds]
 
 @router.get("/shorts/{channel_id}")
 async def get_youtube_shorts(
     channel_id: int,
+    max_results: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    # For YouTube API, shorts ARE videos. We can try to filter by duration or just use the same method for now.
-    # A common trick is to search filtering by 'type=video' and 'videoDuration=short' (< 4 mins, but shorts are < 1 min)
-    # For now let's reuse the logic but maybe in the future we use a specialized search call.
     channel = db.query(Channel).filter(Channel.id == channel_id, Channel.user_id == current_user.id).first()
     if not channel:
         raise HTTPException(status_code=404, detail="Canal no encontrado")
-    
+
     service = YouTubeService(channel.id, channel.user_id, channel.name)
-    videos = await service.get_videos()
-    # Shorts: 120s or less
+    videos = await service.get_videos(max_results=max_results)
     return [v for v in videos if v["duration_seconds"] <= 120]
 
 @router.post("/download/{channel_id}")

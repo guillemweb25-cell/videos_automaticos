@@ -13,6 +13,8 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [converting, setConverting] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
+  const [renderProgress, setRenderProgress] = useState<number>(0);
+  const [renderStatus, setRenderStatus] = useState<string>('');
   const [prompts, setPrompts] = useState<{ [key: string]: string }>({});
   const [seeds, setSeeds] = useState<{ [key: string]: number }>({});
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
@@ -32,6 +34,8 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('Comic-Horror.json');
   const [llmProvider, setLlmProvider] = useState('openai');
+  const [videoProvider, setVideoProvider] = useState<'leonardo' | 'grok'>('grok');
+  const [videoDuration, setVideoDuration] = useState<number>(10);
 
   const loadData = async () => {
     try {
@@ -153,7 +157,8 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
     const key = `${paraId}_${imgId}`;
     setConverting(key);
     try {
-      const res = await api.convertImageToVideo(videoId, paraId, imgId, 8, "VEO3FAST", prompts[key]);
+      const modelId = videoProvider === 'grok' ? 'grok-imagine-video' : 'VEO3FAST';
+      const res = await api.convertImageToVideo(videoId, paraId, imgId, videoDuration, modelId, prompts[key], videoProvider);
       if (res.ok) {
         const newData = { ...data };
         for (const item of newData.items) {
@@ -266,13 +271,36 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleRender = async () => {
     try {
       setRendering(true);
+      setRenderProgress(0);
+      setRenderStatus('rendering');
       const overlayArg = selectedOverlay === '' ? undefined : selectedOverlay;
       await api.renderVideo(videoId, enableSubtitles, overlayArg);
-      alert("Vídeo renderizado correctamente con las nuevas imágenes.");
-      onClose();
+
+      // Poll progress every 2s until status is ready or failed
+      const poll = async () => {
+        try {
+          const p = await api.getRenderProgress(videoId);
+          setRenderProgress(p.progress);
+          setRenderStatus(p.status);
+          if (p.status === 'ready') {
+            alert('Vídeo renderizado correctamente con las nuevas imágenes.');
+            onClose();
+            return;
+          }
+          if (p.status === 'failed') {
+            alert('Error al renderizar: ' + (p.last_error || 'desconocido'));
+            setRendering(false);
+            return;
+          }
+          setTimeout(poll, 2000);
+        } catch (err) {
+          console.error('Polling error:', err);
+          setTimeout(poll, 4000);
+        }
+      };
+      poll();
     } catch (err) {
-      alert("Error al renderizar: " + err);
-    } finally {
+      alert('Error al iniciar render: ' + err);
       setRendering(false);
     }
   };
@@ -491,6 +519,47 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.7rem', color: '#fbbf24', fontWeight: 'bold' }}>VÍDEO (img → mp4)</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <select
+                  value={videoProvider}
+                  onChange={(e) => setVideoProvider(e.target.value as 'leonardo' | 'grok')}
+                  style={{
+                    backgroundColor: '#111827',
+                    color: 'white',
+                    border: '1px solid #fbbf24',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    minWidth: '160px'
+                  }}
+                >
+                  <option value="grok">Grok Imagine</option>
+                  <option value="leonardo">Leonardo VEO3 Fast</option>
+                </select>
+                <select
+                  value={videoDuration}
+                  onChange={(e) => setVideoDuration(parseInt(e.target.value, 10))}
+                  title="Duración del clip"
+                  style={{
+                    backgroundColor: '#111827',
+                    color: 'white',
+                    border: '1px solid #fbbf24',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                  }}
+                >
+                  {[5, 6, 8, 10, 12, 15].map(s => (
+                    <option key={s} value={s}>{s}s</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold' }}>OVERLAY VISUAL</label>
               <select 
                 value={selectedOverlay}
@@ -543,8 +612,18 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                 opacity: rendering ? 0.5 : 1
               }}
             >
-              {rendering ? 'Renderizando...' : 'Finalizar y Renderizar'}
+              {rendering ? `Renderizando ${renderProgress}%` : 'Finalizar y Renderizar'}
             </button>
+            {rendering && (
+              <div style={{ width: '180px', height: '8px', background: '#1f2937', borderRadius: '4px', overflow: 'hidden' }} title={`${renderProgress}% — ${renderStatus}`}>
+                <div style={{
+                  width: `${renderProgress}%`,
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #22c55e, #16a34a)',
+                  transition: 'width 1s ease-out'
+                }} />
+              </div>
+            )}
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'white', cursor: 'pointer', fontSize: '13px' }}>
               <input 
                 type="checkbox" 

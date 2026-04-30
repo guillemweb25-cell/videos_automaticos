@@ -38,3 +38,5 @@ cache
 backend/alembic/videos.db
 .codex
 .agents/
+.claude/
+*.tsbuildinfo

@@ -196,16 +196,19 @@ class RenderingEngine:
         with open(stats_path, "a") as f:
             f.write(f"\n--- RENDER START: {start_time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
 
+        progress_file = out_path.parent / "render_progress.txt"
+
         from proglog import ProgressBarLogger
         class SimpleProgressLogger(ProgressBarLogger):
-            def __init__(self):
+            def __init__(self, progress_file_path):
                 super().__init__()
                 self.last_pct = -1
+                self.progress_file_path = progress_file_path
             def callback(self, **kwargs):
                 # The bar we care about is usually named 'chunk' or 't' in MoviePy
                 bars = self.state.get('bars', {})
                 if not bars: return
-                
+
                 # Get the first active bar
                 bar = next(iter(bars.values()))
                 index = bar.get('index', 0)
@@ -215,6 +218,10 @@ class RenderingEngine:
                     if pct > self.last_pct:
                         print(f"[render] Progress: {pct}%", flush=True)
                         self.last_pct = pct
+                        try:
+                            self.progress_file_path.write_text(str(pct))
+                        except Exception:
+                            pass
 
         print(f"[render] Writing video to {out_path} ({t_cursor:.1f}s, {fps}fps) ...", flush=True)
         video.write_videofile(
@@ -233,7 +240,7 @@ class RenderingEngine:
                 "-g", str(max(1, fps * 2)),
             ],
             verbose=False,
-            logger=SimpleProgressLogger(),
+            logger=SimpleProgressLogger(progress_file),
             temp_audiofile=str(out_path.parent / "__tmp_audio__.m4a"),
             remove_temp=True,
         )
