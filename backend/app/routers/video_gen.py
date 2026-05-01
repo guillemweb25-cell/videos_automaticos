@@ -1712,7 +1712,8 @@ async def render_video(video_id: int, subtitles: bool = False, overlay: str | No
     video.last_error = None
     db.commit()
 
-    async def _do_render(vid_id: int, subs: bool, ovl: str | None):
+    def _do_render_sync(vid_id: int, subs: bool, ovl: str | None):
+        """Runs in a thread executor so the event loop stays free for other requests."""
         from app.database import SessionLocal
         db_bg = SessionLocal()
         try:
@@ -1732,7 +1733,10 @@ async def render_video(video_id: int, subtitles: bool = False, overlay: str | No
         finally:
             db_bg.close()
 
-    asyncio.create_task(_do_render(video_id, subtitles, overlay))
+    # Run the CPU-bound render in a thread so the asyncio event loop stays
+    # responsive for other requests (status polls, UI navigation, etc).
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, _do_render_sync, video_id, subtitles, overlay)
 
     return {"ok": True, "background": True, "status": "rendering"}
 

@@ -271,36 +271,13 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleRender = async () => {
     try {
       setRendering(true);
-      setRenderProgress(0);
-      setRenderStatus('rendering');
       const overlayArg = selectedOverlay === '' ? undefined : selectedOverlay;
       await api.renderVideo(videoId, enableSubtitles, overlayArg);
-
-      // Poll progress every 2s until status is ready or failed
-      const poll = async () => {
-        try {
-          const p = await api.getRenderProgress(videoId);
-          setRenderProgress(p.progress);
-          setRenderStatus(p.status);
-          if (p.status === 'ready') {
-            alert('Vídeo renderizado correctamente con las nuevas imágenes.');
-            onClose();
-            return;
-          }
-          if (p.status === 'failed') {
-            alert('Error al renderizar: ' + (p.last_error || 'desconocido'));
-            setRendering(false);
-            return;
-          }
-          setTimeout(poll, 2000);
-        } catch (err) {
-          console.error('Polling error:', err);
-          setTimeout(poll, 4000);
-        }
-      };
-      poll();
+      alert('Render lanzado en segundo plano. Aparecerá listo en la lista de vídeos del canal cuando termine.');
+      onClose();
     } catch (err) {
       alert('Error al iniciar render: ' + err);
+    } finally {
       setRendering(false);
     }
   };
@@ -612,18 +589,8 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                 opacity: rendering ? 0.5 : 1
               }}
             >
-              {rendering ? `Renderizando ${renderProgress}%` : 'Finalizar y Renderizar'}
+              {rendering ? 'Lanzando render...' : 'Finalizar y Renderizar'}
             </button>
-            {rendering && (
-              <div style={{ width: '180px', height: '8px', background: '#1f2937', borderRadius: '4px', overflow: 'hidden' }} title={`${renderProgress}% — ${renderStatus}`}>
-                <div style={{
-                  width: `${renderProgress}%`,
-                  height: '100%',
-                  background: 'linear-gradient(90deg, #22c55e, #16a34a)',
-                  transition: 'width 1s ease-out'
-                }} />
-              </div>
-            )}
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'white', cursor: 'pointer', fontSize: '13px' }}>
               <input 
                 type="checkbox" 

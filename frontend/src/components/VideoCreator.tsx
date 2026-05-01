@@ -407,35 +407,11 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
       if (shouldAutoRender || vStatus === 'rendering') {
         if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
         setStatus('rendering');
-        addLog('Iniciando renderizado del vídeo final (esto puede tardar)...');
+        addLog('Iniciando renderizado del vídeo final en segundo plano...');
         const overlayArg = selectedOverlay === '' ? undefined : selectedOverlay;
         await api.renderVideo(currentId, enableSubtitles, overlayArg);
-
-        // Poll progress until ready or failed (background render on backend)
-        let lastLoggedPct = -1;
-        while (true) {
-          if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
-          await new Promise(r => setTimeout(r, 2000));
-          let p;
-          try {
-            p = await api.getRenderProgress(currentId);
-          } catch (e) {
-            continue;
-          }
-          if (p.progress > lastLoggedPct && p.progress % 10 === 0) {
-            addLog(`Render ${p.progress}%`);
-            lastLoggedPct = p.progress;
-          }
-          if (p.status === 'ready') {
-            addLog('¡Renderizado completado!');
-            setFinalVideo(`output/final_video.mp4`);
-            setStatus('completed');
-            break;
-          }
-          if (p.status === 'failed') {
-            throw new Error(p.last_error || 'Render falló');
-          }
-        }
+        addLog('Render lanzado. Quedará disponible en "Mis Generaciones" cuando termine.');
+        setStatus('completed');
       } else {
         addLog('Pipeline pausado. Revisa las imágenes antes de renderizar.');
         setStatus('images_ready');
