@@ -344,7 +344,14 @@ function App() {
               if (updated.id === user.id) setUser(updated);
             }} />
           ) : selectedChannel ? (
-            <ChannelDashboard channel={selectedChannel} onBack={() => setSelectedChannel(null)} />
+            <ChannelDashboard
+              channel={selectedChannel}
+              onBack={() => setSelectedChannel(null)}
+              onChannelUpdated={(updated) => {
+                setSelectedChannel(updated);
+                setChannels(prev => prev.map(c => c.id === updated.id ? updated : c));
+              }}
+            />
           ) : (
             <div className="empty-state">
               <div style={{ fontSize: '4rem', marginBottom: '24px' }}>📺</div>

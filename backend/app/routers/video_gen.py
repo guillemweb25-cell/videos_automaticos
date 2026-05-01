@@ -298,7 +298,8 @@ async def generate_audio(
     video.last_error = None
     db.commit()
 
-    async def _do_audio(vid_id: int, vc: str, prov: str):
+    def _do_audio_sync(vid_id: int, vc: str, prov: str):
+        """Runs in a thread executor so the event loop stays responsive."""
         from app.database import SessionLocal
         db_bg = SessionLocal()
         try:
@@ -353,7 +354,9 @@ async def generate_audio(
         finally:
             db_bg.close()
 
-    asyncio.create_task(_do_audio(video_id, voice, provider))
+    # Run the sync TTS work in a thread so the event loop keeps serving /audio-progress
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, _do_audio_sync, video_id, voice, provider)
 
     return {"ok": True, "background": True, "status": "generating_audio"}
 

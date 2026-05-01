@@ -111,6 +111,23 @@ STYLES: Dict[str, StyleSpec] = {
         "image_style_prompt": "Beautiful aurora borealis lights, mystical atmosphere, vibrant colors, grabovoi style",
         "negative_prompt": NEGATIVE_BASE,
     },
+    "grabovoi_mystic": {
+        "display_name": "Grabovoi Mystic",
+        "image_style_prompt": (
+            "Mystical spiritual photography with cosmic-energy aesthetic; "
+            "divine golden light beams, ethereal glows, floating golden particles and sparkles, "
+            "sacred geometry patterns subtly visible, abundance/prosperity mood, "
+            "deep velvet sky with nebulae and soft starlight, photorealistic with magical elements, "
+            "soft volumetric lighting, gold and deep-blue color grading, depth of field bokeh, "
+            "inspiring uplifting tone, no on-image text or digits."
+        ),
+        "negative_prompt": NEGATIVE_BASE + ", literal numbers in image, garbled digits, illegible text, dark depressing mood, horror, dull flat lighting",
+        "post_note": (
+            "Visualize the FEELING / OUTCOME of the Grabovoi sequence (abundance, healing, love, "
+            "protection, etc.) rather than literal numbers. Numerical sequence goes only as text overlay "
+            "on thumbnail. Focus on cosmic/mystical metaphors. Avoid clichés (crystal balls, tarot)."
+        ),
+    },
     "cabala_luz_divina": {
         "display_name": "Cabala Luz Divina",
         "image_style_prompt": "Mystical divine light, cabala symbolism, ethereal atmosphere, spiritual glow",
@@ -195,6 +212,8 @@ ALIASES = {
     "cinematico": "sombras_cinematico",
     "cinematico_ultra": "sombras_cinematico_ultra",
     "aurora": "grabovoi_aurora",
+    "grabovoi": "grabovoi_mystic",
+    "grabovoimystic": "grabovoi_mystic",
     "cabala": "cabala_luz_divina",
     "deepsea": "deepsea",
     "cabalastock": "stock_mistic_cabala_clean",

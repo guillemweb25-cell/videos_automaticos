@@ -7,11 +7,12 @@ import VideoUploadModal from './VideoUploadModal';
 interface ChannelDashboardProps {
   channel: ChannelResponse;
   onBack: () => void;
+  onChannelUpdated?: (updated: ChannelResponse) => void;
 }
 
 type TabType = 'overview' | 'videos' | 'shorts' | 'create' | 'youtube' | 'transcribe' | 'generations';
 
-const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
+const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelUpdated }) => {
   const [activeTab, _setActiveTab] = useState<TabType>(() => {
     const saved = localStorage.getItem('activeTab');
     return (saved as TabType) || 'overview';
@@ -318,7 +319,12 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
         default_workflow: editDefaultWorkflow || null,
       });
 
-      await Promise.race([updatePromise, timeoutPromise]);
+      const updated = await Promise.race([updatePromise, timeoutPromise]) as ChannelResponse;
+
+      // Propagate to parent so VideoCreator/ImageReviewer get the fresh channel
+      if (onChannelUpdated && updated && updated.id) {
+        onChannelUpdated(updated);
+      }
 
       if (editCredsDir && editCredsDir !== channel.creds_dir) {
         await loadYouTubeData();

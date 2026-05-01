@@ -110,7 +110,9 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
         }
 
         if (config.generation_modes?.length > 0 && !initialVideo) {
-          setGenerationMode('FAST'); // Default
+          // Default to ComfyUI local (free) since most channels use the local GPU
+          const hasComfy = config.generation_modes.some((m: any) => m.id === 'COMFYUI');
+          setGenerationMode(hasComfy ? 'COMFYUI' : 'FAST');
         }
 
         if (!initialVideo) {
@@ -191,20 +193,27 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
     loadConfig();
   }, [initialVideo]);
 
-  // Update default voice when provider changes
+  // Set default voice ONLY when current voice is not valid for the active provider.
+  // This way, user's manual selection is preserved even if availableVoices re-renders.
   React.useEffect(() => {
-    if (provider === 'tiktok' && availableVoices.tiktok.length > 0) {
-      setVoice(availableVoices.tiktok[0].id);
-    } else if (provider === 'elevenlabs' && availableVoices.elevenlabs.length > 0) {
-      // Prioritize Dipemo if it exists in the list
-      const pin = availableVoices.elevenlabs.find(v => v.id === 'Dipemo' || v.name === 'Dipemo');
-      if (pin) {
-        setVoice(pin.id);
-      } else {
-        setVoice(availableVoices.elevenlabs[0].id);
-      }
+    const list = provider === 'tiktok'
+      ? availableVoices.tiktok
+      : provider === 'local_xtts'
+        ? availableVoices.local_xtts
+        : availableVoices.elevenlabs;
+
+    if (!list || list.length === 0) return;
+
+    const isValid = list.some((v: any) => v.id === voice);
+    if (isValid) return; // Don't touch user's selection
+
+    if (provider === 'elevenlabs') {
+      const pin = list.find((v: any) => v.id === 'Dipemo' || v.name === 'Dipemo');
+      setVoice(pin ? pin.id : list[0].id);
+    } else {
+      setVoice(list[0].id);
     }
-  }, [provider, availableVoices]);
+  }, [provider, availableVoices, voice]);
 
   const currentVoices = provider === 'tiktok' ? availableVoices.tiktok : (provider === 'local_xtts' ? availableVoices.local_xtts : availableVoices.elevenlabs);
 
