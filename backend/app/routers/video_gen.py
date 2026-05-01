@@ -418,6 +418,40 @@ def get_images_progress(video_id: int, db: Session = Depends(get_db)):
         "last_error": video.last_error,
     }
 
+@router.post("/{video_id}/auto-advance")
+async def auto_advance(video_id: int, db: Session = Depends(get_db)):
+    """Reanuda un vídeo desde audio_ready hacia images_ready con defaults sensatos.
+
+    Útil para vídeos que se quedaron a medio camino y quieres recuperarlos sin
+    pasar por el formulario de creación. Solo mueve el pipeline hasta dejar las
+    imágenes listas para revisión visual; nunca renderiza automáticamente.
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    # Already past target, nothing to do
+    if video.status in ["images_ready", "generating_images", "seo", "rendering", "ready", "completed"]:
+        return {"ok": True, "message": f"Ya está en {video.status}, no hace falta avanzar."}
+
+    if video.status != "audio_ready":
+        raise HTTPException(
+            status_code=400,
+            detail=f"No puedo auto-avanzar desde '{video.status}'. Necesita estar en audio_ready (audio generado).",
+        )
+
+    # Build synthetic request with stored params + defaults for missing fields
+    req = ImageGenerationRequest(
+        style_name=video.style or "stock_photo",
+        max_images_per_paragraph=video.max_images_per_paragraph if video.max_images_per_paragraph is not None else 0,
+        model_id="gpt-image-1.5",
+        generation_mode="COMFYUI",
+        workflow_name=None,
+    )
+
+    return await generate_images(video_id, req, db)
+
+
 @router.post("/{video_id}/reset-images")
 async def reset_images(video_id: int, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()

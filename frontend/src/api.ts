@@ -478,6 +478,18 @@ class ApiClient {
     return response.json();
   }
 
+  async autoAdvance(videoId: number): Promise<{ ok: boolean; message?: string }> {
+    const response = await fetch(`${this.baseUrl}/videos/${videoId}/auto-advance`, {
+      method: 'POST',
+      headers: this.getHeaders(true)
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al reanudar pipeline');
+    }
+    return response.json();
+  }
+
   async generateImages(videoId: number, style: string, maxImages: number, modelId?: string, generationMode?: string, workflowName?: string): Promise<{ ok: boolean; background?: boolean; count?: number }> {
     const response = await fetch(`${this.baseUrl}/videos/${videoId}/images`, {
       method: 'POST',

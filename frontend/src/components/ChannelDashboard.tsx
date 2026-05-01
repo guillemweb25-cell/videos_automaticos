@@ -806,7 +806,26 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
                                 <button className="btn-link">Ver Carpeta</button>
                               </>
                             ) : (
-                              <button className="btn-link" onClick={() => { setSelectedVideo(g); setActiveTab('create'); }}>Continuar</button>
+                              <>
+                                <button className="btn-link" onClick={() => { setSelectedVideo(g); setActiveTab('create'); }}>Continuar</button>
+                                {g.status === 'audio_ready' && (
+                                  <button
+                                    className="btn-link"
+                                    style={{ color: '#fbbf24' }}
+                                    title="Generar imágenes con defaults (ComfyUI + workflow auto). Útil para recuperar vídeos a medias."
+                                    onClick={async () => {
+                                      try {
+                                        await api.autoAdvance(g.id);
+                                        await loadGenerations();
+                                      } catch (err: any) {
+                                        alert('Error: ' + err.message);
+                                      }
+                                    }}
+                                  >
+                                    ▶ Auto-imágenes
+                                  </button>
+                                )}
+                              </>
                             )}
                             <button className="btn-link" style={{ color: '#ef4444' }} onClick={() => handleDeleteVideo(g.id)}>Eliminar</button>
                           </div>
