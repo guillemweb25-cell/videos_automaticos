@@ -440,13 +440,17 @@ async def auto_advance(video_id: int, db: Session = Depends(get_db)):
             detail=f"No puedo auto-avanzar desde '{video.status}'. Necesita estar en audio_ready (audio generado).",
         )
 
-    # Build synthetic request with stored params + defaults for missing fields
+    # Read channel defaults to fill in style/workflow when not stored on the video
+    channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
+    default_style = (channel.default_style if channel else None) or "stock_photo"
+    default_workflow = channel.default_workflow if channel else None
+
     req = ImageGenerationRequest(
-        style_name=video.style or "stock_photo",
+        style_name=video.style or default_style,
         max_images_per_paragraph=video.max_images_per_paragraph if video.max_images_per_paragraph is not None else 0,
         model_id="gpt-image-1.5",
         generation_mode="COMFYUI",
-        workflow_name=None,
+        workflow_name=default_workflow,
     )
 
     return await generate_images(video_id, req, db)
@@ -654,8 +658,8 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                                     print(f"Warning: Failed to upload reference image for paragraph {idx} image {img_idx}: {e}")
                         
                         if gen_mode.upper() == "COMFYUI":
-                            # Use custom workflow name if provided, or auto-select based on style
-                            current_wf = wf_n
+                            # Workflow priority: explicit param > channel default > keyword heuristic
+                            current_wf = wf_n or (channel.default_workflow if channel else None)
                             if not current_wf:
                                 if "ultra" in sty.lower():
                                     current_wf = "Cinematic-Horror-Ultra.json"

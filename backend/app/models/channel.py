@@ -14,6 +14,8 @@ class Channel(Base):
     creds_dir = Column(String(255), nullable=True)  # Carpeta en /app/youtube_creds
     image_style_prompt = Column(Text, nullable=True)  # Custom style for image generation
     negative_prompt = Column(Text, nullable=True)  # Custom negative prompt
+    default_style = Column(String(100), nullable=True)  # Alias del estilo por defecto (epic, onirico, ...)
+    default_workflow = Column(String(255), nullable=True)  # Workflow ComfyUI .json por defecto
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False)

@@ -8,6 +8,8 @@ class ChannelBase(BaseModel):
     creds_dir: str | None = None
     image_style_prompt: str | None = None
     negative_prompt: str | None = None
+    default_style: str | None = None
+    default_workflow: str | None = None
 
 
 class ChannelCreate(ChannelBase):
@@ -20,6 +22,8 @@ class ChannelUpdate(BaseModel):
     creds_dir: str | None = None
     image_style_prompt: str | None = None
     negative_prompt: str | None = None
+    default_style: str | None = None
+    default_workflow: str | None = None
 
 
 class ChannelResponse(ChannelBase):

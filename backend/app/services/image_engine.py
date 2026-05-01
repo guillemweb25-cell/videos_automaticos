@@ -36,37 +36,65 @@ class ImageEngine:
         style = style_override or StyleService.get_style(style_name)
         style_prompt = style.get("image_style_prompt", "")
         rules_text = f"\nFOLLOW THESE SPECIFIC CHANNEL STYLE RULES:\n{custom_rules}\n" if custom_rules else ""
-        
+
         system_msg = (
-            "You are a creative visual director for high-end cinematic content. "
-            "Generate cinematic AI image prompts that are photorealistic and elegant. "
+            "You are a creative visual director who turns narration paragraphs into AI image prompts. "
+            "Your #1 PRIORITY is VISUAL FIDELITY TO THE SPECIFIC PARAGRAPH given to you. "
+            "The image must depict the EXACT concept the narrator is explaining at this moment, "
+            "not a generic scene of the video's overall theme. "
+
+            "WORKFLOW: "
+            "1. READ the narration paragraph carefully. "
+            "2. IDENTIFY the SPECIFIC concept being explained (the psychological dynamic, the exact event, the metaphor invoked). "
+            "3. DESIGN a visual metaphor that depicts THAT specific concept. "
+            "4. APPLY the style guidelines AS A VISUAL WRAPPER (lighting, color grading, composition mood) — never as content driver. "
+            "WHAT (from narration) > HOW (from style). Always. "
+
+            "ANTI-CLICHÉ RULES — VIOLATE ONLY IF THE PARAGRAPH EXPLICITLY MENTIONS THESE: "
+            "- DO NOT add rain, storms, water cascades, weather imagery unless the narration explicitly invokes them. "
+            "- DO NOT add religious iconography (crosses, churches, cathedrals, halos, virgin/angelic robes) unless the narration explicitly mentions them. "
+            "- DO NOT add fantasy/occult elements: glowing rune portals, etched magical symbols, druidic robes, hooded mystics, floating spell orbs, visible magic spells, witch/wizard staging. "
+            "- DO NOT add abstract symbolic objects (orbs in hands, etched stones, shimmering crystals, glowing books) as a substitute for depicting the paragraph's actual concept. The metaphor must come from the narration, not from generic 'mystical' tropes. "
+            "- DO NOT default to 'lone person looking pensively into distance' — if the paragraph is about a relational/psychological dynamic, depict that dynamic (e.g., interaction between two figures, projection, mirror). "
+            "- DO NOT introduce elements absent from the narration just because they fit the channel's general vibe. "
+            "- For psychology/dream content, prefer GROUNDED metaphors (real settings, real-life situations subtly distorted) over fantasy/mystical ones. The unconscious is human, not magical. "
+
             f"{rules_text}"
-            "STRICT RULES for chronological progression: "
-            "- DISCARD generic scenes. Focus ONLY on the specific action and moment described in the Narration. "
-            "- If the narration describes a specific event (e.g., 'fleeing to Egypt', 'working wood'), DO NOT show a generic summary scene. "
-            "- Maintain character consistency (age, face, clothes) but CHANGE the composition, angle, and specific interaction for every prompt. "
-            "- VARIETY is mandatory. If you see in the 'Recent History' that a setting has been used, MOVE the camera or CHANGE the scene elements. "
-            "- IF THE VIDEO INVOLVES SUPERNATURAL/CELESTIAL BEINGS (like Angels, Demons, Spirits), YOU MUST EXPLICITLY DESCRIBE THEIR SUPERNATURAL FEATURES (e.g., large majestic wings, glowing ethereal light, celestial aura) so the image generator does not render them as ordinary humans. "
-            
-            "STRICT RULES for anatomical correctness: "
-            "- Ensure human figures have exactly two arms, two legs, and five fingers per hand. "
-            "- ORIENTATION: Pay extreme attention to feet and hands. Feet must point in a natural direction. ABSOLUTELY NO inverted or backwards feet. "
-            "- JOINTS: Limbs must connect naturally to the torso. Body proportions must be photorealistic. "
-            "- For elderly characters, PRIORITIZE slow, gentle, and stable movements. "
-            "- ABSOLUTELY AVOID: jumping, running, high-impact movements, acrobatics. "
-            "- POSE RESTRICTION: Keep poses simple and natural. AVOID complex limb arrangements like lifting legs, crossing legs in mid-air, or extremely twisted torsos. "
+
+            "CHRONOLOGY & VARIETY: "
+            "- Maintain character consistency (age, face, clothing) across the video, but CHANGE composition, angle, and specific interaction every prompt. "
+            "- If 'Recent History' shows a setting was used, MOVE the camera or CHANGE the scene. "
+            "- IF THE VIDEO INVOLVES SUPERNATURAL/CELESTIAL BEINGS (Angels, Demons, Spirits), DESCRIBE their supernatural features (wings, glowing aura, ethereal light) so they don't render as ordinary humans. "
+
+            "ANATOMICAL CORRECTNESS: "
+            "- Two arms, two legs, five fingers per hand. "
+            "- Feet point in natural direction (no inverted/backwards). "
+            "- Limbs connect naturally to torso. Realistic proportions. "
+            "- Simple, natural poses. AVOID jumping, running, acrobatics, twisted torsos, lifted legs. "
+            "- For elderly characters: slow, gentle, stable movements. "
+
             f"\nSTYLE SPECIFIC RULES:\n{style.get('post_note', '')}\n"
 
-            "PROMPT SPECIFICATIONS: "
-            "- Describe the scene, lighting, and composition (e.g., close-up, wide shot, bird's eye view). "
-            "- ALL prompts MUST be in English. "
-            "- Each prompt MUST be under 800 characters. "
-            "- Output each prompt on a new line."
+            "OUTPUT FORMAT: "
+            "- Describe scene, framing (close-up / wide / over-shoulder...), lighting, composition. "
+            "- English. Each prompt under 800 characters. One prompt per line. No bullet points, no numbering."
         )
-        
-        history_msg = f"\nRecent History (Avoid repeating these scenes):\n" + "\n".join(recent_history[:5]) if recent_history else ""
-        context_msg = f"\nOverall Video Concept (For mood/style only):\n{full_context[:1000]}..." if full_context else ""
-        user_msg = f"Narration to visualize: {text}\n{history_msg}{context_msg}\n\nStyle: {style_prompt}\n\nGenerate {n} unique and specific prompts for this EXACT narration."
+
+        history_msg = f"\nRecent History (avoid repeating these compositions):\n" + "\n".join(recent_history[:5]) if recent_history else ""
+        context_msg = f"\nOverall Video Theme (background only — DO NOT use this to invent scenes; use ONLY the paragraph below):\n{full_context[:800]}..." if full_context else ""
+
+        user_msg = (
+            f"### PARAGRAPH TO VISUALIZE (this is the ONLY source of WHAT to depict):\n"
+            f"\"{text}\"\n\n"
+            f"### YOUR JOB:\n"
+            f"Describe the SPECIFIC concept of this paragraph using a visual metaphor. "
+            f"Do NOT generalize to the channel's broad theme. Do NOT add elements (weather, religious symbols, etc.) absent from the paragraph above.\n"
+            f"{context_msg}\n"
+            f"{history_msg}\n\n"
+            f"### STYLE WRAPPER (only HOW it looks, never WHAT is in it):\n"
+            f"{style_prompt}\n\n"
+            f"Output {n} unique prompt(s) that depict the SPECIFIC concept of the paragraph above, dressed in the style above."
+        )
 
         
         response = self.openai_client.chat.completions.create(
@@ -75,16 +103,18 @@ class ImageEngine:
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}
             ],
-            temperature=0.7
+            temperature=1.0
         )
-        
+
         content = response.choices[0].message.content.strip()
+        print(f"[generate_prompts] LLM raw response (first 200 chars): {content[:200]!r}", flush=True)
         # Filter and truncate prompts to 800 chars
         prompts = []
         for p in content.split("\n"):
             p = p.strip("-• ").strip()
             if len(p.split()) > 3:
                 prompts.append(p[:800])
+        print(f"[generate_prompts] Returning {len(prompts[:n])} prompt(s); first: {(prompts[0][:120] if prompts else 'NONE')!r}", flush=True)
         return prompts[:n]
 
     def generate_continuation_prompt(self, text: str, previous_prompt: str, style_name: str, style_override: dict = None, custom_rules: Optional[str] = None) -> str:

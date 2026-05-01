@@ -65,6 +65,10 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
   const [editCredsDir, setEditCredsDir] = useState(channel.creds_dir || '');
   const [editStylePrompt, setEditStylePrompt] = useState(channel.image_style_prompt || '');
   const [editNegativePrompt, setEditNegativePrompt] = useState(channel.negative_prompt || '');
+  const [editDefaultStyle, setEditDefaultStyle] = useState(channel.default_style || '');
+  const [editDefaultWorkflow, setEditDefaultWorkflow] = useState(channel.default_workflow || '');
+  const [availableStyles, setAvailableStyles] = useState<{ id: string; name: string }[]>([]);
+  const [availableWorkflowsList, setAvailableWorkflowsList] = useState<string[]>([]);
 
 
   useEffect(() => {
@@ -78,10 +82,14 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
     setEditCredsDir(channel.creds_dir || '');
     setEditStylePrompt(channel.image_style_prompt || '');
     setEditNegativePrompt(channel.negative_prompt || '');
+    setEditDefaultStyle(channel.default_style || '');
+    setEditDefaultWorkflow(channel.default_workflow || '');
     loadDownloads();
     loadGenerations();
     loadMusicFiles();
     loadStyleGuideStatus();
+    api.getConfig().then(c => setAvailableStyles(c.styles || [])).catch(() => {});
+    api.getWorkflows().then(w => setAvailableWorkflowsList(w.workflows || [])).catch(() => {});
     setSelectedVideo(null);
 
     // Check for OAuth callback in URL
@@ -302,10 +310,12 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
         setTimeout(() => reject(new Error('TIMEOUT')), 15000)
       );
 
-      const updatePromise = api.updateChannel(channel.id, { 
+      const updatePromise = api.updateChannel(channel.id, {
         creds_dir: editCredsDir,
         image_style_prompt: editStylePrompt,
-        negative_prompt: editNegativePrompt
+        negative_prompt: editNegativePrompt,
+        default_style: editDefaultStyle || null,
+        default_workflow: editDefaultWorkflow || null,
       });
 
       await Promise.race([updatePromise, timeoutPromise]);
@@ -481,13 +491,49 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '4px' }}>Negative Prompt</label>
-                    <textarea 
+                    <textarea
                       style={{ width: '100%', minHeight: '60px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', color: 'white', resize: 'vertical' }}
                       value={editNegativePrompt}
                       onChange={(e) => setEditNegativePrompt(e.target.value)}
                       placeholder="Ej: blurry, low quality, distorted hands..."
                     />
                   </div>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '0.8rem', color: '#fbbf24', marginBottom: '4px' }}>
+                        Estilo por defecto
+                      </label>
+                      <select
+                        value={editDefaultStyle}
+                        onChange={(e) => setEditDefaultStyle(e.target.value)}
+                        style={{ width: '100%', background: '#111827', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', color: 'white' }}
+                      >
+                        <option value="" style={{ background: '#111827', color: 'white' }}>— Sin default (auto-detección) —</option>
+                        {availableStyles.map(s => (
+                          <option key={s.id} value={s.id} style={{ background: '#111827', color: 'white' }}>{s.name} ({s.id})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '0.8rem', color: '#fbbf24', marginBottom: '4px' }}>
+                        Workflow ComfyUI por defecto
+                      </label>
+                      <select
+                        value={editDefaultWorkflow}
+                        onChange={(e) => setEditDefaultWorkflow(e.target.value)}
+                        style={{ width: '100%', background: '#111827', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', color: 'white' }}
+                      >
+                        <option value="" style={{ background: '#111827', color: 'white' }}>— Sin default (auto-detección) —</option>
+                        {availableWorkflowsList.map(wf => (
+                          <option key={wf} value={wf} style={{ background: '#111827', color: 'white' }}>{wf}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>
+                    Si se establecen, se usan automáticamente en cada vídeo nuevo de este canal. Puedes
+                    sobrescribirlos por vídeo desde el formulario de creación o el revisor de imágenes.
+                  </p>
                 </div>
               </div>
 
@@ -840,9 +886,10 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel }) => {
         )}
 
         {activeTab === 'create' && (
-          <VideoCreator 
-            channelId={channel.id} 
-            initialVideo={selectedVideo} 
+          <VideoCreator
+            channelId={channel.id}
+            channel={channel}
+            initialVideo={selectedVideo}
             onReviewImages={(id) => setReviewingVideoId(id)}
           />
         )}

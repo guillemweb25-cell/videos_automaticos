@@ -1,16 +1,17 @@
 import React, { useState, ChangeEvent, useRef } from 'react';
-import { api, type VideoResponse } from '../api';
+import { api, type VideoResponse, type ChannelResponse } from '../api';
 import VideoUploadModal from './VideoUploadModal';
 
 interface VideoCreatorProps {
   channelId: number;
+  channel?: ChannelResponse;
   initialVideo?: VideoResponse | null;
   onReviewImages?: (id: number) => void;
 }
 
 type GenerationStep = 'idle' | 'creating' | 'script' | 'audio' | 'generating_audio' | 'audio_ready' | 'images' | 'generating_images' | 'images_ready' | 'seo' | 'rendering' | 'completed' | 'error';
 
-const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, onReviewImages }) => {
+const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initialVideo, onReviewImages }) => {
   const [title, setTitle] = useState(initialVideo?.title || '');
   const [script, setScript] = useState('');
   const [voice, setVoice] = useState('Dipemo');
@@ -98,17 +99,20 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
           
           const workflowsRes = await api.getWorkflows();
           setAvailableWorkflows(workflowsRes.workflows);
-          if (!selectedWorkflow && workflowsRes.workflows.length > 0) {
+          // Pre-fill workflow from channel default if set; otherwise first available
+          if (!initialVideo && channel?.default_workflow && workflowsRes.workflows.includes(channel.default_workflow)) {
+            setSelectedWorkflow(channel.default_workflow);
+          } else if (!selectedWorkflow && workflowsRes.workflows.length > 0) {
             setSelectedWorkflow(workflowsRes.workflows[0]);
           }
         } catch (e) {
           console.error("Error loading config", e);
         }
-        
+
         if (config.generation_modes?.length > 0 && !initialVideo) {
           setGenerationMode('FAST'); // Default
         }
-        
+
         if (!initialVideo) {
           setTitle('');
           setScript('');
@@ -116,7 +120,10 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, initialVideo, on
           setLog([]);
           setError('');
           setVideoId(null);
-          if (config.styles.length > 0) {
+          // Pre-fill style from channel default if set; otherwise first available
+          if (channel?.default_style && config.styles.some((s: any) => s.id === channel.default_style)) {
+            setStyle(channel.default_style);
+          } else if (config.styles.length > 0) {
             setStyle(config.styles[0].id);
           }
         } else {

@@ -49,6 +49,8 @@ export interface ChannelResponse {
   creds_dir?: string;
   image_style_prompt?: string;
   negative_prompt?: string;
+  default_style?: string | null;
+  default_workflow?: string | null;
 }
 
 export interface YouTubeChannelInfo {
