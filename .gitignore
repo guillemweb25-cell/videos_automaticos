@@ -40,3 +40,8 @@ backend/alembic/videos.db
 .agents/
 .claude/
 *.tsbuildinfo
+
+# Logs
+*.log
+api_logs.txt
+backend/logs/
