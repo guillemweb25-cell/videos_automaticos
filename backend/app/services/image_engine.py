@@ -785,11 +785,13 @@ class ImageEngine:
                 y_line1 = stack_bottom - h1 - bbox1[1]
 
             if line1:
+                # Title: bright yellow at top, golden mid-bottom — keep it clearly yellow
+                # so it contrasts with the orange subtitle below.
                 draw_text_with_gradient(
                     img, line1.upper(), (0, y_line1),
                     font1,
-                    top_color=(255, 224, 90),
-                    bottom_color=(255, 105, 20),
+                    top_color=(255, 235, 60),    # saturated yellow
+                    bottom_color=(255, 185, 40), # golden, not full orange
                     outline_color="black",
                     outline_width=outline_w_1,
                     align="center",
@@ -797,9 +799,10 @@ class ImageEngine:
                 draw = ImageDraw.Draw(img)
 
             if line2:
+                # Subtitle: solid warm orange, distinct from the yellow above.
                 draw_text_with_outline(
                     draw, line2.upper(), (0, y_line2),
-                    font2, (255, 140, 30), "black", outline_width=outline_w_2, align="center",
+                    font2, (255, 120, 30), "black", outline_width=outline_w_2, align="center",
                 )
 
         else:
