@@ -214,11 +214,174 @@ def delete_video(video_id: int, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
-    
+
     # Optionally delete files here, but for now just DB record as per plan
     db.delete(video)
     db.commit()
     return {"ok": True}
+
+
+@router.get("/orphans")
+def list_orphan_videos(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Returns all videos belonging to the current user that have NOT been uploaded
+    to YouTube, with metadata and on-disk cache size for cleanup management.
+    """
+    import shutil
+    rows = (
+        db.query(Video, Channel)
+        .join(Channel, Video.channel_id == Channel.id)
+        .filter(Channel.user_id == current_user.id)
+        .filter(Video.is_uploaded == False)  # noqa: E712
+        .order_by(Video.created_at.desc())
+        .all()
+    )
+
+    out = []
+    for v, ch in rows:
+        size_bytes = 0
+        if v.base_dir:
+            base_path = Path(v.base_dir)
+            if base_path.exists():
+                try:
+                    for f in base_path.rglob("*"):
+                        if f.is_file():
+                            size_bytes += f.stat().st_size
+                except Exception:
+                    pass
+        out.append({
+            "id": v.id,
+            "title": v.title,
+            "status": v.status,
+            "last_error": v.last_error,
+            "duration_seconds": v.duration_seconds,
+            "is_short": v.is_short,
+            "width": v.width,
+            "height": v.height,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+            "base_dir": v.base_dir,
+            "cache_size_bytes": size_bytes,
+            "channel_id": ch.id,
+            "channel_name": ch.name,
+        })
+    return out
+
+
+@router.delete("/{video_id}/purge")
+def purge_video(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fully removes a video: DB record + entire cache folder on disk.
+    Only allowed for videos owned by the current user that are NOT uploaded to YouTube
+    (to avoid accidentally losing the source files of published content).
+    """
+    import shutil
+    video = (
+        db.query(Video)
+        .join(Channel, Video.channel_id == Channel.id)
+        .filter(Video.id == video_id, Channel.user_id == current_user.id)
+        .first()
+    )
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found or not owned by user")
+
+    if video.is_uploaded:
+        raise HTTPException(status_code=400, detail="Vídeo subido a YouTube. No se purga para preservar los assets de origen. Si quieres borrarlo, primero quita la marca de subido.")
+
+    deleted_size = 0
+    if video.base_dir:
+        base_path = Path(video.base_dir)
+        if base_path.exists():
+            try:
+                for f in base_path.rglob("*"):
+                    if f.is_file():
+                        deleted_size += f.stat().st_size
+                shutil.rmtree(base_path)
+            except Exception as e:
+                print(f"[purge] WARNING: could not delete folder {base_path}: {e}", flush=True)
+
+    db.delete(video)
+    db.commit()
+    return {"ok": True, "id": video_id, "deleted_size_bytes": deleted_size}
+
+
+@router.post("/{video_id}/mark-uploaded")
+def mark_video_uploaded(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Manually flags a video as uploaded to YouTube.
+
+    Used when the user already uploaded by hand (or the upload finished but the
+    flag was lost) and the video shouldn't appear in the orphans list anymore.
+    """
+    video = (
+        db.query(Video)
+        .join(Channel, Video.channel_id == Channel.id)
+        .filter(Video.id == video_id, Channel.user_id == current_user.id)
+        .first()
+    )
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found or not owned by user")
+    video.is_uploaded = True
+    db.commit()
+    return {"ok": True, "id": video_id}
+
+
+@router.post("/bulk-purge")
+def bulk_purge_videos(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk delete: takes {ids: [int, ...]}. Returns per-id status."""
+    import shutil
+    ids = payload.get("ids", [])
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(status_code=400, detail="Missing or invalid 'ids' array")
+
+    results = []
+    total_size = 0
+
+    for vid_id in ids:
+        try:
+            video = (
+                db.query(Video)
+                .join(Channel, Video.channel_id == Channel.id)
+                .filter(Video.id == vid_id, Channel.user_id == current_user.id)
+                .first()
+            )
+            if not video:
+                results.append({"id": vid_id, "ok": False, "error": "not found or not owned"})
+                continue
+            if video.is_uploaded:
+                results.append({"id": vid_id, "ok": False, "error": "uploaded to YouTube, skipped"})
+                continue
+
+            size = 0
+            if video.base_dir:
+                base_path = Path(video.base_dir)
+                if base_path.exists():
+                    try:
+                        for f in base_path.rglob("*"):
+                            if f.is_file():
+                                size += f.stat().st_size
+                        shutil.rmtree(base_path)
+                    except Exception as e:
+                        print(f"[bulk-purge] WARNING: {base_path}: {e}", flush=True)
+            db.delete(video)
+            total_size += size
+            results.append({"id": vid_id, "ok": True, "size_bytes": size})
+        except Exception as e:
+            results.append({"id": vid_id, "ok": False, "error": str(e)})
+
+    db.commit()
+    return {"ok": True, "results": results, "total_deleted_bytes": total_size}
 
 @router.post("/{video_id}/script")
 async def upload_script(video_id: int, request: Request, script: str = None, db: Session = Depends(get_db)):
@@ -618,13 +781,17 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                     recent_prompts.extend(prompts)
                 else:
                     channel_style = StyleService.get_channel_style(channel, sty)
-                    prompts = engine.generate_prompts(
-                        text, sty, 
-                        n=images_count, 
-                        full_context=script_full, 
+                    # Run sync LLM call in a worker thread so it does not block the event loop
+                    # (otherwise other API requests like /auth/me get queued behind it and the
+                    # frontend hangs at "Cargando..." while images generate).
+                    prompts = await asyncio.to_thread(
+                        engine.generate_prompts,
+                        text, sty,
+                        n=images_count,
+                        full_context=script_full,
                         style_override=channel_style,
-                        recent_history=recent_prompts[-8:], # Pass last 8 prompts as history
-                        custom_rules=custom_niche_rules
+                        recent_history=recent_prompts[-8:],
+                        custom_rules=custom_niche_rules,
                     )
                     recent_prompts.extend(prompts)
                     cached_prompts_objs = []
@@ -656,7 +823,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                             prev_img_path = base_dir / "images" / f"p{idx:03d}_{i:02d}.png"
                             if prev_img_path.exists():
                                 try:
-                                    init_image_id = engine.upload_init_image(prev_img_path)
+                                    init_image_id = await asyncio.to_thread(engine.upload_init_image, prev_img_path)
                                 except Exception as e:
                                     print(f"Warning: Failed to upload reference image for paragraph {idx} image {img_idx}: {e}")
                         
@@ -732,14 +899,15 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                     script_snippet = "\n".join([item.get("spoken", "") for item in plan])
                     # NEW: use custom rules from guide for hook
                     custom_title_rules = StyleService.get_custom_title_rules(base_dir)
-                    hook = seo.generate_thumbnail_hook(script_full, custom_rules=custom_title_rules)
-                    
+                    hook = await asyncio.to_thread(seo.generate_thumbnail_hook, script_full, custom_rules=custom_title_rules)
+
                     # Look for custom thumbnail rules in style-guide.md
                     custom_thumb_rules = StyleService.get_custom_thumbnail_rules(base_dir)
-                    visual_prompt = seo.generate_thumbnail_visual_prompt(
-                        script_full, sty, 
-                        thumbnail_hook=hook, 
-                        custom_rules=custom_thumb_rules
+                    visual_prompt = await asyncio.to_thread(
+                        seo.generate_thumbnail_visual_prompt,
+                        script_full, sty,
+                        thumbnail_hook=hook,
+                        custom_rules=custom_thumb_rules,
                     )
                     
                     if "thumbnail" not in all_prompts_data:

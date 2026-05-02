@@ -42,6 +42,22 @@ export interface UserResponse {
   credits: number;
 }
 
+export interface OrphanVideo {
+  id: number;
+  title: string;
+  status: string;
+  last_error: string | null;
+  duration_seconds: number | null;
+  is_short: boolean;
+  width: number | null;
+  height: number | null;
+  created_at: string | null;
+  base_dir: string | null;
+  cache_size_bytes: number;
+  channel_id: number;
+  channel_name: string;
+}
+
 export interface ChannelResponse {
   id: number;
   name: string;
@@ -416,6 +432,51 @@ class ApiClient {
       headers: this.getHeaders(true),
     });
     if (!res.ok) throw new Error('Error al eliminar vídeo');
+  }
+
+  async getOrphanVideos(): Promise<OrphanVideo[]> {
+    const res = await fetch(`${this.baseUrl}/videos/orphans`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener vídeos huérfanos');
+    return res.json();
+  }
+
+  async purgeVideo(videoId: number): Promise<{ ok: boolean; id: number; deleted_size_bytes: number }> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/purge`, {
+      method: 'DELETE',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al purgar vídeo');
+    }
+    return res.json();
+  }
+
+  async markVideoUploaded(videoId: number): Promise<{ ok: boolean; id: number }> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/mark-uploaded`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al marcar como subido');
+    }
+    return res.json();
+  }
+
+  async bulkPurgeVideos(ids: number[]): Promise<{ ok: boolean; results: { id: number; ok: boolean; error?: string; size_bytes?: number }[]; total_deleted_bytes: number }> {
+    const res = await fetch(`${this.baseUrl}/videos/bulk-purge`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al purgar vídeos en bloque');
+    }
+    return res.json();
   }
 
   async uploadScript(videoId: number, script: string): Promise<{ ok: boolean; paragraphs: number }> {

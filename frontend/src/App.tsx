@@ -4,6 +4,7 @@ import ChannelDashboard from './components/ChannelDashboard'
 import { Settings } from './components/Settings'
 import { Payments } from './components/Payments'
 import { AdminDashboard } from './components/AdminDashboard'
+import OrphansManager from './components/OrphansManager'
 
 function App() {
   const [user, setUser] = useState<UserResponse | null>(null)
@@ -21,6 +22,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showPayments, setShowPayments] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
+  const [showOrphans, setShowOrphans] = useState(false)
 
   // Channel Form State
   const [channelName, setChannelName] = useState('')
@@ -90,6 +92,7 @@ function App() {
     setShowPayments(true)
     setShowSettings(false)
     setShowAdmin(false)
+    setShowOrphans(false)
     setSelectedChannel(null)
     setSidebarOpen(false)
   }
@@ -98,6 +101,16 @@ function App() {
     setShowAdmin(true)
     setShowSettings(false)
     setShowPayments(false)
+    setShowOrphans(false)
+    setSelectedChannel(null)
+    setSidebarOpen(false)
+  }
+
+  const handleShowOrphans = () => {
+    setShowOrphans(true)
+    setShowSettings(false)
+    setShowPayments(false)
+    setShowAdmin(false)
     setSelectedChannel(null)
     setSidebarOpen(false)
   }
@@ -107,6 +120,7 @@ function App() {
     setShowSettings(false)
     setShowPayments(false)
     setShowAdmin(false)
+    setShowOrphans(false)
     if (channel) {
       localStorage.setItem('selectedChannelId', channel.id.toString())
     } else {
@@ -119,6 +133,7 @@ function App() {
     setShowSettings(true)
     setShowPayments(false)
     setShowAdmin(false)
+    setShowOrphans(false)
     setSelectedChannel(null)
     setSidebarOpen(false)
   }
@@ -269,7 +284,7 @@ function App() {
             <span>Ajustes</span>
           </div>
 
-          <div 
+          <div
             className={`channel-link ${showPayments ? 'active' : ''}`}
             onClick={handleShowPayments}
             style={{ marginTop: '4px' }}
@@ -277,6 +292,15 @@ function App() {
             <div className="channel-icon" style={{ background: '#1e293b' }}>💳</div>
             <span>Créditos</span>
             <span className="balance-badge">{((user.credits ?? 0) / 100).toFixed(2)}€</span>
+          </div>
+
+          <div
+            className={`channel-link ${showOrphans ? 'active' : ''}`}
+            onClick={handleShowOrphans}
+            style={{ marginTop: '4px' }}
+          >
+            <div className="channel-icon" style={{ background: '#7c2d12' }}>🧹</div>
+            <span>Limpieza</span>
           </div>
 
           {user.is_admin && (
@@ -325,7 +349,7 @@ function App() {
             ☰
           </button>
           <div style={{ fontWeight: 600 }}>
-            {showSettings ? 'Ajustes' : showPayments ? 'Créditos y Pagos' : showAdmin ? 'Panel de Administración' : selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
+            {showSettings ? 'Ajustes' : showPayments ? 'Créditos y Pagos' : showAdmin ? 'Panel de Administración' : showOrphans ? 'Limpieza de vídeos' : selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
           </div>
           {selectedChannel && (
             <button className="btn-delete" onClick={() => handleDeleteChannel(selectedChannel.id)}>
@@ -343,6 +367,8 @@ function App() {
             <AdminDashboard onUserUpdate={(updated) => {
               if (updated.id === user.id) setUser(updated);
             }} />
+          ) : showOrphans ? (
+            <OrphansManager />
           ) : selectedChannel ? (
             <ChannelDashboard
               channel={selectedChannel}
