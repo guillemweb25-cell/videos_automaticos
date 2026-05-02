@@ -595,33 +595,76 @@ class ImageEngine:
         elif channel_name and "sombras" in channel_name.lower():
             style = "sombras"
 
-        # Font configuration (Fallback paths)
-        font_paths = [
+        # Font configuration: prefer bundled condensed display fonts (Anton, Bebas Neue)
+        # for that "PENTECOSTES" look, fall back to system fonts.
+        bundled_fonts_dir = Path(__file__).parent.parent / "fonts"
+        font_paths_heavy = [
+            str(bundled_fonts_dir / "Anton-Regular.ttf"),       # condensed display
+            str(bundled_fonts_dir / "BebasNeue-Regular.ttf"),   # alt condensed
+            "/usr/share/fonts/truetype/msttcorefonts/ariblk.ttf",
             "/usr/share/fonts/truetype/msttcorefonts/arialbd.ttf",
-            "/usr/share/fonts/truetype/msttcorefonts/ariblk.ttf", # Arial Black
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         ]
-        
-        font_path_bold = next((p for p in font_paths if Path(p).exists()), None)
-        # Try to find a specifically thick one for Bebas Neue substitute
-        font_path_heavy = next((p for p in font_paths if "ariblk" in p and Path(p).exists()), font_path_bold)
+        font_paths_bold = [
+            "/usr/share/fonts/truetype/msttcorefonts/arialbd.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            str(bundled_fonts_dir / "Anton-Regular.ttf"),
+        ]
+
+        font_path_heavy = next((p for p in font_paths_heavy if Path(p).exists()), None)
+        font_path_bold = next((p for p in font_paths_bold if Path(p).exists()), font_path_heavy)
 
         def draw_text_with_outline(draw_obj, text_str, pos, font_obj, fill_color, outline_color, outline_width=4, align="left"):
             x, y = pos
             if align == "center":
-                # Calculate width using textbbox
                 bbox = draw_obj.textbbox((0, 0), text_str, font=font_obj)
                 w = bbox[2] - bbox[0]
                 x = (width - w) // 2
-            
-            # Draw outline
-            for adj in range(-outline_width, outline_width + 1):
-                for adj_y in range(-outline_width, outline_width + 1):
-                    draw_obj.text((x + adj, y + adj_y), text_str, font=font_obj, fill=outline_color)
-            # Draw main text
-            draw_obj.text((x, y), text_str, font=font_obj, fill=fill_color)
+            # Pillow stroke_width is faster and cleaner than the bruteforce loop
+            draw_obj.text(
+                (x, y), text_str, font=font_obj, fill=fill_color,
+                stroke_width=outline_width, stroke_fill=outline_color,
+            )
             return x, y
+
+        def make_vertical_gradient(size: Tuple[int, int], top_color: Tuple[int, int, int], bottom_color: Tuple[int, int, int]) -> Image.Image:
+            """Returns an RGBA image filled with a vertical gradient from top_color to bottom_color."""
+            w, h = size
+            grad = Image.new("RGB", (1, h))
+            for y in range(h):
+                t = y / max(1, h - 1)
+                r = int(top_color[0] * (1 - t) + bottom_color[0] * t)
+                g = int(top_color[1] * (1 - t) + bottom_color[1] * t)
+                b = int(top_color[2] * (1 - t) + bottom_color[2] * t)
+                grad.putpixel((0, y), (r, g, b))
+            return grad.resize((w, h)).convert("RGBA")
+
+        def draw_text_with_gradient(canvas, text_str, pos, font_obj, top_color, bottom_color, outline_color="black", outline_width=8, align="center"):
+            """Stamp text with a vertical gradient fill + black outline.
+            Uses Pillow's stroke_width for the outline pass and a mask-paste for the gradient."""
+            x, y = pos
+            bbox = canvas.getchannel("A").info if False else None  # noop, kept for readability
+            tmp_draw = ImageDraw.Draw(canvas)
+            tb = tmp_draw.textbbox((0, 0), text_str, font=font_obj, stroke_width=outline_width)
+            text_w = tb[2] - tb[0]
+            text_h = tb[3] - tb[1]
+            if align == "center":
+                x = (width - text_w) // 2 - tb[0]
+
+            # 1) outline pass directly on the canvas (black stroke, transparent fill)
+            tmp_draw.text(
+                (x, y), text_str, font=font_obj,
+                fill=(0, 0, 0, 0),
+                stroke_width=outline_width, stroke_fill=outline_color,
+            )
+
+            # 2) gradient fill: render text alpha as a mask, paste a gradient through it
+            mask = Image.new("L", canvas.size, 0)
+            ImageDraw.Draw(mask).text((x, y), text_str, font=font_obj, fill=255)
+            gradient = make_vertical_gradient(canvas.size, top_color, bottom_color)
+            canvas.paste(gradient, (0, 0), mask)
 
         def get_fitting_font(text_str, font_path, max_width, start_size):
             size = start_size
@@ -636,37 +679,54 @@ class ImageEngine:
             return font
 
         if style == "jesus":
-            # 3-line style for Jesus channel
+            # 3-line style: top label · big gradient title · italic-ish subtitle
             parts = text.split("...")
             label = parts[0].strip().upper() if len(parts) > 0 else "MENSAJE DE"
             title = parts[1].strip().upper() if len(parts) > 1 else ""
             subtitle = parts[2].strip().lower() if len(parts) > 2 else ""
 
-            # Use min(width, height) to avoid massive fonts on vertical videos
             base_dim = min(width, height)
             size_top = int(base_dim * 0.08)
-            size_center = int(base_dim * 0.18)
-            size_bottom = int(base_dim * 0.07)
-            
+            size_center = int(base_dim * 0.22)  # bigger to match reference
+            size_bottom = int(base_dim * 0.06)
+
             max_w = width * 0.95
 
-            font_top = get_fitting_font(label, font_path_bold, max_w, size_top)
+            font_top = get_fitting_font(label, font_path_heavy, max_w, size_top)
             font_center = get_fitting_font(title, font_path_heavy, max_w, size_center)
             font_bottom = get_fitting_font(subtitle, font_path_bold, max_w, size_bottom)
 
-            # Draw Top (18% from top)
-            draw_text_with_outline(draw, label, (0, int(height * 0.18)), font_top, "white", "black", outline_width=4, align="center")
-            
-            # Draw Center
-            if title:
-                draw_text_with_outline(draw, title, (0, int(height * 0.45)), font_center, "#FFD700", "black", outline_width=8, align="center")
-            
-            # Draw Bottom (28% from bottom / 72% from top)
-            if subtitle:
-                draw_text_with_outline(draw, subtitle, (0, int(height * 0.72)), font_bottom, "white", "black", outline_width=4, align="center")
+            # Top label: white with thick black outline
+            draw_text_with_outline(
+                draw, label, (0, int(height * 0.18)),
+                font_top, "white", "black", outline_width=4, align="center",
+            )
 
-        else:
-            # Default 2-line style (Sombras or generic)
+            # Center title: yellow → orange gradient with thick black outline
+            if title:
+                draw_text_with_gradient(
+                    img, title, (0, int(height * 0.42)),
+                    font_center,
+                    top_color=(255, 224, 90),    # warm yellow
+                    bottom_color=(255, 130, 30), # orange
+                    outline_color="black",
+                    outline_width=10,
+                    align="center",
+                )
+                # rebind draw to the (now mutated) canvas for any subsequent ops
+                draw = ImageDraw.Draw(img)
+
+            # Bottom subtitle: white with thinner outline
+            if subtitle:
+                draw_text_with_outline(
+                    draw, subtitle, (0, int(height * 0.74)),
+                    font_bottom, "white", "black", outline_width=3, align="center",
+                )
+
+        elif style == "sombras":
+            # 2-line stacked layout for "Sombras del Norte" horror/mystery thumbnails:
+            #   line1 (top, big, gradient yellow→orange, condensed) + ellipsis
+            #   line2 (below, italic white, smaller) preceded by ellipsis
             if "..." in text:
                 parts = text.split("...", 1)
                 line1 = parts[0].strip() + "..."
@@ -674,8 +734,69 @@ class ImageEngine:
             else:
                 words = text.split()
                 if len(words) > 4:
-                    line1 = " ".join(words[:len(words)//2])
-                    line2 = " ".join(words[len(words)//2:])
+                    line1 = " ".join(words[:len(words) // 2]) + "..."
+                    line2 = "..." + " ".join(words[len(words) // 2:])
+                else:
+                    line1 = text
+                    line2 = ""
+
+            base_dim = min(width, height)
+            size_1 = int(base_dim * 0.16)
+            size_2 = int(base_dim * 0.11)  # bigger so the italic line carries more weight
+
+            max_w = width * 0.95
+
+            font1 = get_fitting_font(line1.upper(), font_path_heavy, max_w, size_1)
+
+            # Italic font for the subtitle line. Bold italic if available, otherwise fall back.
+            italic_candidates = [
+                "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+                font_path_bold,  # last-resort fallback
+            ]
+            font_path_italic = next((p for p in italic_candidates if p and Path(p).exists()), font_path_bold)
+            font2 = get_fitting_font(line2.upper(), font_path_italic, max_w, size_2)
+
+            # Stack near the top so the title reads above the main subject in the artwork.
+            # Measure the rendered bbox of line1 (with stroke) to position line2 cleanly below it.
+            y_line1 = int(height * 0.08)
+            outline_w_1 = 8
+            line1_bbox = draw.textbbox((0, y_line1), line1.upper(), font=font1, stroke_width=outline_w_1)
+            line1_bottom = line1_bbox[3]
+            gap = int(size_2 * 0.25)  # breathing room between lines
+            y_line2 = line1_bottom + gap
+
+            if line1:
+                draw_text_with_gradient(
+                    img, line1.upper(), (0, y_line1),
+                    font1,
+                    top_color=(255, 224, 90),
+                    bottom_color=(255, 105, 20),  # stronger orange at the bottom
+                    outline_color="black",
+                    outline_width=outline_w_1,
+                    align="center",
+                )
+                draw = ImageDraw.Draw(img)
+
+            if line2:
+                # Solid warm orange to echo the gradient's bottom tone, thicker outline
+                draw_text_with_outline(
+                    draw, line2.upper(), (0, y_line2),
+                    font2, (255, 140, 30), "black", outline_width=6, align="center",
+                )
+
+        else:
+            # Default 2-line style (generic / fallback)
+            if "..." in text:
+                parts = text.split("...", 1)
+                line1 = parts[0].strip() + "..."
+                line2 = ("..." + parts[1].strip()) if parts[1].strip() else ""
+            else:
+                words = text.split()
+                if len(words) > 4:
+                    line1 = " ".join(words[:len(words) // 2])
+                    line2 = " ".join(words[len(words) // 2:])
                 else:
                     line1 = text
                     line2 = ""
@@ -683,31 +804,23 @@ class ImageEngine:
             base_dim = min(width, height)
             font_size_1 = int(base_dim * 0.15)
             font_size_2 = int(base_dim * 0.13)
-            
             max_w = width * 0.95
-            
             font1 = get_fitting_font(line1.upper(), font_path_bold, max_w, font_size_1)
             font2 = get_fitting_font(line2.upper(), font_path_bold, max_w, font_size_2)
 
             margin_x = int(width * 0.025)
             curr_y = int(height * 0.35)
 
-            # Colors based on style
-            color1, color2 = ("yellow", "#FF8C00") # Default
-            if style == "sombras":
-                color1, color2 = ("#ff3333", "#33ff33") # Red and Green for horror
-
-            # Always center for vertical videos to look better, left for horizontal
             is_vertical = height > width
             align_mode = "center" if is_vertical else "left"
             draw_x = 0 if is_vertical else margin_x
 
             if line1:
-                _, draw_y = draw_text_with_outline(draw, line1.upper(), (draw_x, curr_y), font1, color1, "black", outline_width=6, align=align_mode)
+                _, draw_y = draw_text_with_outline(draw, line1.upper(), (draw_x, curr_y), font1, "yellow", "black", outline_width=6, align=align_mode)
                 curr_y = draw_y + int(font_size_1 * 1.1)
 
             if line2:
-                draw_text_with_outline(draw, line2.upper(), (draw_x, curr_y), font2, color2, "black", outline_width=6, align=align_mode)
+                draw_text_with_outline(draw, line2.upper(), (draw_x, curr_y), font2, "#FF8C00", "black", outline_width=6, align=align_mode)
 
         # Save back
         img.convert("RGB").save(image_path, "PNG")
