@@ -24,6 +24,18 @@ class VideoUploadRequest(BaseModel):
     privacy_status: str
     publish_at: Optional[str] = None
 
+
+class VideoMetadataUpdateRequest(BaseModel):
+    """Schema for updating an already-uploaded YouTube video's metadata.
+
+    Privacy and scheduling are not editable here — they're set at upload time
+    only — so they're absent from this schema. Sending them via the upload
+    schema produced 422s on the manage flow.
+    """
+    title: str
+    description: str
+    tags: str
+
 @router.get("/channel/{channel_id}")
 async def get_youtube_channel_info(
     channel_id: int,
@@ -168,7 +180,7 @@ async def upload_video_to_youtube(
 @router.post("/{video_id}/update-metadata")
 async def update_youtube_metadata(
     video_id: int,
-    req: VideoUploadRequest,
+    req: VideoMetadataUpdateRequest,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
