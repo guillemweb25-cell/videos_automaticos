@@ -535,8 +535,26 @@ class ImageEngine:
             # Dynamic workflow selection
             vp_lower = visual_prompt.lower()
             biblical_keywords = ["biblical", "jesus", "apostle", "god", "divine", "revelation", "prophecy", "bible", "sacred", "angel", "miracle", "christ", "mary"]
-            
-            workflow = workflow_name
+
+            # Per-channel thumbnail workflow override (highest priority):
+            # convention is workflows/<slug(channel.name)>-thumbnail.json. If a file with
+            # that name exists, it wins over the body workflow that the caller passed —
+            # lets you tune thumbnail aesthetics independently from slideshow images.
+            workflow = None
+            if channel_name:
+                from app.core.utils import slugify
+                slug = slugify(channel_name)
+                for base_dir in (Path("/app/workflows"), Path("workflows")):
+                    candidate = base_dir / f"{slug}-thumbnail.json"
+                    if candidate.exists():
+                        workflow = candidate.name
+                        print(f"[thumbnail] Using channel-specific thumbnail workflow: {workflow}")
+                        break
+
+            # Otherwise honor the explicit workflow_name passed by the caller.
+            if not workflow:
+                workflow = workflow_name
+
             if not workflow:
                 if any(k in vp_lower for k in biblical_keywords):
                     workflow = "Biblical-Epic-Ultra.json"

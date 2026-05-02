@@ -1,0 +1,107 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 0,
+      "steps": 28,
+      "cfg": 7.5,
+      "sampler_name": "dpmpp_2m_sde",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "4": {
+    "inputs": {
+      "ckpt_name": "SDXL/juggernautXL_ragnarokBy.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 1280,
+      "height": 720,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "(epic youtube thumbnail aesthetic:1.4), (massive radial explosion of golden light:1.4), (cascading shower of gold coins flying outward:1.3), (dramatic god rays bursting from center:1.3), (sacred geometry symbols glowing in the background:1.2), metatron's cube, flower of life, hexagram of solomon, vesica piscis, glowing golden runes, sparkles and bokeh particles, intense lens flare, (deep navy blue and pure gold high contrast palette:1.3), (abundance and prosperity feeling:1.2), volumetric light, hyperrealistic 3d render, octane render quality, extreme detail, 8k resolution, masterpiece, professional clickbait composition, dynamic motion, energetic feel",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "positive"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "(child:1.8), (children:1.8), (kid:1.8), (kids:1.8), (toddler:1.8), (infant:1.8), (baby:1.8), (boy:1.5), (girl:1.5), (teen:1.6), (teenager:1.6), (young face:1.5), (juvenile:1.5), (youthful features:1.5), nsfw, nude, naked, nipples, breasts, erotic, bare skin, embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), (polydactyly:2.0), (multiple hands:1.8), (fused fingers:1.8), (malformed limbs:1.8), (extra limbs:1.8), (poorly drawn hands:1.8), (missing fingers:1.8), (long arms, elongated limbs, disproportionate body:1.5), (cropped, out of frame:1.3), (comic, drawing, illustration, painting, anime, sketch, cartoon, plastic CGI:1.4), (close-up portrait filling frame:1.3), (large face filling frame:1.3), (muted colors:1.4), (dull lighting:1.4), (washed out:1.4), (low contrast:1.4), (pastel:1.3), (soft mystical photography:1.3), crystal ball, tarot cards, witch hat, comic book style, low saturation, text, watermark, blurry, low quality, bad anatomy",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "negative"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "GrabovoiThumbnail",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}
