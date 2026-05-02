@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import requests
@@ -499,21 +500,31 @@ class ImageEngine:
         # Add hand boosters if hands are mentioned
         if "hand" in visual_prompt.lower() or "finger" in visual_prompt.lower() or "gesturing" in visual_prompt.lower():
             visual_prompt += ", (perfect hands:1.2), (detailed fingers:1.3), natural hand pose"
-        
-        # Add age boosters if child/young age mentioned
+
+        # Detect channel style
+        cn = (channel_name or "").lower()
+        style = "default"
+        if "jesus" in cn or "jesús" in cn:
+            style = "jesus"
+        elif "sombras" in cn:
+            style = "sombras"
+        elif "grabovoi" in cn or "codigos" in cn or "códigos" in cn:
+            style = "grabovoi"
+
+        # Add age boosters if child/young age mentioned in the prompt — UNLESS the channel
+        # explicitly forbids children (e.g. Grabovoi). For those, strip child mentions and
+        # rely on the negative prompt to keep them out of the render.
         vp_lower = visual_prompt.lower()
+        children_forbidden = style == "grabovoi"
         if any(x in vp_lower for x in ["child", "girl", "boy", "ten", "aged 10", "young"]):
-            if "child" not in visual_prompt.lower():
+            if children_forbidden:
+                # Scrub child-related tokens; don't reinforce them.
+                for tok in ["child", "small child", "youthful features", "young face", "young person", "boy", "girl", "teen", "teenager", "kid", "kids"]:
+                    visual_prompt = re.sub(rf"\b{re.escape(tok)}\b", "adult", visual_prompt, flags=re.IGNORECASE)
+            elif "child" not in visual_prompt.lower():
                 visual_prompt += ", (child:1.4), (small child:1.2), youthful features"
             else:
                 visual_prompt = visual_prompt.replace("child", "(child:1.5)")
-        
-        # Detect channel style
-        style = "default"
-        if channel_name and ("jesus" in channel_name.lower() or "jesús" in channel_name.lower()):
-            style = "jesus"
-        elif channel_name and "sombras" in channel_name.lower():
-            style = "sombras"
 
         # Ensure the subject is on the right to leave space for text on the left
         if "right side" not in visual_prompt.lower() and style != "jesus":
@@ -589,11 +600,14 @@ class ImageEngine:
         draw = ImageDraw.Draw(img)
 
         # Detect channel style
+        cn = (channel_name or "").lower()
         style = "default"
-        if channel_name and ("jesus" in channel_name.lower() or "jesús" in channel_name.lower()):
+        if "jesus" in cn or "jesús" in cn:
             style = "jesus"
-        elif channel_name and "sombras" in channel_name.lower():
+        elif "sombras" in cn:
             style = "sombras"
+        elif "grabovoi" in cn or "codigos" in cn or "códigos" in cn:
+            style = "grabovoi"
 
         # Font configuration: prefer bundled condensed display fonts (Anton, Bebas Neue)
         # for that "PENTECOSTES" look, fall back to system fonts.
@@ -804,6 +818,81 @@ class ImageEngine:
                     draw, line2.upper(), (0, y_line2),
                     font2, (255, 120, 30), "black", outline_width=outline_w_2, align="center",
                 )
+
+        elif style == "grabovoi":
+            # Epic golden 2-line layout for the Grabovoi channel — both lines in pure
+            # gold gradient, heavier outline, anchored mid-frame to feel stamped/dominant
+            # like the abundance/wealth thumbnails of the niche.
+            if "..." in text:
+                parts = text.split("...", 1)
+                line1 = parts[0].strip() + "..."
+                line2 = ("..." + parts[1].strip()) if parts[1].strip() else ""
+            else:
+                words = text.split()
+                if len(words) > 4:
+                    line1 = " ".join(words[:len(words) // 2]) + "..."
+                    line2 = "..." + " ".join(words[len(words) // 2:])
+                else:
+                    line1 = text
+                    line2 = ""
+
+            base_dim = min(width, height)
+            size_1 = int(base_dim * 0.17)
+            size_2 = int(base_dim * 0.13)
+
+            max_w = width * 0.96
+
+            font1 = get_fitting_font(line1.upper(), font_path_heavy, max_w, size_1)
+            font2 = get_fitting_font(line2.upper(), font_path_heavy, max_w, size_2)
+
+            outline_w_1 = 10
+            outline_w_2 = 8
+
+            # Anchor the bottom of the stack at ~92% of height. Bigger gap between lines
+            # (Grabovoi thumbnails usually have looser stacking than Sombras).
+            bbox1 = draw.textbbox((0, 0), line1.upper(), font=font1, stroke_width=outline_w_1)
+            h1 = bbox1[3] - bbox1[1]
+            bbox2 = (0, 0, 0, 0)
+            h2 = 0
+            if line2:
+                bbox2 = draw.textbbox((0, 0), line2.upper(), font=font2, stroke_width=outline_w_2)
+                h2 = bbox2[3] - bbox2[1]
+            gap = int(size_2 * 0.30)
+            stack_bottom = int(height * 0.92)
+            if line2:
+                y_line2 = stack_bottom - h2 - bbox2[1]
+                y_line1 = y_line2 - gap - h1 - bbox1[1]
+            else:
+                y_line2 = 0
+                y_line1 = stack_bottom - h1 - bbox1[1]
+
+            # Pure gold gradient (bright sunlight gold → deep gold) — no orange tint
+            gold_top = (255, 235, 80)
+            gold_bot = (220, 160, 20)
+
+            if line1:
+                draw_text_with_gradient(
+                    img, line1.upper(), (0, y_line1),
+                    font1,
+                    top_color=gold_top,
+                    bottom_color=gold_bot,
+                    outline_color="black",
+                    outline_width=outline_w_1,
+                    align="center",
+                )
+                draw = ImageDraw.Draw(img)
+
+            if line2:
+                draw_text_with_gradient(
+                    img, line2.upper(), (0, y_line2),
+                    font2,
+                    top_color=gold_top,
+                    bottom_color=gold_bot,
+                    outline_color="black",
+                    outline_width=outline_w_2,
+                    align="center",
+                )
+                draw = ImageDraw.Draw(img)
 
         else:
             # Default 2-line style (generic / fallback)

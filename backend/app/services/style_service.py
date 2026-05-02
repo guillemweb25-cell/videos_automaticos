@@ -114,18 +114,33 @@ STYLES: Dict[str, StyleSpec] = {
     "grabovoi_mystic": {
         "display_name": "Grabovoi Mystic",
         "image_style_prompt": (
-            "Mystical spiritual photography with cosmic-energy aesthetic; "
-            "divine golden light beams, ethereal glows, floating golden particles and sparkles, "
-            "sacred geometry patterns subtly visible, abundance/prosperity mood, "
-            "deep velvet sky with nebulae and soft starlight, photorealistic with magical elements, "
-            "soft volumetric lighting, gold and deep-blue color grading, depth of field bokeh, "
-            "inspiring uplifting tone, no on-image text or digits."
+            "Epic mystical wealth-and-abundance imagery in golden tones; "
+            "dramatic explosions of golden light, cascading gold coins, glowing sacred geometry "
+            "(metatron's cube, flower of life, hexagrams, vesica piscis), divine light beams piercing dark cosmic backgrounds; "
+            "high-saturation gold and amber palette with deep navy or black backgrounds for contrast; "
+            "volumetric god-rays, sparkling particles, energy vortices, prosperity and breakthrough mood; "
+            "photorealistic with magical fantasy elements, cinematic, 8k, HDR; "
+            "prefer SYMBOLIC OBJECTS (coins, contracts, keys, sacred geometry, crystals, scrolls, gold bars, "
+            "modern luxury items like cars and houses, businessmen) over abstract scenery; "
+            "if humans appear they MUST be confident adults (30s–60s) only, never children, never youth; "
+            "no on-image text or digits."
         ),
-        "negative_prompt": NEGATIVE_BASE + ", literal numbers in image, garbled digits, illegible text, dark depressing mood, horror, dull flat lighting",
+        "negative_prompt": (
+            NEGATIVE_BASE
+            + ", literal numbers in image, garbled digits, illegible text, dark depressing mood, horror, dull flat lighting, "
+            "(child:1.7), (children:1.7), (kid:1.7), (kids:1.7), (minor:1.7), (baby:1.7), "
+            "(toddler:1.7), (infant:1.7), (teen:1.6), (teenager:1.6), (young face:1.5), (youthful features:1.5), "
+            "(juvenile:1.5), (small child:1.6), (boy:1.4), (girl:1.4), "
+            "crystal ball, tarot cards, witch hat, comic style, illustration, drawing, anime, "
+            "soft pastel mystical, dreamy, watercolor, low contrast, washed out"
+        ),
         "post_note": (
-            "Visualize the FEELING / OUTCOME of the Grabovoi sequence (abundance, healing, love, "
-            "protection, etc.) rather than literal numbers. Numerical sequence goes only as text overlay "
-            "on thumbnail. Focus on cosmic/mystical metaphors. Avoid clichés (crystal balls, tarot)."
+            "Visualize the FEELING / OUTCOME of the Grabovoi sequence (wealth, abundance, breakthrough, "
+            "luxury, prosperity, healing) using EPIC GOLDEN visuals: cascading gold coins, sacred geometry, "
+            "luxury cars, modern office contracts, businessmen handshakes, golden light explosions. "
+            "Numerical sequence goes ONLY as text overlay on thumbnail (never inside the image). "
+            "STRICT NO-CHILDREN RULE: never show children, teenagers, young faces or youthful features. "
+            "If a person is needed, default to a confident adult professional (40s–60s)."
         ),
     },
     "cabala_luz_divina": {
