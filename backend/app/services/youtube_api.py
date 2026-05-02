@@ -12,6 +12,10 @@ from typing import Dict, Any
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
+    # Full management scope: required for videos.update (PATCH metadata) and
+    # thumbnails.set on already-uploaded videos. Without it those calls return
+    # 403 "Insufficient Permission".
+    "https://www.googleapis.com/auth/youtube.force-ssl",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
     "openid"

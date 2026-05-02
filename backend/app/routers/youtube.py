@@ -193,7 +193,7 @@ async def update_youtube_metadata(
     try:
         metadata = req.dict()
         service.update_video_metadata(video.youtube_video_id, metadata)
-        
+
         # Sync local metadata in DB
         video.youtube_title = req.title
         video.youtube_description = req.description
@@ -210,7 +210,13 @@ async def update_youtube_metadata(
 
         return {"status": "success"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        msg = str(e)
+        if "insufficientPermissions" in msg or "Insufficient Permission" in msg or "403" in msg:
+            raise HTTPException(
+                status_code=403,
+                detail="Permisos insuficientes en YouTube. Reconecta el canal: ve a la configuración del canal y vuelve a autorizar con Google (la app necesita el scope 'youtube.force-ssl' para editar vídeos ya subidos).",
+            )
+        raise HTTPException(status_code=500, detail=msg)
 
 @router.post("/{video_id}/reset-upload")
 async def reset_youtube_upload(
