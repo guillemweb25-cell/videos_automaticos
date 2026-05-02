@@ -118,7 +118,9 @@ async def get_video_metadata(
         "title": video.youtube_title or video.title,
         "description": video.youtube_description or "",
         "tags": video.youtube_tags or "",
-        "thumbnail_url": f"/videos/{video.id}/thumbnail.png"
+        "thumbnail_url": f"/videos/{video.id}/thumbnail.png",
+        "is_uploaded": bool(video.is_uploaded),
+        "youtube_video_id": video.youtube_video_id,
     }
 
 @router.post("/{video_id}/upload")

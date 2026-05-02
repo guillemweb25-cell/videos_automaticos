@@ -26,6 +26,11 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const [seoLanguage, setSeoLanguage] = useState('es');
   const [seoProvider, setSeoProvider] = useState('openai');
 
+  // Thumbnail actions
+  const [thumbnailBust, setThumbnailBust] = useState(Date.now());
+  const [thumbBusy, setThumbBusy] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
   const loadMetadata = async () => {
     try {
       setLoading(true);
@@ -53,7 +58,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
       const res = await api.regenerateYoutubeTitle(videoId, seoLanguage, seoProvider);
       setTitle(res.title);
     } catch (err) {
-      alert("Error al regenerar el título");
+      setUploadStatus("Error al regenerar el título");
     } finally {
       setRegenerating(null);
     }
@@ -65,7 +70,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
       const res = await api.regenerateYoutubeDescription(videoId, seoLanguage, seoProvider);
       setDescription(res.description);
     } catch (err) {
-      alert("Error al regenerar la descripción");
+      setUploadStatus("Error al regenerar la descripción");
     } finally {
       setRegenerating(null);
     }
@@ -77,9 +82,36 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
       const res = await api.regenerateYoutubeTags(videoId, seoLanguage, seoProvider);
       setTags(res.tags);
     } catch (err) {
-      alert("Error al regenerar las etiquetas");
+      setUploadStatus("Error al regenerar las etiquetas");
     } finally {
       setRegenerating(null);
+    }
+  };
+
+  const handleRegenerateThumbnail = async () => {
+    setThumbBusy('regen');
+    try {
+      await api.generateThumbnail(videoId);
+      setThumbnailBust(Date.now());
+    } catch (err: any) {
+      setUploadStatus(`Error al regenerar miniatura: ${err.message || ''}`);
+    } finally {
+      setThumbBusy(null);
+    }
+  };
+
+  const handleUploadThumbnailFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setThumbBusy('upload');
+    try {
+      await api.uploadThumbnail(videoId, file);
+      setThumbnailBust(Date.now());
+    } catch (err: any) {
+      setUploadStatus(`Error al subir miniatura: ${err.message || ''}`);
+    } finally {
+      setThumbBusy(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -110,7 +142,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
     } catch (err: any) {
       console.error(err);
       setUploadStatus(isSync ? "Error al sincronizar" : "Error al subir el vídeo");
-      alert(isSync ? "Error al sincronizar con YouTube" : "Error al subir el vídeo a YouTube");
+      // status already set above via setUploadStatus
     } finally {
       setUploading(false);
     }
@@ -171,8 +203,40 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
               <div>
                 <span className="yt-section-label">Miniatura Final</span>
                 <div className="yt-thumbnail-wrapper">
-                  <img src={`${API_URL}${metadata.thumbnail_url}?t=${Date.now()}`} alt="Thumbnail" />
+                  <img src={`${API_URL}${metadata.thumbnail_url}?t=${thumbnailBust}`} alt="Thumbnail" />
                 </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <button
+                    className="yt-regen-btn"
+                    onClick={handleRegenerateThumbnail}
+                    disabled={!!thumbBusy}
+                    style={{ flex: 1, fontSize: '0.75rem' }}
+                    title="Regenerar la miniatura con IA"
+                  >
+                    {thumbBusy === 'regen' ? 'Generando…' : '✨ Regenerar IA'}
+                  </button>
+                  <button
+                    className="yt-regen-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!!thumbBusy}
+                    style={{ flex: 1, fontSize: '0.75rem' }}
+                    title="Subir una miniatura desde archivo"
+                  >
+                    {thumbBusy === 'upload' ? 'Subiendo…' : '📤 Subir archivo'}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleUploadThumbnailFile}
+                    style={{ display: 'none' }}
+                  />
+                </div>
+                {metadata?.is_uploaded && (
+                  <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '6px', lineHeight: 1.3 }}>
+                    Los cambios en la miniatura se enviarán a YouTube al pulsar "Sincronizar Cambios".
+                  </p>
+                )}
               </div>
 
               <div className="yt-form-group" style={{ padding: '16px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}>
