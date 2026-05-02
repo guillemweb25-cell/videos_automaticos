@@ -51,7 +51,7 @@
   },
   "6": {
     "inputs": {
-      "text": "(photorealistic mystical photography:1.2), (cinematic film still:1.2), sharp focus, detailed textures, natural skin pores, soft warm natural lighting, (masterpiece:1.2), (subtle spiritual atmosphere:1.1), muted warm earthy palette, (single subject:1.1), high dynamic range, 8k resolution",
+      "text": "(photorealistic mystical cinematic:1.2), (ancient biblical atmosphere:1.2), sharp focus, detailed textures, natural skin pores, dramatic chiaroscuro lighting, desert stone and sandstone textures, volumetric divine light rays through dust particles, golden highlights and deep velvet shadows, subtle sacred geometry symbols softly visible, (masterpiece:1.2), (single subject:1.1), warm earthy palette with hints of gold, high dynamic range, 8k resolution",
       "clip": [
         "4",
         1
@@ -64,7 +64,7 @@
   },
   "7": {
     "inputs": {
-      "text": "nsfw, nude, naked, nipples, breasts, erotic, bare skin, embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), (polydactyly:2.0), (multiple hands:1.8), (fused fingers:1.8), (malformed limbs:1.8), (extra limbs:1.8), (extra arms:1.8), (poorly drawn hands:1.8), (missing fingers:1.8), (long arms, elongated limbs, disproportionate body:1.5), (duplicate persons, twin characters, group of people, multiple characters, cloned face:1.4), (cropped, out of frame, cut off:1.3), (comic, drawing, illustration, painting, anime, sketch, cartoon, plastic, CGI:1.4), (synthwave, cyberpunk, neon outlines, vector art:1.5), text, watermark, blurry, low quality, bad anatomy",
+      "text": "nsfw, nude, naked, nipples, breasts, erotic, bare skin, embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), (polydactyly:2.0), (multiple hands:1.8), (fused fingers:1.8), (malformed limbs:1.8), (extra limbs:1.8), (extra arms:1.8), (poorly drawn hands:1.8), (missing fingers:1.8), (long arms, elongated limbs, disproportionate body:1.5), (duplicate persons, twin characters, group of people, multiple characters, cloned face:1.4), (cropped, out of frame, cut off:1.3), (comic, drawing, illustration, painting, anime, sketch, cartoon, plastic, CGI:1.4), (synthwave, cyberpunk, neon outlines, vector art:1.5), (modern technology, smartphone, computer, cars:1.4), text, watermark, blurry, low quality, bad anatomy",
       "clip": [
         "4",
         1
@@ -93,7 +93,7 @@
   },
   "9": {
     "inputs": {
-      "filename_prefix": "GrabovoiMystic",
+      "filename_prefix": "MysticalCabala",
       "images": [
         "8",
         0

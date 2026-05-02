@@ -200,23 +200,28 @@ class RenderingEngine:
 
         from proglog import ProgressBarLogger
         class SimpleProgressLogger(ProgressBarLogger):
+            """MoviePy progress only covers the write_videofile phase.
+            We cap reported percentage at 90 so the remaining 10 is reserved
+            for post-process (overlay/loudnorm) and subtitle burn-in stages
+            that come AFTER MoviePy finishes. The endpoint writes 100 only
+            after everything is done.
+            """
             def __init__(self, progress_file_path):
                 super().__init__()
                 self.last_pct = -1
                 self.progress_file_path = progress_file_path
             def callback(self, **kwargs):
-                # The bar we care about is usually named 'chunk' or 't' in MoviePy
                 bars = self.state.get('bars', {})
                 if not bars: return
 
-                # Get the first active bar
                 bar = next(iter(bars.values()))
                 index = bar.get('index', 0)
                 total = bar.get('total', 1)
                 if total > 0:
-                    pct = int(index * 100 / total)
+                    raw = int(index * 100 / total)
+                    pct = min(90, int(raw * 0.9))  # scale 0-100 → 0-90
                     if pct > self.last_pct:
-                        print(f"[render] Progress: {pct}%", flush=True)
+                        print(f"[render] Progress: {pct}% (write_videofile)", flush=True)
                         self.last_pct = pct
                         try:
                             self.progress_file_path.write_text(str(pct))
@@ -248,19 +253,24 @@ class RenderingEngine:
 
         # ── Post-process: Apply Overlay (if any) + Normalize loudness with ffmpeg ──
         print("[render] Post-processing (Overlay + Loudnorm)...", flush=True)
+        try:
+            progress_file.write_text("92")
+        except Exception:
+            pass
         
         # Base command for loudnorm
         norm_filter = "loudnorm=I=-14:TP=-1:LRA=11"
         
         if overlay_video_path and overlay_video_path.exists():
             # Use FFmpeg filter_complex to key out black and overlay. This is 100x faster than MoviePy mask_color.
-            # [1:v]colorkey=black:0.1:0.1[ck];[0:v][ck]overlay=shortest=1[outv]
-            # We also scale the overlay to match output size if needed.
+            # IMPORTANT: -stream_loop -1 on the overlay makes it loop infinitely. Without it,
+            # if the overlay is shorter than the main video, "shortest=1" would truncate the
+            # ENTIRE output to the overlay's length (bug we hit).
             ov_cmd = [
                 "ffmpeg", "-y",
                 "-i", str(tmp_render),
-                "-i", str(overlay_video_path),
-                "-filter_complex", 
+                "-stream_loop", "-1", "-i", str(overlay_video_path),
+                "-filter_complex",
                 f"[1:v]scale={out_size[0]}:{out_size[1]},colorkey=black:0.3:0.1[ovl];"
                 f"[0:v][ovl]overlay=shortest=1[v_out];"
                 f"[0:a]{norm_filter}[a_out]",
@@ -298,5 +308,11 @@ class RenderingEngine:
         with open(stats_path, "a") as f:
             f.write(f"--- RENDER END: {end_time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
             f.write(f"--- TOTAL DURATION: {total_time} ---\n")
+
+        # Post-process complete. Subtitles (if requested) come after this in video_gen.
+        try:
+            progress_file.write_text("96")
+        except Exception:
+            pass
 
         print(f"[render] Done! {out_path} ({out_path.stat().st_size / 1024 / 1024:.1f} MB)", flush=True)

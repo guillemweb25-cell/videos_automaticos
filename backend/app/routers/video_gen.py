@@ -1822,15 +1822,26 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None):
         
         for d in durations:
             idx = d["id"]
-            
+
             files_dict = {}
             for ext in [".png", ".mp4"]:
                 for p in base_dir.glob(f"images/p{idx:03d}_*{ext}"):
                     files_dict[p.stem] = p
-            
+
             img_ps = sorted(files_dict.values(), key=lambda x: x.stem)
-            
+
+            # Paragraph has no images: extend last visual to cover this paragraph's audio
+            # so the audio keeps playing without the rendered video freezing/ending.
             if not img_ps:
+                p_total_dur = d["seconds"]
+                if durs:
+                    print(f"[render] Paragraph {idx} has no images; extending previous visual by {p_total_dur:.1f}s", flush=True)
+                    durs[-1] += p_total_dur
+                    audio_paths.append(base_dir / "audio/chunks" / d["file"])
+                else:
+                    # No previous image to extend either — skip whole paragraph (audio would
+                    # play with nothing to show, which is worse).
+                    print(f"[render] WARNING: Paragraph {idx} has no images and no previous visual to extend; skipping audio too.", flush=True)
                 continue
             
             v_ps = [p for p in img_ps if p.suffix.lower() == '.mp4']
@@ -1924,6 +1935,10 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None):
         
         # ── Karaoke Subtitles ──
         if subtitles:
+            try:
+                (base_dir / "output" / "render_progress.txt").write_text("98")
+            except Exception:
+                pass
             try:
                 from app.services.subtitle_engine import SubtitleEngine
                 settings = get_user_settings_for_video(video, db)
