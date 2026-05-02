@@ -1781,7 +1781,7 @@ async def generate_thumbnail_api(
             
             seo = SEOEngine(api_key=api_key, provider=llm_prov)
             if not current_hook:
-                custom_title_rules = get_style_rules(video.channel_id, "title-rules")
+                custom_title_rules = StyleService.get_custom_title_rules(base_dir)
                 current_hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules, channel_name=video.channel.name)
                 data["thumbnail"]["hook"] = current_hook
                 if not current_visual:
