@@ -758,21 +758,38 @@ class ImageEngine:
             font_path_italic = next((p for p in italic_candidates if p and Path(p).exists()), font_path_bold)
             font2 = get_fitting_font(line2.upper(), font_path_italic, max_w, size_2)
 
-            # Stack near the top so the title reads above the main subject in the artwork.
-            # Measure the rendered bbox of line1 (with stroke) to position line2 cleanly below it.
-            y_line1 = int(height * 0.08)
+            # Stack at the BOTTOM of the thumbnail so the artwork (and any subject the
+            # diffusion model centered) stays clean. SDXL often ignores composition hints,
+            # so anchoring text low is the most robust solution.
             outline_w_1 = 8
-            line1_bbox = draw.textbbox((0, y_line1), line1.upper(), font=font1, stroke_width=outline_w_1)
-            line1_bottom = line1_bbox[3]
+            outline_w_2 = 6
+
+            # Measure rendered heights of both lines (after auto-fit).
+            bbox1 = draw.textbbox((0, 0), line1.upper(), font=font1, stroke_width=outline_w_1)
+            h1 = bbox1[3] - bbox1[1]
+            bbox2 = (0, 0, 0, 0)
+            h2 = 0
+            if line2:
+                bbox2 = draw.textbbox((0, 0), line2.upper(), font=font2, stroke_width=outline_w_2)
+                h2 = bbox2[3] - bbox2[1]
+
             gap = int(size_2 * 0.25)  # breathing room between lines
-            y_line2 = line1_bottom + gap
+
+            # Anchor the bottom of the whole stack at ~94% of image height.
+            stack_bottom = int(height * 0.94)
+            if line2:
+                y_line2 = stack_bottom - h2 - bbox2[1]  # compensate for textbbox top offset
+                y_line1 = y_line2 - gap - h1 - bbox1[1]
+            else:
+                y_line2 = 0
+                y_line1 = stack_bottom - h1 - bbox1[1]
 
             if line1:
                 draw_text_with_gradient(
                     img, line1.upper(), (0, y_line1),
                     font1,
                     top_color=(255, 224, 90),
-                    bottom_color=(255, 105, 20),  # stronger orange at the bottom
+                    bottom_color=(255, 105, 20),
                     outline_color="black",
                     outline_width=outline_w_1,
                     align="center",
@@ -780,10 +797,9 @@ class ImageEngine:
                 draw = ImageDraw.Draw(img)
 
             if line2:
-                # Solid warm orange to echo the gradient's bottom tone, thicker outline
                 draw_text_with_outline(
                     draw, line2.upper(), (0, y_line2),
-                    font2, (255, 140, 30), "black", outline_width=6, align="center",
+                    font2, (255, 140, 30), "black", outline_width=outline_w_2, align="center",
                 )
 
         else:
