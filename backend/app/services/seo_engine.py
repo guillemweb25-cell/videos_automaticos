@@ -171,8 +171,16 @@ class SEOEngine:
         else:
             text_instruction = (
                 "IMPORTANT: Do NOT describe any text or letters in the image. "
-                "Instead, describe a composition that leaves a clear, empty area (on the left or center) "
-                "where text will be overlayed later. Ensure the main subject is positioned to the side."
+                "COMPOSITION RULE (mandatory): place the main character/subject on the RIGHT half of the frame, "
+                "occupying roughly the right 35-50% width. Their head and face MUST sit in the lower two thirds — "
+                "the upper third of the image (top to ~33%) MUST be empty of any subject's face, hat or head, "
+                "because that area is reserved for a large text overlay. "
+                "The left half should contain only environment, atmosphere or supporting elements (props, scenery, "
+                "background actors at small scale) — never the main subject's face. "
+                "Use rule-of-thirds framing with the subject anchored on the right vertical third. "
+                "Explicitly include phrases like 'subject framed on the right side of the composition', "
+                "'upper third of the frame intentionally empty', 'character's head positioned in the lower-right', "
+                "'left side filled with atmospheric environment only' so the image generator follows it."
             )
 
         system_msg = (
