@@ -644,6 +644,25 @@ class ApiClient {
     return res.json();
   }
 
+  async autoFillImages(videoId: number, paragraphId: number, opts?: { styleName?: string; workflowName?: string; modelId?: string; generationMode?: string }): Promise<{ ok: boolean; added: number; current: number; target: number; message?: string; images?: any[] }> {
+    const params = new URLSearchParams();
+    if (opts?.styleName) params.set('style_name', opts.styleName);
+    if (opts?.workflowName) params.set('workflow_name', opts.workflowName);
+    if (opts?.modelId) params.set('model_id', opts.modelId);
+    if (opts?.generationMode) params.set('generation_mode', opts.generationMode);
+    const qs = params.toString();
+    const url = `${this.baseUrl}/videos/${videoId}/auto-fill-images/${paragraphId}${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al auto-completar imágenes');
+    }
+    return res.json();
+  }
+
   async addImage(videoId: number, paragraph_id: number, style?: string, modelId?: string, generationMode?: string, workflowName?: string): Promise<{ok: boolean, image: any}> {
     const response = await fetch(`${this.baseUrl}/videos/${videoId}/add-image`, {
       method: "POST",

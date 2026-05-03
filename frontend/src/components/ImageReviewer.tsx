@@ -197,6 +197,29 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
     }
   };
 
+  const handleAutoFill = async (paraId: number) => {
+    setAddingImage(paraId);
+    try {
+      await api.autoFillImages(videoId, paraId, {
+        styleName: selectedStyle,
+        modelId: selectedModel,
+        generationMode: generationMode,
+        workflowName: selectedWorkflow,
+      });
+      await loadData();
+    } catch (error: any) {
+      console.error("Error auto-filling:", error);
+      alert(error?.message || "Error al auto-completar imágenes");
+    } finally {
+      setAddingImage(null);
+    }
+  };
+
+  const targetImagesFor = (seconds: number): number => {
+    if (!seconds || seconds <= 0) return 1;
+    return Math.max(1, Math.min(10, Math.ceil(seconds / 10)));
+  };
+
   const handleRemoveImage = async (paraId: number, imgId: number) => {
     if (!confirm("¿Seguro que quieres eliminar esta imagen? Se recalcularán los tiempos del párrafo.")) return;
     
@@ -622,9 +645,44 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
             <div className="paragraph-header">
               <div>
                 <h3 style={{ fontSize: '1.5rem', color: '#d8b4fe', margin: '0 0 8px 0' }}>📦 Párrafo {item.paragraph_id}</h3>
-                <span style={{ fontSize: '0.9rem', color: '#9ca3af', backgroundColor: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '4px' }}>
-                  🕒 Duración: {item.seconds.toFixed(1)}s
-                </span>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.9rem', color: '#9ca3af', backgroundColor: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '4px' }}>
+                    🕒 {item.seconds.toFixed(1)}s
+                  </span>
+                  {(() => {
+                    const current = item.prompts?.length || 0;
+                    const target = targetImagesFor(item.seconds);
+                    const missing = target - current;
+                    const fontColor = missing > 0 ? '#fde047' : '#86efac';
+                    return (
+                      <>
+                        <span style={{ fontSize: '0.9rem', color: fontColor, backgroundColor: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '4px' }}>
+                          🖼️ {current}/{target}
+                        </span>
+                        {missing > 0 && (
+                          <button
+                            onClick={() => handleAutoFill(item.paragraph_id)}
+                            disabled={addingImage === item.paragraph_id}
+                            style={{
+                              fontSize: '0.85rem',
+                              padding: '4px 12px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              cursor: addingImage === item.paragraph_id ? 'wait' : 'pointer',
+                              background: '#ca8a04',
+                              color: '#fff',
+                              fontWeight: 600,
+                              opacity: addingImage === item.paragraph_id ? 0.6 : 1,
+                            }}
+                            title={`Generar ${missing} imagen(es) más con IA para completar el párrafo`}
+                          >
+                            {addingImage === item.paragraph_id ? `Generando…` : `▶ Auto-completar (+${missing})`}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
               
               <div style={{ flex: 1, margin: '0 40px', padding: '16px', backgroundColor: 'rgba(168, 85, 247, 0.05)', borderRadius: '12px', border: '1px solid rgba(168, 85, 247, 0.2)' }}>

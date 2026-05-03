@@ -1247,6 +1247,68 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
     
     return {"ok": True, "image": target_para["prompts"][-1]}
 
+@router.post("/{video_id}/auto-fill-images/{paragraph_id}")
+async def auto_fill_images(
+    video_id: int,
+    paragraph_id: int,
+    style_name: Optional[str] = None,
+    workflow_name: Optional[str] = None,
+    model_id: Optional[str] = None,
+    generation_mode: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Generates images one by one in this paragraph until reaching the target
+    count derived from its duration (1 image per ~10s, capped at 10).
+    Useful when the LLM produced fewer images than the audio length deserves.
+    """
+    import math
+
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    base_dir = Path(video.base_dir)
+    images_json = base_dir / "image_prompts_all.json"
+    if not images_json.exists():
+        raise HTTPException(status_code=400, detail="Images not yet generated")
+
+    data = json.loads(images_json.read_text())
+    target_para = None
+    for item in data.get("items", []):
+        if item["paragraph_id"] == paragraph_id:
+            target_para = item
+            break
+    if not target_para:
+        raise HTTPException(status_code=404, detail="Paragraph not found in JSON")
+
+    duration = float(target_para.get("seconds") or 0.0)
+    seconds_per_image = 10.0
+    target_count = max(1, min(10, math.ceil(duration / seconds_per_image))) if duration > 0 else 1
+    current_count = len(target_para.get("prompts", []))
+    to_add = max(0, target_count - current_count)
+    if to_add == 0:
+        return {"ok": True, "added": 0, "current": current_count, "target": target_count, "message": "Ya tiene el número óptimo de imágenes."}
+
+    added = []
+    for _ in range(to_add):
+        req = AddImageRequest(
+            paragraph_id=paragraph_id,
+            style_name=style_name,
+            model_id=model_id,
+            generation_mode=generation_mode or data.get("generation_mode") or "COMFYUI",
+            workflow_name=workflow_name,
+        )
+        try:
+            result = await add_image(video_id, req, db)
+            added.append(result.get("image"))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Falló al añadir imagen {len(added)+1}/{to_add}: {e}")
+
+    return {"ok": True, "added": len(added), "current": current_count + len(added), "target": target_count, "images": added}
+
+
 @router.delete("/{video_id}/remove-image")
 async def remove_image(video_id: int, paragraph_id: int, image_id: int, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
