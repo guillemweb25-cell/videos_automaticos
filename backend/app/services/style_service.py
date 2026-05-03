@@ -128,6 +128,10 @@ STYLES: Dict[str, StyleSpec] = {
         "negative_prompt": (
             NEGATIVE_BASE
             + ", literal numbers in image, garbled digits, illegible text, dark depressing mood, horror, dull flat lighting, "
+            "(naked:2.0), (nude:2.0), (topless:2.0), (nudity:2.0), (bare chest:1.9), (bare breasts:1.9), "
+            "(nipples:1.9), (exposed breasts:1.9), (cleavage:1.7), (low cut top:1.7), (revealing clothing:1.7), "
+            "(lingerie:1.8), (underwear visible:1.8), (sheer fabric:1.6), (transparent fabric:1.6), "
+            "(bikini:1.7), (sexy outfit:1.7), (seductive pose:1.6), (sensual:1.6), (erotic:2.0), (sexual:2.0), (nsfw:2.0), "
             "(child:1.7), (children:1.7), (kid:1.7), (kids:1.7), (minor:1.7), (baby:1.7), "
             "(toddler:1.7), (infant:1.7), (teen:1.6), (teenager:1.6), (young face:1.5), (youthful features:1.5), "
             "(juvenile:1.5), (small child:1.6), (boy:1.4), (girl:1.4), "
@@ -140,7 +144,13 @@ STYLES: Dict[str, StyleSpec] = {
             "luxury cars, modern office contracts, businessmen handshakes, golden light explosions. "
             "Numerical sequence goes ONLY as text overlay on thumbnail (never inside the image). "
             "STRICT NO-CHILDREN RULE: never show children, teenagers, young faces or youthful features. "
-            "If a person is needed, default to a confident adult professional (40s–60s)."
+            "If a person is needed, default to a confident adult professional (40s–60s). "
+            "STRICT CLOTHING RULE (mandatory): all human characters MUST be fully clothed in modest "
+            "professional or business attire (blazers, suits, blouses, dresses with high necklines, "
+            "elegant smart-casual outfits). NEVER show nudity, partial nudity, exposed torso, bare "
+            "chest, cleavage, low-cut tops, lingerie, swimwear, sheer fabrics or any sexually "
+            "suggestive imagery. When describing a woman, ALWAYS explicitly mention her outfit "
+            "(e.g. 'wearing a navy blazer over a high-neck blouse', 'in an elegant business dress')."
         ),
     },
     "cabala_luz_divina": {
