@@ -671,19 +671,20 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             pass
 
     settings = get_user_settings_for_video(video, db)
-    
+
     # Extract keys to pass to thread
     openai_key = settings.openai_api_key
     grok_key = settings.grok_api_key
     leonardo_key = settings.leonardo_api_key
+    assemblyai_key = settings.assemblyai_api_key
     llm_p = video.llm_provider
     wf_name = req.workflow_name # New field
-    
+
     # Run image generation in background thread to avoid proxy timeouts
     import threading
     from app.database import SessionLocal
-    
-    async def _generate_images_background(vid_id, sty, max_imgs, m_id, gen_mode, openai_k, leonardo_k, grok_k, llm_prov, wf_n):
+
+    async def _generate_images_background(vid_id, sty, max_imgs, m_id, gen_mode, openai_k, leonardo_k, grok_k, llm_prov, wf_n, assemblyai_k):
 
         db_bg = SessionLocal()
         try:
@@ -704,10 +705,21 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             if durations_path.exists():
                 durations = json.loads(durations_path.read_text())
             dur_map = {d["id"]: d["seconds"] for d in durations}
+            file_map = {d["id"]: d.get("file") for d in durations}
 
             plan = json.loads(plan_path.read_text())
             engine = ImageEngine(openai_api_key=openai_k, leonardo_api_key=leonardo_k, grok_api_key=grok_k, provider=llm_prov)
             seo = SEOEngine(api_key=(grok_k if llm_prov == "grok" else openai_k), provider=llm_prov)
+
+            # Word-level transcription per paragraph (lazy, cached on disk).
+            # Used to slice the exact phrase being spoken at each image's time window
+            # so prompts visualize what the audio is saying at that moment instead of
+            # N variations of the whole paragraph.
+            from app.services.subtitle_engine import SubtitleEngine
+            from app.services.phrase_slicer import get_or_create_paragraph_words, slice_phrase_for_image
+            subtitle_engine = SubtitleEngine(api_key=assemblyai_k) if assemblyai_k else None
+            transcripts_dir = base_dir / "transcripts"
+            audio_chunks_dir = base_dir / "audio" / "chunks"
             
             # Load channel for custom style
             channel = db_bg.query(Channel).filter(Channel.id == vid.channel_id).first()
@@ -772,52 +784,89 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                     import math
                     images_count = min(max_imgs, math.ceil(duration / seconds_per_image))
                 
-                # 1. Generate prompts (or reuse if text matches)
-                cached = existing_prompts_all.get(idx)
-                if cached and cached["spoken"] == text and len(cached["prompts"]) == images_count:
-                    prompts = [p["prompt"] for p in cached["prompts"]]
-                    cached_prompts_objs = cached["prompts"]
-                    # Add cached prompts to history for next paragraphs
-                    recent_prompts.extend(prompts)
-                else:
-                    channel_style = StyleService.get_channel_style(channel, sty)
-                    # Run sync LLM call in a worker thread so it does not block the event loop
-                    # (otherwise other API requests like /auth/me get queued behind it and the
-                    # frontend hangs at "Cargando..." while images generate).
-                    prompts = await asyncio.to_thread(
-                        engine.generate_prompts,
-                        text, sty,
-                        n=images_count,
-                        full_context=script_full,
-                        style_override=channel_style,
-                        recent_history=recent_prompts[-8:],
-                        custom_rules=custom_niche_rules,
-                    )
-                    recent_prompts.extend(prompts)
-                    cached_prompts_objs = []
-                
-                if not prompts: continue
+                # 1. Word-level transcription for this paragraph (lazy, cached).
+                # Falls back gracefully to None if AssemblyAI key missing or transcription
+                # fails — in that case we use the legacy paragraph-based prompt.
+                words = []
+                if subtitle_engine and file_map.get(idx):
+                    para_audio = audio_chunks_dir / file_map[idx]
+                    transcript_cache = transcripts_dir / f"p{idx:03d}.json"
+                    if para_audio.exists():
+                        try:
+                            words = await asyncio.to_thread(
+                                get_or_create_paragraph_words,
+                                para_audio, transcript_cache, subtitle_engine,
+                            )
+                        except Exception as e:
+                            print(f"[images] WARN: failed to transcribe paragraph {idx}: {e}", flush=True)
+                            words = []
 
-                
+                # Cached prompts from a previous run with same params: reuse only if
+                # everything matches — count, spoken text, and (if we have phrases now)
+                # the per-image phrase too.
+                cached = existing_prompts_all.get(idx)
+                cached_by_id = {p["id"]: p for p in cached["prompts"]} if cached else {}
+                can_reuse_paragraph = bool(
+                    cached and cached["spoken"] == text and len(cached["prompts"]) == images_count
+                )
+
+                channel_style = StyleService.get_channel_style(channel, sty)
+                style = channel_style
+                neg = style.get("negative_prompt")
+
                 paragraph_item = {
                     "paragraph_id": idx,
                     "seconds": duration,
                     "spoken": text,
-                    "images_count": len(prompts),
-                    "seconds_per_image": duration / len(prompts) if prompts else 0,
+                    "images_count": images_count,
+                    "seconds_per_image": duration / images_count if images_count else 0,
                     "prompts": []
                 }
-                
-                # 2. Generate images (skip if exists)
-                paragraph_item["prompts"] = []
-                for i, p_text in enumerate(prompts):
+
+                # 2. One iteration per image: slice phrase → generate prompt → generate image.
+                for i in range(images_count):
                     img_idx = i + 1
+
+                    # Slice the spoken phrase covering this image's time window.
+                    phrase, t_start, t_end = ("", 0.0, 0.0)
+                    if words:
+                        phrase, t_start, t_end = slice_phrase_for_image(words, img_idx, images_count, duration)
+                    else:
+                        # No transcript available: even in fallback we record the time window
+                        # so the JSON shape is consistent and the reviewer can show it.
+                        if images_count > 0 and duration > 0:
+                            window = duration / images_count
+                            t_start = i * window
+                            t_end = (i + 1) * window
+
+                    # Decide whether we can reuse a previously generated prompt for this slot.
+                    cached_p = cached_by_id.get(img_idx) if can_reuse_paragraph else None
+                    reuse_prompt = bool(cached_p and cached_p.get("phrase") == phrase) or (
+                        cached_p is not None and not phrase
+                    )
+                    if reuse_prompt:
+                        p_text = cached_p["prompt"]
+                    else:
+                        prompts = await asyncio.to_thread(
+                            engine.generate_prompts,
+                            text, sty,
+                            n=1,
+                            full_context=script_full,
+                            style_override=channel_style,
+                            recent_history=recent_prompts[-8:],
+                            custom_rules=custom_niche_rules,
+                            phrase=phrase or None,
+                        )
+                        if not prompts:
+                            continue
+                        p_text = prompts[0]
+                    recent_prompts.append(p_text)
+
                     out_path = base_dir / "images" / f"p{idx:03d}_{img_idx:02d}.png"
-                    
+                    cost_info = None
+                    seed_val = None
+
                     if not out_path.exists():
-                        style = StyleService.get_channel_style(channel, sty)
-                        neg = style.get("negative_prompt")
-                        
                         init_image_id = None
                         if i > 0:
                             prev_img_path = base_dir / "images" / f"p{idx:03d}_{i:02d}.png"
@@ -826,9 +875,8 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                                     init_image_id = await asyncio.to_thread(engine.upload_init_image, prev_img_path)
                                 except Exception as e:
                                     print(f"Warning: Failed to upload reference image for paragraph {idx} image {img_idx}: {e}")
-                        
+
                         if gen_mode.upper() == "COMFYUI":
-                            # Workflow priority: explicit param > channel default > keyword heuristic
                             current_wf = wf_n or (channel.default_workflow if channel else None)
                             if not current_wf:
                                 if "ultra" in sty.lower():
@@ -841,37 +889,39 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                                     current_wf = "Comic-Horror.json"
 
                             result = await engine.generate_comfy_image(
-                                p_text, out_path, 
-                                size=f"{vid.width}x{vid.height}", 
-                                negative_prompt=neg, 
-                                workflow_name=current_wf
+                                p_text, out_path,
+                                size=f"{vid.width}x{vid.height}",
+                                negative_prompt=neg,
+                                workflow_name=current_wf,
                             )
                             cost_info = result
                         else:
-                            cost_info = await engine.generate_leonardo_image(p_text, out_path, size=f"{vid.width}x{vid.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=m_id, mode=gen_mode)
-                        
-                        p_info_entry = {
-                            "id": img_idx,
-                            "prompt": p_text
-                        }
-                        if cost_info:
-                            if "amount" in cost_info: p_info_entry["cost"] = cost_info
-                            if "seed" in cost_info: p_info_entry["seed"] = cost_info["seed"]
-                        paragraph_item["prompts"].append(p_info_entry)
+                            cost_info = await engine.generate_leonardo_image(
+                                p_text, out_path, size=f"{vid.width}x{vid.height}",
+                                negative_prompt=neg, init_image_id=init_image_id, model_id=m_id, mode=gen_mode,
+                            )
                     else:
-                        existing_p = None
-                        if cached_prompts_objs and i < len(cached_prompts_objs):
-                            existing_p = cached_prompts_objs[i]
-                        
-                        entry = {
-                            "id": img_idx,
-                            "prompt": p_text
-                        }
-                        if existing_p:
-                            if "cost" in existing_p: entry["cost"] = existing_p["cost"]
-                            if "seed" in existing_p: entry["seed"] = existing_p["seed"]
-                            
-                        paragraph_item["prompts"].append(entry)
+                        # Image exists on disk. Preserve cost/seed metadata if we had it.
+                        if cached_p:
+                            cost_info = cached_p.get("cost")
+                            seed_val = cached_p.get("seed")
+
+                    p_info_entry = {
+                        "id": img_idx,
+                        "prompt": p_text,
+                        "phrase": phrase,
+                        "time_start": round(t_start, 3),
+                        "time_end": round(t_end, 3),
+                    }
+                    if cost_info and isinstance(cost_info, dict):
+                        if "amount" in cost_info:
+                            p_info_entry["cost"] = cost_info
+                        if "seed" in cost_info:
+                            p_info_entry["seed"] = cost_info["seed"]
+                    if seed_val is not None and "seed" not in p_info_entry:
+                        p_info_entry["seed"] = seed_val
+
+                    paragraph_item["prompts"].append(p_info_entry)
                     total_images += 1
                 
                 all_prompts_data["items"].append(paragraph_item)
@@ -940,7 +990,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             db_bg.close()
     
     # Use asyncio.create_task instead of threading.Thread for async background task
-    asyncio.create_task(_generate_images_background(video_id, req.style_name, req.max_images_per_paragraph, req.model_id, req.generation_mode, openai_key, leonardo_key, grok_key, llm_p, wf_name))
+    asyncio.create_task(_generate_images_background(video_id, req.style_name, req.max_images_per_paragraph, req.model_id, req.generation_mode, openai_key, leonardo_key, grok_key, llm_p, wf_name, assemblyai_key))
     
     return {"ok": True, "background": True, "count": 0}
 
@@ -1176,7 +1226,7 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
     # 2. Logic for continuity
     settings = get_user_settings_for_video(video, db)
     engine = ImageEngine(
-        openai_api_key=settings.openai_api_key, 
+        openai_api_key=settings.openai_api_key,
         leonardo_api_key=settings.leonardo_api_key,
         grok_api_key=settings.grok_api_key,
         provider=video.llm_provider
@@ -1192,23 +1242,72 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
     effective_style = style_name or data.get("style", "stocksenior")
     channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
     channel_style = StyleService.get_channel_style(channel, effective_style)
-    
+
     # NEW: Load custom niche rules for continuity
     custom_niche_rules = StyleService.get_custom_niche_rules(base_dir)
-    
-    new_prompt = engine.generate_continuation_prompt(
-        target_para["spoken"], 
-        last_prompt, 
-        effective_style, 
-        style_override=channel_style,
-        custom_rules=custom_niche_rules
-    )
+
+    # Phrase-targeted prompt: load (or build) word-level transcript for this
+    # paragraph, then slice the phrase covering this image's new time window
+    # (the paragraph is now split into N+1 windows after adding this image).
+    new_img_id = last_img_id + 1
+    new_total = len(target_para["prompts"]) + 1
+    image_phrase = None
+    new_t_start = 0.0
+    new_t_end = 0.0
+    try:
+        from app.services.subtitle_engine import SubtitleEngine
+        from app.services.phrase_slicer import get_or_create_paragraph_words, slice_phrase_for_image
+        # find audio chunk
+        durations_path = base_dir / "paragraphs_durations.json"
+        para_audio = None
+        if durations_path.exists():
+            for d in json.loads(durations_path.read_text()):
+                if d["id"] == paragraph_id:
+                    para_audio = base_dir / "audio" / "chunks" / d.get("file", "")
+                    break
+        if settings.assemblyai_api_key and para_audio and para_audio.exists():
+            sub_engine = SubtitleEngine(api_key=settings.assemblyai_api_key)
+            transcript_cache = base_dir / "transcripts" / f"p{paragraph_id:03d}.json"
+            words = get_or_create_paragraph_words(para_audio, transcript_cache, sub_engine)
+            image_phrase, new_t_start, new_t_end = slice_phrase_for_image(
+                words, new_img_id, new_total, target_para.get("seconds", 0.0)
+            )
+    except Exception as e:
+        print(f"[add_image] WARN: could not compute phrase for p{paragraph_id} img{new_img_id}: {e}", flush=True)
+
+    if image_phrase:
+        # Phrase-targeted: produce a prompt that depicts what is being said
+        # at this exact slice of audio. Visual continuity comes from init_image_id.
+        script_full_for_ctx = target_para.get("spoken", "")
+        try:
+            plan_for_ctx_path = base_dir / "plan.json"
+            if plan_for_ctx_path.exists():
+                plan_for_ctx = json.loads(plan_for_ctx_path.read_text())
+                script_full_for_ctx = "\n".join(it.get("spoken", "") for it in plan_for_ctx)
+        except Exception:
+            pass
+        prompts = engine.generate_prompts(
+            target_para["spoken"], effective_style,
+            n=1,
+            full_context=script_full_for_ctx,
+            style_override=channel_style,
+            custom_rules=custom_niche_rules,
+            phrase=image_phrase,
+        )
+        new_prompt = prompts[0] if prompts else last_prompt
+    else:
+        new_prompt = engine.generate_continuation_prompt(
+            target_para["spoken"],
+            last_prompt,
+            effective_style,
+            style_override=channel_style,
+            custom_rules=custom_niche_rules,
+        )
     
     # NEW: get workflow from request or json
     wf_name = req.workflow_name or data.get("workflow_name")
     
     # 3. Generate New Image
-    new_img_id = last_img_id + 1
     out_path = base_dir / "images" / f"p{paragraph_id:03d}_{new_img_id:02d}.png"
     
     style = StyleService.get_channel_style(channel, effective_style)
@@ -1233,18 +1332,49 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
     new_entry = {
         "id": new_img_id,
         "prompt": new_prompt,
-        "url": f"/{video.base_dir}/images/p{paragraph_id:03d}_{new_img_id:02d}.png"
+        "url": f"/{video.base_dir}/images/p{paragraph_id:03d}_{new_img_id:02d}.png",
+        "phrase": image_phrase or "",
+        "time_start": round(new_t_start, 3),
+        "time_end": round(new_t_end, 3),
     }
     if cost_info:
         new_entry["cost"] = cost_info
-        
+
     target_para["prompts"].append(new_entry)
     target_para["images_count"] = len(target_para["prompts"])
     target_para["seconds_per_image"] = target_para["seconds"] / target_para["images_count"]
     data["total_images"] += 1
-    
+
+    # 5. Re-distribute phrases across all images now that N changed.
+    # The actual image files don't change; only their metadata (phrase, time_start,
+    # time_end) gets refreshed so a future regenerate-prompt uses the right slice.
+    try:
+        if settings.assemblyai_api_key:
+            from app.services.subtitle_engine import SubtitleEngine
+            from app.services.phrase_slicer import get_or_create_paragraph_words, slice_phrase_for_image
+            durations_path = base_dir / "paragraphs_durations.json"
+            para_audio = None
+            if durations_path.exists():
+                for d in json.loads(durations_path.read_text()):
+                    if d["id"] == paragraph_id:
+                        para_audio = base_dir / "audio" / "chunks" / d.get("file", "")
+                        break
+            if para_audio and para_audio.exists():
+                sub_engine = SubtitleEngine(api_key=settings.assemblyai_api_key)
+                transcript_cache = base_dir / "transcripts" / f"p{paragraph_id:03d}.json"
+                words = get_or_create_paragraph_words(para_audio, transcript_cache, sub_engine)
+                total_now = len(target_para["prompts"])
+                duration_now = target_para.get("seconds", 0.0)
+                for entry in target_para["prompts"]:
+                    ph, ts, te = slice_phrase_for_image(words, entry["id"], total_now, duration_now)
+                    entry["phrase"] = ph
+                    entry["time_start"] = round(ts, 3)
+                    entry["time_end"] = round(te, 3)
+    except Exception as e:
+        print(f"[add_image] WARN: could not re-distribute phrases for p{paragraph_id}: {e}", flush=True)
+
     images_json.write_text(json.dumps(data, indent=2))
-    
+
     return {"ok": True, "image": target_para["prompts"][-1]}
 
 @router.post("/{video_id}/auto-fill-images/{paragraph_id}")
@@ -1655,16 +1785,28 @@ async def regenerate_prompt_api(
         if item["idx"] == paragraph_id:
             para_text = item["spoken"]
             break
-    
+
     if not para_text:
         raise HTTPException(status_code=404, detail="Paragraph text not found")
-    
+
+    # 1b. Find the stored phrase for this specific image (if generated by the
+    # phrase-aware pipeline). Falls back to None for legacy videos so the LLM
+    # uses the whole paragraph as before.
+    image_phrase = None
+    for item in data.get("items", []):
+        if item["paragraph_id"] == paragraph_id:
+            for p_info in item.get("prompts", []):
+                if p_info["id"] == image_id:
+                    image_phrase = p_info.get("phrase") or None
+                    break
+            break
+
     # 2. Get style (with channel override)
     style_name = data.get("style", "stocksenior")
     channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
     channel_style = StyleService.get_channel_style(channel, style_name)
-    
-    # 3. Generate 1 new prompt
+
+    # 3. Generate 1 new prompt — phrase-targeted if we have one
     settings = get_user_settings_for_video(video, db)
     engine = ImageEngine(
         openai_api_key=settings.openai_api_key,
@@ -1673,17 +1815,18 @@ async def regenerate_prompt_api(
         provider=video.llm_provider
     )
     script_full = "\n".join([item.get("spoken", "") for item in plan])
-    
+
     # NEW: Load custom niche rules
     custom_niche_rules = StyleService.get_custom_niche_rules(base_dir)
-    
+
     prompts = engine.generate_prompts(
-        para_text, 
-        style_name, 
-        n=1, 
-        full_context=script_full, 
+        para_text,
+        style_name,
+        n=1,
+        full_context=script_full,
         style_override=channel_style,
-        custom_rules=custom_niche_rules
+        custom_rules=custom_niche_rules,
+        phrase=image_phrase,
     )
     
     if not prompts:

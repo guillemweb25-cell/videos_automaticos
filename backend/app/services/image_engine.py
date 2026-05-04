@@ -32,8 +32,15 @@ class ImageEngine:
         self.comfy_service = ComfyService()
         self.comfy_url = os.getenv("COMFY_URL")
 
-    def generate_prompts(self, text: str, style_name: str, n: int = 1, full_context: str = "", style_override: dict = None, recent_history: List[str] = [], custom_rules: Optional[str] = None) -> List[str]:
-        """Generates visual prompts from narration text using GPT, with optional full video context and recent prompt history."""
+    def generate_prompts(self, text: str, style_name: str, n: int = 1, full_context: str = "", style_override: dict = None, recent_history: List[str] = [], custom_rules: Optional[str] = None, phrase: Optional[str] = None) -> List[str]:
+        """Generates visual prompts from narration text using GPT, with optional full video context and recent prompt history.
+
+        If `phrase` is provided, it is treated as the EXACT line being spoken at the
+        moment this image will appear (sliced from a word-level transcript). The LLM
+        is instructed to depict that specific phrase, with `text` (the full paragraph)
+        kept only as secondary atmospheric context. This produces images that visually
+        sync with the audio instead of N variations of the same paragraph theme.
+        """
         style = style_override or StyleService.get_style(style_name)
         style_prompt = style.get("image_style_prompt", "")
         rules_text = f"\nFOLLOW THESE SPECIFIC CHANNEL STYLE RULES:\n{custom_rules}\n" if custom_rules else ""
@@ -84,18 +91,37 @@ class ImageEngine:
         history_msg = f"\nRecent History (avoid repeating these compositions):\n" + "\n".join(recent_history[:5]) if recent_history else ""
         context_msg = f"\nOverall Video Theme (background only — DO NOT use this to invent scenes; use ONLY the paragraph below):\n{full_context[:800]}..." if full_context else ""
 
-        user_msg = (
-            f"### PARAGRAPH TO VISUALIZE (this is the ONLY source of WHAT to depict):\n"
-            f"\"{text}\"\n\n"
-            f"### YOUR JOB:\n"
-            f"Describe the SPECIFIC concept of this paragraph using a visual metaphor. "
-            f"Do NOT generalize to the channel's broad theme. Do NOT add elements (weather, religious symbols, etc.) absent from the paragraph above.\n"
-            f"{context_msg}\n"
-            f"{history_msg}\n\n"
-            f"### STYLE WRAPPER (only HOW it looks, never WHAT is in it):\n"
-            f"{style_prompt}\n\n"
-            f"Output {n} unique prompt(s) that depict the SPECIFIC concept of the paragraph above, dressed in the style above."
-        )
+        if phrase:
+            # Phrase-targeted mode: the image must depict the EXACT line being spoken
+            # in this slice of audio. The full paragraph is paragraph-level context only.
+            user_msg = (
+                f"### EXACT PHRASE BEING SPOKEN AT THIS MOMENT (this is what the image must depict):\n"
+                f"\"{phrase}\"\n\n"
+                f"### PARAGRAPH CONTEXT (atmosphere only — do NOT use to invent scenes; the WHAT comes from the phrase above):\n"
+                f"\"{text}\"\n\n"
+                f"### YOUR JOB:\n"
+                f"Design ONE visual that depicts the SPECIFIC concept expressed in the phrase above. "
+                f"The image should look like a frame from a film right when the narrator says those exact words. "
+                f"Use the paragraph context only to keep tone and continuity, never to invent elements not implied by the phrase.\n"
+                f"{context_msg}\n"
+                f"{history_msg}\n\n"
+                f"### STYLE WRAPPER (only HOW it looks, never WHAT is in it):\n"
+                f"{style_prompt}\n\n"
+                f"Output {n} unique prompt(s) for this exact phrase, dressed in the style above."
+            )
+        else:
+            user_msg = (
+                f"### PARAGRAPH TO VISUALIZE (this is the ONLY source of WHAT to depict):\n"
+                f"\"{text}\"\n\n"
+                f"### YOUR JOB:\n"
+                f"Describe the SPECIFIC concept of this paragraph using a visual metaphor. "
+                f"Do NOT generalize to the channel's broad theme. Do NOT add elements (weather, religious symbols, etc.) absent from the paragraph above.\n"
+                f"{context_msg}\n"
+                f"{history_msg}\n\n"
+                f"### STYLE WRAPPER (only HOW it looks, never WHAT is in it):\n"
+                f"{style_prompt}\n\n"
+                f"Output {n} unique prompt(s) that depict the SPECIFIC concept of the paragraph above, dressed in the style above."
+            )
 
         
         response = self.openai_client.chat.completions.create(
