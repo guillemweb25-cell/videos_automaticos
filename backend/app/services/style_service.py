@@ -17,8 +17,14 @@ NEGATIVE_BASE = (
     "fused fingers, extra fingers, missing limbs, cross-eyed, ugly, morbid, "
     "mutation, gross proportions, backwards feet, inverted limbs, floating limbs, "
     "elongated limbs, disproportionate arms, long arms, lanky, rubbery limbs, "
-    "deformed body, anatomical nonsense, nudity, naked, nsfw, nipple, breast, buttocks, "
-    "erotic, sexual, explicit, genitals"
+    "deformed body, anatomical nonsense, "
+    # Weighted anti-nudity (SDXL Juggernaut tends to ignore unweighted tokens):
+    "(nudity:2.0), (naked:2.0), (nude:2.0), (nsfw:2.0), (topless:2.0), "
+    "(bare chest:1.9), (bare breasts:1.9), (exposed breasts:1.9), (nipples:1.9), "
+    "(visible nipples:1.9), (uncovered torso:1.8), (bare torso:1.8), "
+    "(cleavage:1.6), (low cut top:1.6), (revealing clothing:1.6), (lingerie:1.7), "
+    "(see-through clothing:1.7), (sheer fabric:1.6), (transparent fabric:1.6), "
+    "(buttocks:1.8), (erotic:1.9), (sexual:1.9), (explicit:1.9), (genitals:2.0)"
 )
 
 
@@ -201,9 +207,43 @@ STYLES: Dict[str, StyleSpec] = {
     },
     "biblical_classic": {
         "display_name": "Biblical Classic",
-        "image_style_prompt": "Epic cinematic biblical photography, modest fully-clothed characters, all bodies covered with tunics, soft natural lighting, historically accurate textures and fully-covered robes, desert landscapes of ancient Judea, majestic atmosphere, high contrast, photorealistic, 8k, sharp focus on faces and respectful expressions.",
-        "negative_prompt": NEGATIVE_BASE + ", modern architecture, technology, cars, electrical lines, text, watermarks, frames, borders, cartoon, anime, plastic CGI, extra limbs, deformed hands, stained glass, kitsch glow, church murals, framed paintings, distorted anatomy, low quality, lens flare, bright starburst sun, nudity, naked, shirtless, bare skin.",
-        "post_note": "Respectful tone; CLOTHING STRICTNESS: You MUST explicitly describe the clothing for ALL characters (e.g., 'wearing a thick woolen tunic', 'fully clothed in period-accurate robes'). NEVER leave clothing unspecified. ABSOLUTELY NO nakedness, no bare chests, no exposed skin other than face/hands."
+        "image_style_prompt": (
+            "Epic cinematic religious photography, soft natural lighting, golden-hour or "
+            "candlelit atmosphere, period-accurate textures, majestic reverent mood, high "
+            "contrast, photorealistic, 8k, sharp focus on faces and respectful expressions."
+        ),
+        "negative_prompt": (
+            NEGATIVE_BASE
+            + ", text, watermarks, frames, borders, cartoon, anime, plastic CGI, "
+            "stained glass, kitsch glow, church murals, framed paintings, lens flare, "
+            "bright starburst sun, "
+            # Weighted tokens against wet-clothing nudity (the failure mode that
+            # triggered SDXL when the LLM wrote 'clothing soaked and clinging'):
+            "(wet clothes clinging:1.8), (clinging wet fabric:1.8), "
+            "(transparent wet shirt:1.8), (wet see-through tunic:1.8), "
+            "(soaked revealing fabric:1.7), "
+            "(loincloth:1.7), (shirtless:1.7), (bare chested men:1.7), "
+            "(bare chested women:2.0), (topless men:1.8), (semi-nude:1.8), "
+            "(open robe revealing skin:1.7), (low neckline tunic:1.6)"
+        ),
+        "post_note": (
+            "Respectful, reverent tone. "
+            "\n\nUNIVERSAL TECHNICAL PROHIBITIONS (these are not content, they are pure "
+            "engineering rules to prevent SDXL failure modes): "
+            "1) NEVER write 'soaked clothing', 'wet clothing clinging', 'clinging fabric', "
+            "'wet tunic', 'soaked and clinging', 'fabric clinging to body'. If the narration "
+            "mentions rain, water or wet conditions, write instead 'wearing heavy "
+            "water-darkened opaque garments, layered, completely covered, with rain dripping "
+            "off thick outerwear'. "
+            "2) NEVER bare chests, NEVER loincloths, NEVER topless figures of any gender, "
+            "NEVER exposed torsos, NEVER cleavage. Hands and face are the only exposed skin. "
+            "\n\nERA AND WARDROBE COME EXCLUSIVELY FROM THE NARRATION. Read the phrase, "
+            "identify the year, place and culture mentioned, and depict period-accurate, "
+            "culture-accurate, fully-covered clothing for THAT specific context. Do NOT "
+            "default to any biblical/ancient/Levantine aesthetic just because the channel or "
+            "style sounds religious. The style only dictates lighting, colour and mood — "
+            "never wardrobe, architecture or epoch."
+        ),
     },
     "onirico_suenos": {
         "display_name": "Onírico (Sueños)",
@@ -214,6 +254,29 @@ STYLES: Dict[str, StyleSpec] = {
             "hyper-detailed but mystical; cinematic film grain; masterpiece"
         ),
         "negative_prompt": NEGATIVE_BASE + ", sharp edges, harsh lighting, boring, realistic photography, ordinary life",
+        "post_note": (
+            "DREAM INTERPRETATION — strict anti-literal rule: when the narration mentions a "
+            "dream action or symbol, do NOT depict that action literally. The image must show "
+            "the SYMBOLIC / PSYCHOLOGICAL meaning, not the dream content. If the narration says "
+            "'kiss', do not draw people kissing; if it says 'fall', do not draw a person "
+            "falling; same for chase, drowning, teeth, snake, etc. "
+            "Translate the symbol into an abstract visual metaphor — pick one of these "
+            "metaphor families and stick to ONE per image: natural element (trees, water, sky, "
+            "rivers, mountains, fog), architectural element (doors, mirrors, staircases, "
+            "corridors, windows, archways), pure light/abstract (flames, particles, geometric "
+            "shapes, glowing orbs, sacred geometry, threads of light). "
+            "Variety: for the same paragraph, each image must use a DIFFERENT metaphor family. "
+            "Never repeat the same composition or focal element across images of one paragraph. "
+            "STRICT NO-PEOPLE PREFERENCE: avoid human figures as the focal subject. Do NOT "
+            "depict couples, faces, kisses, hugs, or anyone performing the dream action. "
+            "If a human element is unavoidable, only a small distant fully-clothed silhouette "
+            "from behind, fully covered head to toe in robes or dark clothing, never close-up, "
+            "never a face, never any visible skin beyond hands. "
+            "STRICT CLOTHING / NO-NUDITY: every figure (human or symbolic) is FULLY CLOTHED. "
+            "No bare skin on torso, chest, arms, legs. No transparent or sheer fabrics. No "
+            "lingerie, swimwear, low-cut, or revealing clothing. Default to flowing dark robes "
+            "or full-length silhouettes."
+        ),
     },
     "anime_hentai": {
         "display_name": "Anime / Hentai",
@@ -323,44 +386,65 @@ class StyleService:
         return StyleService.get_style(fallback_name)
 
     @staticmethod
+    def _resolve_style_guide_path(base_dir: Path) -> Optional[Path]:
+        """Walks up from base_dir looking for style-guide.md.
+
+        Layouts seen in the wild:
+            cache/<channel>/<video>/                       → guide at parent
+            cache/<user>/<channel>/<video>/                → guide at parent
+        Older comments referenced parent.parent, but in practice the guide always
+        lives one level up from the video dir (in the channel directory).
+        """
+        for candidate in (base_dir.parent, base_dir.parent.parent):
+            p = candidate / "style-guide.md"
+            if p.exists():
+                return p
+        return None
+
+    @staticmethod
     def get_custom_thumbnail_rules(base_dir: Path) -> Optional[str]:
         """Reads style-guide.md from channel base dir and extracts the thumbnail section."""
-        # base_dir is usually cache/000X-channel-name/YYYY-MM-DD-video-slug
-        # style-guide.md is usually in cache/000X-channel-name/style-guide.md
-        guide_path = base_dir.parent.parent / "style-guide.md"
-        if not guide_path.exists():
+        guide_path = StyleService._resolve_style_guide_path(base_dir)
+        if not guide_path:
             return None
-        
+
         try:
             content = guide_path.read_text(encoding="utf-8")
-            # Extract section between "## 🎨 SISTEMA DE THUMBNAILS" and the next "##"
-            pattern = r"##.*?SISTEMA DE THUMBNAILS(.*?)(?=##|$)"
-            match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+            # Match the actual section heading (## ... SISTEMA DE THUMBNAILS at start of
+            # its own line), not occurrences of the phrase inside other sections such as
+            # the table of contents.
+            pattern = r"^##[^\n]*SISTEMA DE THUMBNAILS[^\n]*$(.*?)(?=^## |\Z)"
+            match = re.search(pattern, content, re.DOTALL | re.MULTILINE | re.IGNORECASE)
             if match:
                 return match.group(1).strip()
         except Exception as e:
             print(f"Warning: Failed to read style-guide.md: {e}")
-        
+
         return None
 
     @staticmethod
     def get_custom_niche_rules(base_dir: Path) -> Optional[str]:
-        """Reads style-guide.md from channel base dir and extracts the top niche/objective info. (everything before first ##)"""
-        guide_path = base_dir.parent.parent / "style-guide.md"
-        if not guide_path.exists():
+        """Reads style-guide.md from channel base dir and extracts the top niche/objective info.
+        Returns everything before the first level-2 header (`## ` at start of line),
+        so level-3 subsections (`### ...`) inside the niche block are preserved."""
+        guide_path = StyleService._resolve_style_guide_path(base_dir)
+        if not guide_path:
             return None
-        
+
         try:
             content = guide_path.read_text(encoding="utf-8")
-            # Usually the first few lines contain niche, objective, etc.
-            # We'll take everything before the first "##"
-            pattern = r"^(.*?)(?=##)"
-            match = re.search(pattern, content, re.DOTALL)
+            # Stop at the first level-2 header, anchored at start of line (MULTILINE).
+            # Earlier this used (?=##) which incorrectly matched `###` substrings inside
+            # the niche block and truncated content.
+            pattern = r"\A(.*?)(?=^## )"
+            match = re.search(pattern, content, re.DOTALL | re.MULTILINE)
             if match:
                 return match.group(1).strip()
-        except:
+            # No level-2 header at all → return whole file
+            return content.strip()
+        except Exception:
             pass
-        
+
         return None
 
     @staticmethod
@@ -378,24 +462,24 @@ class StyleService:
 
     @staticmethod
     def get_custom_title_rules(base_dir: Path) -> Optional[str]:
-        guide_path = base_dir.parent.parent / "style-guide.md"
-        if not guide_path.exists(): return None
+        guide_path = StyleService._resolve_style_guide_path(base_dir)
+        if not guide_path: return None
         return StyleService._extract_section(guide_path.read_text(encoding="utf-8"), "## 🎯 FÓRMULAS DE TÍTULOS PROBADAS")
 
     @staticmethod
     def get_custom_description_rules(base_dir: Path) -> Optional[str]:
-        guide_path = base_dir.parent.parent / "style-guide.md"
-        if not guide_path.exists(): return None
+        guide_path = StyleService._resolve_style_guide_path(base_dir)
+        if not guide_path: return None
         return StyleService._extract_section(guide_path.read_text(encoding="utf-8"), "### CHATGPT/CLAUDE - Generación de Descripciones")
 
     @staticmethod
     def get_custom_tag_rules(base_dir: Path) -> Optional[str]:
-        guide_path = base_dir.parent.parent / "style-guide.md"
-        if not guide_path.exists(): return None
+        guide_path = StyleService._resolve_style_guide_path(base_dir)
+        if not guide_path: return None
         return StyleService._extract_section(guide_path.read_text(encoding="utf-8"), "### CHATGPT/CLAUDE - Generación de Tags")
 
     @staticmethod
     def get_custom_language_rules(base_dir: Path) -> Optional[str]:
-        guide_path = base_dir.parent.parent / "style-guide.md"
-        if not guide_path.exists(): return None
+        guide_path = StyleService._resolve_style_guide_path(base_dir)
+        if not guide_path: return None
         return StyleService._extract_section(guide_path.read_text(encoding="utf-8"), "## 🗣️ TERMINOLOGÍA Y LENGUAJE")

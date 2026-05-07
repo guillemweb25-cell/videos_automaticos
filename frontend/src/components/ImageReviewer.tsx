@@ -10,6 +10,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [addingImage, setAddingImage] = useState<number | null>(null);
+  const [regeneratingParagraph, setRegeneratingParagraph] = useState<number | null>(null);
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [converting, setConverting] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
@@ -212,6 +213,37 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
       alert(error?.message || "Error al auto-completar imágenes");
     } finally {
       setAddingImage(null);
+    }
+  };
+
+  const handleRegenerateParagraph = async (paraId: number) => {
+    if (!confirm(`Regenerar el párrafo ${paraId}: se borrarán sus imágenes y prompts y se volverán a generar desde cero. ¿Continuar?`)) return;
+    setRegeneratingParagraph(paraId);
+    try {
+      await api.regenerateParagraph(videoId, paraId);
+      // The regen runs in the background; the existing /images flow will short-circuit
+      // every other paragraph via cache and only redo this one. Poll loadData a few
+      // times to surface the new images as they land.
+      const tick = async () => {
+        await loadData();
+      };
+      await tick();
+      // Light polling — refresh every 3s until the paragraph has prompts again
+      // or we've waited ~2 minutes. Keeps the UI honest without pinning the CPU.
+      const stopAfter = Date.now() + 120_000;
+      const interval = setInterval(async () => {
+        await tick();
+        const fresh = (await api.getImagesData(videoId).catch(() => null)) as any;
+        const para = fresh?.items?.find((it: any) => it.paragraph_id === paraId);
+        if ((para?.prompts?.length || 0) > 0 || Date.now() > stopAfter) {
+          clearInterval(interval);
+          setRegeneratingParagraph(null);
+          await loadData();
+        }
+      }, 3000);
+    } catch (error: any) {
+      console.error("Error regenerating paragraph:", error);
+      setRegeneratingParagraph(null);
     }
   };
 
@@ -679,6 +711,24 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                             {addingImage === item.paragraph_id ? `Generando…` : `▶ Auto-completar (+${missing})`}
                           </button>
                         )}
+                        <button
+                          onClick={() => handleRegenerateParagraph(item.paragraph_id)}
+                          disabled={regeneratingParagraph === item.paragraph_id || addingImage === item.paragraph_id}
+                          style={{
+                            fontSize: '0.85rem',
+                            padding: '4px 12px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            cursor: regeneratingParagraph === item.paragraph_id ? 'wait' : 'pointer',
+                            background: '#7c3aed',
+                            color: '#fff',
+                            fontWeight: 600,
+                            opacity: regeneratingParagraph === item.paragraph_id ? 0.6 : 1,
+                          }}
+                          title="Borra las imágenes y prompts de este párrafo y los vuelve a generar desde cero"
+                        >
+                          {regeneratingParagraph === item.paragraph_id ? 'Regenerando…' : '🔄 Regenerar párrafo'}
+                        </button>
                       </>
                     );
                   })()}

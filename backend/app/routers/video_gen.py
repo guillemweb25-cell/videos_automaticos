@@ -649,6 +649,79 @@ async def reset_images(video_id: int, db: Session = Depends(get_db)):
             
     return {"ok": True, "message": "Imágenes borradas. Estado reiniciado a audio_ready."}
 
+
+@router.post("/{video_id}/paragraphs/{paragraph_id}/regenerate")
+async def regenerate_paragraph(video_id: int, paragraph_id: int, db: Session = Depends(get_db)):
+    """Regenerates prompts AND images for a single paragraph.
+
+    Drops paragraph N from `image_prompts_all.json`, deletes its `p{N:03d}_*.png`
+    files, and reuses the standard image-generation flow. The per-paragraph cache
+    inside that flow short-circuits every other paragraph (cached prompts + image
+    file already on disk), so only the deleted paragraph actually goes through the
+    LLM and SDXL again.
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    base_dir = Path(video.base_dir)
+    prompts_path = base_dir / "image_prompts_all.json"
+    if not prompts_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail="No previous generation found. Run full image generation first.",
+        )
+
+    data = json.loads(prompts_path.read_text())
+    items = data.get("items", [])
+    target = next((it for it in items if it.get("paragraph_id") == paragraph_id), None)
+    if not target:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Paragraph {paragraph_id} not found in image_prompts_all.json",
+        )
+
+    n_imgs = len(target.get("prompts", []))
+
+    # Delete the paragraph's image files on disk so the generation flow regenerates them.
+    images_dir = base_dir / "images"
+    if images_dir.exists():
+        for f in images_dir.glob(f"p{paragraph_id:03d}_*.png"):
+            f.unlink()
+
+    # Drop paragraph N from items + adjust counters so the flow regenerates fresh prompts.
+    data["items"] = [it for it in items if it.get("paragraph_id") != paragraph_id]
+    data["processed_paragraphs"] = max(0, int(data.get("processed_paragraphs", 0)) - 1)
+    data["total_images"] = max(0, int(data.get("total_images", 0)) - n_imgs)
+    prompts_path.write_text(json.dumps(data, indent=2))
+
+    # Reuse the same params the original full generation used; the standard /images flow
+    # iterates over all paragraphs but its cache logic skips everything that still has
+    # both a cached prompt and an image file on disk.
+    channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
+    default_workflow = channel.default_workflow if channel else None
+    req = ImageGenerationRequest(
+        style_name=data.get("style") or video.style or (
+            (channel.default_style if channel else None) or "stock_photo"
+        ),
+        max_images_per_paragraph=int(
+            data.get("max_images_per_paragraph",
+                     video.max_images_per_paragraph if video.max_images_per_paragraph is not None else 0)
+        ),
+        model_id=data.get("model_id") or "gpt-image-1.5",
+        generation_mode=data.get("generation_mode") or "COMFYUI",
+        workflow_name=data.get("workflow_name") or default_workflow,
+    )
+
+    result = await generate_images(video_id, req, db)
+    return {
+        "ok": True,
+        "paragraph_id": paragraph_id,
+        "deleted_images": n_imgs,
+        "background": result.get("background", True),
+    }
+
+
 @router.post("/{video_id}/images")
 async def generate_images(video_id: int, req: ImageGenerationRequest, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()

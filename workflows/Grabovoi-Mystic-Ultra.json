@@ -2,7 +2,7 @@
   "3": {
     "inputs": {
       "seed": 0,
-      "steps": 20,
+      "steps": 15,
       "cfg": 7,
       "sampler_name": "euler",
       "scheduler": "normal",
@@ -51,7 +51,7 @@
   },
   "6": {
     "inputs": {
-      "text": "(epic cinematic photography, hyper-realistic, masterpiece:1.3), dramatic golden hour lighting, atmospheric haze, deep contrast, 8k resolution, highly detailed textures, majestic composition, (realistic skin:1.2), (detailed hands:1.2)",
+      "text": "(masterpiece:1.2), (photorealistic cinematic photography:1.3), dramatic atmospheric lighting, soft volumetric rays, rich warm tones, deep contrast, shallow depth of field, sharp focus, detailed textures, 8k resolution, high dynamic range, (realistic skin:1.2), (detailed hands:1.2)",
       "clip": [
         "4",
         1
@@ -64,7 +64,7 @@
   },
   "7": {
     "inputs": {
-      "text": "(nudity:2.0), (naked:2.0), (nude:2.0), (nsfw:2.0), (topless:2.0), (bare chest:1.9), (bare breasts:2.0), (exposed breasts:2.0), (nipples:2.0), (visible nipples:2.0), (uncovered torso:1.9), (bare torso:1.9), (cleavage:1.7), (low cut top:1.7), (revealing clothing:1.7), (lingerie:1.8), (see-through clothing:1.8), (sheer fabric:1.7), (transparent fabric:1.7), (buttocks:1.9), (erotic:1.9), (sexual:1.9), (explicit:1.9), (genitals:2.0), (wet clothes clinging:1.9), (clinging wet fabric:1.9), (transparent wet shirt:1.9), (wet see-through tunic:1.9), (soaked revealing fabric:1.8), (loincloth:1.9), (shirtless:1.9), (bare chested men:1.9), (bare chested women:2.5), (topless men:1.9), (semi-nude:1.9), (open robe revealing skin:1.8), (low neckline tunic:1.7), (tribal nudity:2.0), (primitive bare-torso aesthetic:1.9), (kneeling topless figure:2.5), embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), (polydactyly:2.0), (multiple hands:1.8), (fused fingers:1.8), (malformed limbs:1.8), (extra limbs:1.8), (extra arms:1.8), (poorly drawn hands:1.8), (missing fingers:1.8), (mutated hands:1.8), (deformed fingers:1.8), (extra digits:1.8), (fewer digits:1.8), (bad anatomy:1.5), text, watermark, logo, frame, border, low quality, blurry, cartoon, anime, plastic CGI, lens flare, bright starburst sun",
+      "text": "(nudity:2.0), (naked:2.0), (nude:2.0), (nsfw:2.0), (topless:2.0), (bare chest:1.9), (bare breasts:2.0), (exposed breasts:2.0), (nipples:2.0), (uncovered torso:1.9), (cleavage:1.7), (revealing clothing:1.7), (see-through clothing:1.8), (sheer fabric:1.7), (transparent fabric:1.7), (buttocks:1.9), (erotic:1.9), (sexual:1.9), (explicit:1.9), (genitals:2.0), embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), (polydactyly:2.0), (multiple hands:1.8), (fused fingers:1.8), (mutated hands:1.8), (extra limbs:1.8), (poorly drawn hands:1.8), (missing fingers:1.8), (extra digits:1.8), (bad anatomy:1.5), (asymmetric eyes:1.4), (disfigured face:1.5), (distorted anatomy:1.5), text, watermark, logo, frame, border, low quality, blurry, cartoon, anime, plastic CGI, lens flare, bright starburst sun",
       "clip": [
         "4",
         1
@@ -93,7 +93,7 @@
   },
   "9": {
     "inputs": {
-      "filename_prefix": "Biblical_Ultra",
+      "filename_prefix": "MysticalCabala_Ultra",
       "images": [
         "8",
         0
@@ -121,11 +121,11 @@
   "11": {
     "inputs": {
       "seed": 0,
-      "steps": 15,
+      "steps": 10,
       "cfg": 7,
       "sampler_name": "euler",
       "scheduler": "normal",
-      "denoise": 0.4,
+      "denoise": 0.45,
       "model": [
         "4",
         0

@@ -11,6 +11,79 @@ from app.services.comfy_service import ComfyService
 import asyncio
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
+
+# Universal safety override — prepended to every LLM system prompt.
+# Wins over the literal text of the narration paragraph: when the script
+# describes graphic content (hellish visions, suffering minors, violence),
+# the LLM MUST translate symbolically using the substitutions below.
+# Without this block at the top, the LLM follows the narration verbatim
+# and SDXL renders gore / NSFW / terrified-child close-ups that get the
+# channel demonetised.
+SAFETY_OVERRIDE = (
+    "================================================================\n"
+    "ABSOLUTE TOP-PRIORITY SAFETY RULES — these WIN over EVERYTHING below,\n"
+    "INCLUDING the literal text of the narration paragraph. If the narration\n"
+    "describes graphic content, you MUST translate it symbolically using the\n"
+    "rules below; you may NOT depict it literally even if the narration\n"
+    "explicitly describes it. The narration is for ATMOSPHERE; the rules\n"
+    "below dictate what the prompt actually contains.\n"
+    "\n"
+    "FORBIDDEN PHRASES — never write any of these (or close variants) in the\n"
+    "image prompt, regardless of what the narration says:\n"
+    "  - close-up of a terrified / frightened / horrified child face\n"
+    "  - children screaming, eyes wide with terror, mouth open in horror,\n"
+    "    wide-eyed in fear, panic-stricken minor\n"
+    "  - bare shoulders / bare torso / sleeveless top / thin straps /\n"
+    "    topless / shirtless on a minor (or on anyone in a religious channel)\n"
+    "  - corpses lying on the ground, dead bodies, body in a pool of blood,\n"
+    "    visible blood, wounds, being shot, gunshot wound, mid-fall from\n"
+    "    violence, weapons aimed at a person\n"
+    "  - demons, demonic faces, skull on fire, flaming skulls,\n"
+    "    burning bodies, souls in flames, volcano erupting, lava overflowing,\n"
+    "    sea of fire with people in it, naked figures in flames\n"
+    "\n"
+    "REQUIRED SYMBOLIC SUBSTITUTIONS — when the narration triggers any of the\n"
+    "above, use one of these instead:\n"
+    "\n"
+    "1) INTERIOR VISIONS (hell, fire-sea, suffering souls, demons, eternal\n"
+    "   flames, the abyss):\n"
+    "   USE: distant red mist on the horizon, twisted shadows in the\n"
+    "        background, heat haze in the air, dark clouds with floating\n"
+    "        embers, a deep crack of red light along the ground, a single\n"
+    "        ember rising. The vision is INTERIOR — depict the atmosphere,\n"
+    "        not the contents.\n"
+    "   AVOID: literal volcanoes, human bodies in flames, demonic\n"
+    "          skull-faces, nude or semi-nude figures, fire monsters.\n"
+    "\n"
+    "2) MINORS IN DRAMATIC / VISIONARY / FRIGHTENING SCENES (children\n"
+    "   witnessing apparitions or visions — even if the narration explicitly\n"
+    "   names a minor like Lucía, Francisco, Jacinta, Bernadette, Melania,\n"
+    "   Maximino):\n"
+    "   USE: child seen FROM BEHIND, in 3/4 back-angle, as a silhouette\n"
+    "        against the light, OR shift the camera entirely to what the\n"
+    "        child is witnessing (the apparition above, the divine light,\n"
+    "        the distant atmosphere). Distress is implied through posture\n"
+    "        and context, NEVER through a facial close-up.\n"
+    "   ALWAYS: fully clothed in period-accurate modest clothing — long-\n"
+    "        sleeved blouse + long skirt + headscarf for girls, long-sleeved\n"
+    "        shirt + long trousers + cap for boys. NO bare shoulders,\n"
+    "        NO bare torso, NO exposed neckline, NO sleeveless top, NO\n"
+    "        thin straps. Hands and face are the only exposed skin.\n"
+    "   AVOID: any close-up where the child's terror is the focal subject.\n"
+    "\n"
+    "3) GRAPHIC VIOLENCE (corpses, dead bodies, gunshots, blood, battlefield,\n"
+    "   assassination, martyrdom):\n"
+    "   USE: smoke rising in the distance, a fallen crown / hat / staff on\n"
+    "        empty ground, twisted long shadows on a wall, an extended\n"
+    "        trembling hand reaching toward light, broken stones around an\n"
+    "        empty cross, a single flower trampled in dust, a torn cloak\n"
+    "        hanging from a fence. Loss is evoked, never shown.\n"
+    "   AVOID: corpses on the ground, visible blood, a person being\n"
+    "          shot/stabbed, weapons mid-fire, bodies mid-fall from violence.\n"
+    "================================================================\n"
+)
+
+
 class ImageEngine:
     def __init__(self, openai_api_key: Optional[str] = None, leonardo_api_key: Optional[str] = None, grok_api_key: Optional[str] = None, provider: str = "openai"):
         self.provider = provider.lower()
@@ -43,27 +116,41 @@ class ImageEngine:
         """
         style = style_override or StyleService.get_style(style_name)
         style_prompt = style.get("image_style_prompt", "")
+        post_note = style.get("post_note", "") or ""
         rules_text = f"\nFOLLOW THESE SPECIFIC CHANNEL STYLE RULES:\n{custom_rules}\n" if custom_rules else ""
 
+        # If the channel's post_note declares anti-literal / symbolic translation,
+        # promote it to the highest priority so the LLM doesn't default to
+        # depicting the narration literally.
+        is_anti_literal = "anti-literal" in post_note.lower() or "symbolic meaning" in post_note.lower()
+
+        priority_block = ""
+        if is_anti_literal:
+            priority_block = (
+                "================================================================\n"
+                "ABSOLUTE TOP-PRIORITY OVERRIDE — read this FIRST and let it WIN over\n"
+                "every other rule below if there is any conflict:\n"
+                f"{post_note}\n"
+                "================================================================\n"
+            )
+
         system_msg = (
+            f"{SAFETY_OVERRIDE}"
+            f"{priority_block}"
             "You are a creative visual director who turns narration paragraphs into AI image prompts. "
-            "Your #1 PRIORITY is VISUAL FIDELITY TO THE SPECIFIC PARAGRAPH given to you. "
-            "The image must depict the EXACT concept the narrator is explaining at this moment, "
-            "not a generic scene of the video's overall theme. "
+            + ("" if is_anti_literal else "Your #1 PRIORITY is VISUAL FIDELITY TO THE SPECIFIC PARAGRAPH given to you. ")
+            + ("The image's WHAT comes from the SYMBOLIC translation defined in the OVERRIDE block above, not from a literal reading of the narration. " if is_anti_literal else "The image must depict the EXACT concept the narrator is explaining at this moment, not a generic scene of the video's overall theme. ")
 
-            "WORKFLOW: "
-            "1. READ the narration paragraph carefully. "
-            "2. IDENTIFY the SPECIFIC concept being explained (the psychological dynamic, the exact event, the metaphor invoked). "
-            "3. DESIGN a visual metaphor that depicts THAT specific concept. "
-            "4. APPLY the style guidelines AS A VISUAL WRAPPER (lighting, color grading, composition mood) — never as content driver. "
-            "WHAT (from narration) > HOW (from style). Always. "
+            + "WORKFLOW: "
+            + ("1. READ the narration. 2. IDENTIFY the dream symbol or psychological action it describes. 3. TRANSLATE that symbol to an abstract metaphor (per the OVERRIDE block). 4. APPLY the style as a visual wrapper. NEVER depict the literal action. " if is_anti_literal else
+               "1. READ the narration paragraph carefully. 2. IDENTIFY the SPECIFIC concept being explained (the psychological dynamic, the exact event, the metaphor invoked). 3. DESIGN a visual metaphor that depicts THAT specific concept. 4. APPLY the style guidelines AS A VISUAL WRAPPER (lighting, color grading, composition mood) — never as content driver. WHAT (from narration) > HOW (from style). Always. ")
 
-            "ANTI-CLICHÉ RULES — VIOLATE ONLY IF THE PARAGRAPH EXPLICITLY MENTIONS THESE: "
+            + "ANTI-CLICHÉ RULES — VIOLATE ONLY IF THE PARAGRAPH EXPLICITLY MENTIONS THESE: "
             "- DO NOT add rain, storms, water cascades, weather imagery unless the narration explicitly invokes them. "
             "- DO NOT add religious iconography (crosses, churches, cathedrals, halos, virgin/angelic robes) unless the narration explicitly mentions them. "
             "- DO NOT add fantasy/occult elements: glowing rune portals, etched magical symbols, druidic robes, hooded mystics, floating spell orbs, visible magic spells, witch/wizard staging. "
             "- DO NOT add abstract symbolic objects (orbs in hands, etched stones, shimmering crystals, glowing books) as a substitute for depicting the paragraph's actual concept. The metaphor must come from the narration, not from generic 'mystical' tropes. "
-            "- DO NOT default to 'lone person looking pensively into distance' — if the paragraph is about a relational/psychological dynamic, depict that dynamic (e.g., interaction between two figures, projection, mirror). "
+            "- DO NOT default to 'lone person looking pensively into distance' — if the paragraph is about a relational/psychological dynamic, depict that dynamic. "
             "- DO NOT introduce elements absent from the narration just because they fit the channel's general vibe. "
             "- For psychology/dream content, prefer GROUNDED metaphors (real settings, real-life situations subtly distorted) over fantasy/mystical ones. The unconscious is human, not magical. "
 
@@ -71,8 +158,15 @@ class ImageEngine:
 
             "CHRONOLOGY & VARIETY: "
             "- Maintain character consistency (age, face, clothing) across the video, but CHANGE composition, angle, and specific interaction every prompt. "
-            "- If 'Recent History' shows a setting was used, MOVE the camera or CHANGE the scene. "
+            "- If 'Recent History' shows a composition or focal element was used (e.g., 'two faces close', 'silhouettes merging'), use a COMPLETELY DIFFERENT visual approach for this prompt. Switch metaphor family entirely. "
             "- IF THE VIDEO INVOLVES SUPERNATURAL/CELESTIAL BEINGS (Angels, Demons, Spirits), DESCRIBE their supernatural features (wings, glowing aura, ethereal light) so they don't render as ordinary humans. "
+
+            "CULTURAL AND TEMPORAL AUTHENTICITY (this is mandatory anti-bias guidance, not optional flavour): "
+            "- The narration's specific year, country and culture define the wardrobe, architecture, geography and props of the image. NEVER default to a more familiar visual archetype just because it is more represented in image-model training data. "
+            "- If the narration mentions an indigenous, non-European or pre-modern non-Western context (Mesoamerican Nahua / Aztec / Maya, Andean Quechua / Aymara, sub-Saharan African, East / South / Southeast Asian, indigenous North American, Pacific Islander, etc.), describe period-accurate clothing, architecture, landscape AND ethnic facial features specific to that culture and era. "
+            "- Do NOT substitute Greco-Roman togas/peplums, Levantine biblical robes, generic medieval European dress, Slavic Orthodox aesthetic with onion-domed churches, Tuscan/Mediterranean landscape with olive groves and cypresses, or Middle Eastern turbans for cultures and eras where they do not belong. "
+            "- Examples (illustrative, not exhaustive): a 16th-century Nahua man on the Mexican altiplano wears a full-body tilma of agave fibre, has Mesoamerican features, and the landscape is arid high-desert with maguey and basalt — NOT a Greco-Roman peplum on Tuscan hills. A 19th-century Quechua herder wears a wool poncho and chullo on the Andes — NOT a Galilean tunic. A 20th-century rural European peasant wears period coats, hats and boots — NOT a biblical robe. "
+            "- Before writing the prompt, reread the phrase and explicitly identify: which century, which country / region, which ethnic group, which climate. Then describe accordingly. "
 
             "ANATOMICAL CORRECTNESS: "
             "- Two arms, two legs, five fingers per hand. "
@@ -81,9 +175,9 @@ class ImageEngine:
             "- Simple, natural poses. AVOID jumping, running, acrobatics, twisted torsos, lifted legs. "
             "- For elderly characters: slow, gentle, stable movements. "
 
-            f"\nSTYLE SPECIFIC RULES:\n{style.get('post_note', '')}\n"
+            + ("" if is_anti_literal else f"\nSTYLE SPECIFIC RULES:\n{post_note}\n")
 
-            "OUTPUT FORMAT: "
+            + "OUTPUT FORMAT: "
             "- Describe scene, framing (close-up / wide / over-shoulder...), lighting, composition. "
             "- English. Each prompt under 800 characters. One prompt per line. No bullet points, no numbering."
         )
@@ -92,23 +186,42 @@ class ImageEngine:
         context_msg = f"\nOverall Video Theme (background only — DO NOT use this to invent scenes; use ONLY the paragraph below):\n{full_context[:800]}..." if full_context else ""
 
         if phrase:
-            # Phrase-targeted mode: the image must depict the EXACT line being spoken
-            # in this slice of audio. The full paragraph is paragraph-level context only.
-            user_msg = (
-                f"### EXACT PHRASE BEING SPOKEN AT THIS MOMENT (this is what the image must depict):\n"
-                f"\"{phrase}\"\n\n"
-                f"### PARAGRAPH CONTEXT (atmosphere only — do NOT use to invent scenes; the WHAT comes from the phrase above):\n"
-                f"\"{text}\"\n\n"
-                f"### YOUR JOB:\n"
-                f"Design ONE visual that depicts the SPECIFIC concept expressed in the phrase above. "
-                f"The image should look like a frame from a film right when the narrator says those exact words. "
-                f"Use the paragraph context only to keep tone and continuity, never to invent elements not implied by the phrase.\n"
-                f"{context_msg}\n"
-                f"{history_msg}\n\n"
-                f"### STYLE WRAPPER (only HOW it looks, never WHAT is in it):\n"
-                f"{style_prompt}\n\n"
-                f"Output {n} unique prompt(s) for this exact phrase, dressed in the style above."
-            )
+            # Phrase-targeted mode: the image must visualize what is being said at
+            # this slice of audio. For anti-literal channels (dream interpretation,
+            # psychology…), the phrase is the SOURCE OF SYMBOLIC MEANING but never
+            # the literal subject of the image.
+            if is_anti_literal:
+                user_msg = (
+                    f"### PHRASE BEING SPOKEN AT THIS MOMENT (extract its dream symbol / psychological theme; do NOT depict it literally):\n"
+                    f"\"{phrase}\"\n\n"
+                    f"### PARAGRAPH CONTEXT (atmosphere only):\n"
+                    f"\"{text}\"\n\n"
+                    f"### YOUR JOB:\n"
+                    f"Identify the dream symbol or psychological action in the phrase. Then output ONE visual that translates that symbol into an ABSTRACT METAPHOR following the OVERRIDE block at the top of the system prompt. "
+                    f"FORBIDDEN: literal depiction of the action mentioned in the phrase (no people kissing, no people falling, no people running, no teeth, etc.). "
+                    f"REQUIRED: pick a metaphor family DIFFERENT from any composition shown in Recent History below.\n"
+                    f"{context_msg}\n"
+                    f"{history_msg}\n\n"
+                    f"### STYLE WRAPPER (only HOW it looks):\n"
+                    f"{style_prompt}\n\n"
+                    f"Output {n} symbolic prompt(s)."
+                )
+            else:
+                user_msg = (
+                    f"### EXACT PHRASE BEING SPOKEN AT THIS MOMENT (this is what the image must depict):\n"
+                    f"\"{phrase}\"\n\n"
+                    f"### PARAGRAPH CONTEXT (atmosphere only — do NOT use to invent scenes; the WHAT comes from the phrase above):\n"
+                    f"\"{text}\"\n\n"
+                    f"### YOUR JOB:\n"
+                    f"Design ONE visual that depicts the SPECIFIC concept expressed in the phrase above. "
+                    f"The image should look like a frame from a film right when the narrator says those exact words. "
+                    f"Use the paragraph context only to keep tone and continuity, never to invent elements not implied by the phrase.\n"
+                    f"{context_msg}\n"
+                    f"{history_msg}\n\n"
+                    f"### STYLE WRAPPER (only HOW it looks, never WHAT is in it):\n"
+                    f"{style_prompt}\n\n"
+                    f"Output {n} unique prompt(s) for this exact phrase, dressed in the style above."
+                )
         else:
             user_msg = (
                 f"### PARAGRAPH TO VISUALIZE (this is the ONLY source of WHAT to depict):\n"
@@ -536,12 +649,14 @@ class ImageEngine:
             style = "sombras"
         elif "grabovoi" in cn or "codigos" in cn or "códigos" in cn:
             style = "grabovoi"
+        elif "sueno" in cn or "sueño" in cn or "despertar" in cn or "interpretacion" in cn:
+            style = "despertar"
 
         # Add age boosters if child/young age mentioned in the prompt — UNLESS the channel
-        # explicitly forbids children (e.g. Grabovoi). For those, strip child mentions and
-        # rely on the negative prompt to keep them out of the render.
+        # explicitly forbids children (e.g. Grabovoi, Despertar). For those, strip child
+        # mentions and rely on the negative prompt to keep them out of the render.
         vp_lower = visual_prompt.lower()
-        children_forbidden = style == "grabovoi"
+        children_forbidden = style in ("grabovoi", "despertar")
         if any(x in vp_lower for x in ["child", "girl", "boy", "ten", "aged 10", "young"]):
             if children_forbidden:
                 # Scrub child-related tokens; don't reinforce them.
@@ -643,15 +758,17 @@ class ImageEngine:
         width, height = img.size
         draw = ImageDraw.Draw(img)
 
-        # Detect channel style
+        # User decision (May 2026): unify thumbnail typography across every channel.
+        # The "sombras" preset (condensed display font, yellow→golden gradient + orange
+        # subtitle, anchored to the bottom 94% of height) is the one that tested best
+        # visually. Channel-specific overrides (jesus / grabovoi / despertar) are kept
+        # in the file as dead branches in case we want to bring them back, but the
+        # detection collapses everything to sombras.
+        #
+        # `cn` is still computed because some downstream code may want to read it later,
+        # but `style` is forced to "sombras" so the visual layout is uniform.
         cn = (channel_name or "").lower()
-        style = "default"
-        if "jesus" in cn or "jesús" in cn:
-            style = "jesus"
-        elif "sombras" in cn:
-            style = "sombras"
-        elif "grabovoi" in cn or "codigos" in cn or "códigos" in cn:
-            style = "grabovoi"
+        style = "sombras"
 
         # Font configuration: prefer bundled condensed display fonts (Anton, Bebas Neue)
         # for that "PENTECOSTES" look, fall back to system fonts.
@@ -861,6 +978,70 @@ class ImageEngine:
                 draw_text_with_outline(
                     draw, line2.upper(), (0, y_line2),
                     font2, (255, 120, 30), "black", outline_width=outline_w_2, align="center",
+                )
+
+        elif style == "despertar":
+            # 2-line stacked layout for the dream-interpretation channel:
+            # yellow line1 + orange line2, both anchored in the bottom third per the
+            # channel style guide ("nunca en el tercio superior").
+            if "..." in text:
+                parts = text.split("...", 1)
+                line1 = parts[0].strip() + "..."
+                line2 = ("..." + parts[1].strip()) if parts[1].strip() else ""
+            else:
+                words = text.split()
+                if len(words) > 4:
+                    line1 = " ".join(words[:len(words) // 2]) + "..."
+                    line2 = "..." + " ".join(words[len(words) // 2:])
+                else:
+                    line1 = text
+                    line2 = ""
+
+            base_dim = min(width, height)
+            size_1 = int(base_dim * 0.15)
+            size_2 = int(base_dim * 0.12)
+            max_w = width * 0.95
+
+            font1 = get_fitting_font(line1.upper(), font_path_heavy, max_w, size_1)
+            font2 = get_fitting_font(line2.upper(), font_path_heavy, max_w, size_2)
+
+            outline_w_1 = 8
+            outline_w_2 = 6
+
+            bbox1 = draw.textbbox((0, 0), line1.upper(), font=font1, stroke_width=outline_w_1)
+            h1 = bbox1[3] - bbox1[1]
+            bbox2 = (0, 0, 0, 0)
+            h2 = 0
+            if line2:
+                bbox2 = draw.textbbox((0, 0), line2.upper(), font=font2, stroke_width=outline_w_2)
+                h2 = bbox2[3] - bbox2[1]
+            gap = int(size_2 * 0.25)
+
+            # Anchor stack bottom at ~93% of height so it sits in the lower third.
+            stack_bottom = int(height * 0.93)
+            if line2:
+                y_line2 = stack_bottom - h2 - bbox2[1]
+                y_line1 = y_line2 - gap - h1 - bbox1[1]
+            else:
+                y_line2 = 0
+                y_line1 = stack_bottom - h1 - bbox1[1]
+
+            if line1:
+                draw_text_with_gradient(
+                    img, line1.upper(), (0, y_line1),
+                    font1,
+                    top_color=(255, 235, 60),
+                    bottom_color=(255, 185, 40),
+                    outline_color="black",
+                    outline_width=outline_w_1,
+                    align="center",
+                )
+                draw = ImageDraw.Draw(img)
+
+            if line2:
+                draw_text_with_outline(
+                    draw, line2.upper(), (0, y_line2),
+                    font2, (255, 140, 30), "black", outline_width=outline_w_2, align="center",
                 )
 
         elif style == "grabovoi":
