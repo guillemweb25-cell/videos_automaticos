@@ -159,12 +159,26 @@ def create_video(video_in: VideoCreate, db: Session = Depends(get_db), current_u
 
     # 3. Initialize directory (Cache structure: cache/user_0001/0001-channel-name/YYYY-MM-DD-video-title)
     user_slug = f"user_{channel.user_id:04d}"
-    channel_slug = f"{channel.id:04d}-{slugify(channel.name)}"
+    user_dir = Path("cache") / user_slug
+    # Reuse the existing channel folder if one is already present under this ID
+    # (created by YouTubeService.get_creds_dir or a prior slugify version). This
+    # avoids the OAuth credentials living at `0009--o8f` while new videos pile
+    # up under `0009-<korean-name>` and the channel ends up split across two
+    # folders.
+    existing = sorted(user_dir.glob(f"{channel.id:04d}-*")) if user_dir.exists() else []
+    if existing:
+        channel_dir = existing[0]
+    else:
+        channel_dir = user_dir / f"{channel.id:04d}-{slugify(channel.name)}"
+
     date_str = datetime.now().strftime("%Y-%m-%d")
     video_title_slug = slugify(video.title or "untitled")
-    video_slug = f"{date_str}-{video_title_slug}"
-    
-    base_dir = Path("cache") / user_slug / channel_slug / video_slug
+    # Always include the video ID in the slug so two videos with identical
+    # slugified titles (e.g. two Korean titles that share leading punctuation)
+    # never collide in the same folder.
+    video_slug = f"{date_str}-{video.id:04d}-{video_title_slug}"
+
+    base_dir = channel_dir / video_slug
     base_dir.mkdir(parents=True, exist_ok=True)
     
     (base_dir / "audio/chunks").mkdir(parents=True, exist_ok=True)

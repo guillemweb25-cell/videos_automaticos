@@ -28,6 +28,44 @@ ENDPOINTS = [
 
 class AudioEngine:
     @staticmethod
+    def _detect_xtts_language(text: str) -> str:
+        """Detects the dominant script and returns the 2-letter code that
+        XTTS-v2 expects. Falls back to "es" (Spanish). Independent from
+        seo_engine.detect_language() because XTTS wants only the ISO code
+        with no human-readable suffix."""
+        if not text:
+            return "es"
+        sample = text[:2000]
+        counts = {"ko": 0, "ja_kana": 0, "han": 0, "ru": 0, "ar": 0, "latin": 0}
+        for c in sample:
+            cp = ord(c)
+            if 0xAC00 <= cp <= 0xD7AF:
+                counts["ko"] += 1
+            elif 0x3040 <= cp <= 0x309F or 0x30A0 <= cp <= 0x30FF:
+                counts["ja_kana"] += 1
+            elif 0x4E00 <= cp <= 0x9FFF:
+                counts["han"] += 1
+            elif 0x0400 <= cp <= 0x04FF:
+                counts["ru"] += 1
+            elif 0x0600 <= cp <= 0x06FF:
+                counts["ar"] += 1
+            elif c.isalpha():
+                counts["latin"] += 1
+        total = sum(counts.values()) or 1
+        if counts["ko"] / total > 0.03:
+            return "ko"
+        if counts["ja_kana"] / total > 0.03:
+            return "ja"
+        # CJK Han without kana → assume Chinese (XTTS uses "zh-cn")
+        if counts["han"] / total > 0.05:
+            return "zh-cn"
+        if counts["ru"] / total > 0.10:
+            return "ru"
+        if counts["ar"] / total > 0.10:
+            return "ar"
+        return "es"
+
+    @staticmethod
     def get_duration(p: Path) -> float:
         """Returns duration in seconds using mutagen or moviepy fallback."""
         try:
@@ -103,30 +141,40 @@ class AudioEngine:
         out_path.write_bytes(resp.content)
 
     @staticmethod
-    def synthesize_local_xtts(text: str, voice_id: str, out_path: Path, gap_ms: int = 0) -> None:
-        """Synthesizes text using Local XTTS API."""
+    def synthesize_local_xtts(text: str, voice_id: str, out_path: Path, gap_ms: int = 0, language: Optional[str] = None) -> None:
+        """Synthesizes text using Local XTTS API.
+
+        XTTS-v2 supports 16 languages; the API expects a 2-letter ISO code
+        (es, en, fr, de, it, pt, pl, tr, ru, nl, cs, ar, zh-cn, ja, hu, ko, hi).
+        When `language` is None we autodetect the dominant script from the input
+        text — this prevents Korean / Japanese / Russian scripts being read with
+        Spanish phonemes when nobody passes the language explicitly.
+        """
         if not text.strip():
             raise ValueError("Empty text for TTS")
-            
+
+        if language is None:
+            language = AudioEngine._detect_xtts_language(text)
+
         settings = get_settings()
         # Fallback to localhost if not set in .env
-        url = getattr(settings, "LOCAL_TTS_URL", "http://192.168.1.46:8022") 
+        url = getattr(settings, "LOCAL_TTS_URL", "http://192.168.1.46:8022")
         endpoint = f"{url}/generate"
-        
+
         # We split text if it's too long, but XTTSv2 usually handles sentences well.
         # It's safer to split to avoid VRAM OOM on the local GPU
         parts = AudioEngine._split_text(text, 250)
         tmp_dir = out_path.parent / "__tts_tmp_xtts__"
         tmp_dir.mkdir(parents=True, exist_ok=True)
-        
+
         chunk_paths = []
         try:
             for i, part in enumerate(parts):
-                print(f"Generating XTTS chunk {i+1}/{len(parts)} ({len(part)} chars)...")
-                
+                print(f"Generating XTTS chunk {i+1}/{len(parts)} ({len(part)} chars, lang={language})...")
+
                 data = {
                     "text": part,
-                    "language": "es",
+                    "language": language,
                     "voice_id": voice_id
                 }
                 r = requests.post(endpoint, data=data, timeout=120)

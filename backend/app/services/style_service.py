@@ -287,7 +287,27 @@ STYLES: Dict[str, StyleSpec] = {
         ),
         "negative_prompt": NEGATIVE_BASE + ", photorealistic, realistic, 3d render, western cartoon, fat, muscular, ugly, old, low quality, bad anatomy",
         "post_note": "Keep features clean and stylized.",
-    }
+    },
+    "koreano_minhwa": {
+        "display_name": "Korean Historical Illustration",
+        "image_style_prompt": (
+            "Korean historical illustration painting style, traditional ink and wash with "
+            "rich earth tones, painterly brushwork visible, hand-painted aesthetic, "
+            "warm earthen palette of deep browns, ochre, terracotta, muted reds and beige, "
+            "soft golden backlight with subtle godrays, atmospheric depth with warm golden haze, "
+            "narrative dramatic composition, expressive faces with clear emotions, "
+            "illustration book aesthetic for adult historical narratives; no on-image text"
+        ),
+        "negative_prompt": (
+            NEGATIVE_BASE
+            + ", photorealistic, photography, 3d render, computer game art, "
+            "western cartoon, anime style, manga, manhwa, webtoon, cel shading, screentone, "
+            "neon colors, oversaturated, blue cosmic background, sacred geometry, "
+            "modern clothing, electronic devices, cars, contemporary architecture, "
+            "low quality, blurry, deformed, cluttered composition"
+        ),
+        "post_note": "Painterly ink-wash brushwork visible; warm earthen palette; soft golden backlight.",
+    },
 }
 
 ALIASES = {
@@ -320,6 +340,9 @@ ALIASES = {
     "canal_personalizado": "canal_personalizado",
     "anime": "anime_hentai",
     "hentai": "anime_hentai",
+    "koreano": "koreano_minhwa",
+    "korean": "koreano_minhwa",
+    "minhwa": "koreano_minhwa",
 }
 
 

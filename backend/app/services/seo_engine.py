@@ -3,6 +3,56 @@ import re
 from typing import List, Optional
 from openai import OpenAI
 
+
+def detect_language(text: str) -> str:
+    """Detects the dominant language of a script by inspecting unicode blocks.
+
+    Returns an ISO 639-1 code with a human-readable name appended for the LLM
+    (e.g. "ko (Korean)"). The format helps the LLM not confuse "ko" with other
+    short codes. Falls back to Spanish.
+    """
+    if not text:
+        return "es (Spanish)"
+    sample = text[:2000]
+    counts = {
+        "ko": 0,  # Hangul syllables
+        "ja_kana": 0,  # Hiragana + Katakana (Japanese-specific)
+        "zh_or_ja_han": 0,  # CJK Unified Ideographs
+        "ru": 0,  # Cyrillic
+        "ar": 0,  # Arabic
+        "latin": 0,
+    }
+    for c in sample:
+        cp = ord(c)
+        if 0xAC00 <= cp <= 0xD7AF:
+            counts["ko"] += 1
+        elif 0x3040 <= cp <= 0x309F or 0x30A0 <= cp <= 0x30FF:
+            counts["ja_kana"] += 1
+        elif 0x4E00 <= cp <= 0x9FFF:
+            counts["zh_or_ja_han"] += 1
+        elif 0x0400 <= cp <= 0x04FF:
+            counts["ru"] += 1
+        elif 0x0600 <= cp <= 0x06FF:
+            counts["ar"] += 1
+        elif c.isalpha():
+            counts["latin"] += 1
+    total = sum(counts.values()) or 1
+    # Hangul wins as soon as it makes up >3% of the sample (Korean scripts
+    # often have particles and numbers mixed in, so we don't require a
+    # majority).
+    if counts["ko"] / total > 0.03:
+        return "ko (Korean)"
+    if counts["ja_kana"] / total > 0.03:
+        return "ja (Japanese)"
+    if counts["zh_or_ja_han"] / total > 0.05:
+        return "zh (Chinese)"
+    if counts["ru"] / total > 0.10:
+        return "ru (Russian)"
+    if counts["ar"] / total > 0.10:
+        return "ar (Arabic)"
+    return "es (Spanish)"
+
+
 class SEOEngine:
     def __init__(self, api_key: Optional[str] = None, provider: str = "openai"):
         self.provider = provider.lower()
@@ -18,16 +68,19 @@ class SEOEngine:
             
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
-    def generate_description(self, script_snippet: str, lang: str = "es", custom_rules: Optional[str] = None) -> str:
+    def generate_description(self, script_snippet: str, lang: Optional[str] = None, custom_rules: Optional[str] = None) -> str:
         """Generates a rich video description."""
+        if lang is None:
+            lang = detect_language(script_snippet)
         rules_text = f"\nFOLLOW THESE CHANNEL-SPECIFIC DESCRIPTION RULES AND STRUCTURE:\n{custom_rules}\n" if custom_rules else ""
         system_msg = (
             "You are a YouTube SEO expert. Generate a long, high-quality video description. "
             f"{rules_text}"
             "Include a hook, a detailed summary, and key takeaways. "
+            f"The description MUST be written entirely in the same language as the script: {lang}. "
             "The total length MUST NOT exceed 5000 characters. No emojis unless rules specify them."
         )
-        user_msg = f"Language: {lang}\nScript snippet:\n{script_snippet}\n\nWrite an SEO description with key points."
+        user_msg = f"Language: {lang}\nScript snippet:\n{script_snippet}\n\nWrite an SEO description with key points, in {lang}."
         
         response = self.client.chat.completions.create(
             model=self.model,
@@ -40,17 +93,20 @@ class SEOEngine:
         response_txt = response.choices[0].message.content or ""
         return response_txt.strip()[:5000]
 
-    def generate_video_title(self, script_snippet: str, lang: str = "es", custom_rules: Optional[str] = None) -> str:
+    def generate_video_title(self, script_snippet: str, lang: Optional[str] = None, custom_rules: Optional[str] = None) -> str:
         """Generates a high-CTR video title."""
+        if lang is None:
+            lang = detect_language(script_snippet)
         rules_text = f"\nAPPLY THESE CHANNEL-SPECIFIC TITLE FORMULAS AND RULES:\n{custom_rules}\n" if custom_rules else ""
         system_msg = (
             "You are a YouTube SEO expert specializing in high-click-through-rate (CTR) titles. "
             f"{rules_text}"
             "Generate one single compelling video title. "
             "Use psychological triggers (curiosity, fear of missing out, direct benefit). "
+            f"The title MUST be written entirely in the same language as the script: {lang}. "
             "Max 100 characters. Output ONLY the text, no quotes or emojis."
         )
-        user_msg = f"Language: {lang}\nScript snippet:\n{script_snippet}\n\nWrite an optimized YouTube title."
+        user_msg = f"Language: {lang}\nScript snippet:\n{script_snippet}\n\nWrite an optimized YouTube title in {lang}."
         
         response = self.client.chat.completions.create(
             model=self.model,
@@ -62,17 +118,20 @@ class SEOEngine:
         )
         return (response.choices[0].message.content or "").strip()[:100]
 
-    def generate_video_questions_tags(self, script_snippet: str, count: int = 10, lang: str = "es", custom_rules: Optional[str] = None) -> str:
+    def generate_video_questions_tags(self, script_snippet: str, count: int = 10, lang: Optional[str] = None, custom_rules: Optional[str] = None) -> str:
         """Generates question-based tags for YouTube."""
+        if lang is None:
+            lang = detect_language(script_snippet)
         rules_text = f"\nFOLLOW THESE CHANNEL-SPECIFIC TAG RULES:\n{custom_rules}\n" if custom_rules else ""
         system_msg = (
             "You are a YouTube SEO expert. Generate a long string of tags separated by commas. "
             f"{rules_text}"
             "The tags should be the 15 most common questions people ask that this video answers. "
+            f"All questions MUST be written entirely in the same language as the script: {lang}. "
             "Separate questions with commas. Total length MUST be under 500 characters. "
             "Output ONLY the comma-separated questions."
         )
-        user_msg = f"Language: {lang}\nCount: {count}\nContext:\n{script_snippet}"
+        user_msg = f"Language: {lang}\nCount: {count}\nContext:\n{script_snippet}\n\nWrite the questions in {lang}."
         
         response = self.client.chat.completions.create(
             model=self.model,
@@ -84,15 +143,18 @@ class SEOEngine:
         )
         return (response.choices[0].message.content or "").strip()[:500]
 
-    def generate_hashtags(self, script_snippet: str, count: int = 5, lang: str = "es", custom_rules: Optional[str] = None) -> List[str]:
+    def generate_hashtags(self, script_snippet: str, count: int = 5, lang: Optional[str] = None, custom_rules: Optional[str] = None) -> List[str]:
         """Generates a list of hashtags."""
+        if lang is None:
+            lang = detect_language(script_snippet)
         rules_text = f"\nFOLLOW THESE CHANNEL-SPECIFIC HASHTAG RULES:\n{custom_rules}\n" if custom_rules else ""
         system_msg = (
             "You are a YouTube expert. Generate relevant hashtags for a YouTube video. "
             f"{rules_text}"
+            f"Hashtags MUST be written in the same language as the script: {lang}. "
             "Output ONLY the hashtags separated by spaces."
         )
-        user_msg = f"Language: {lang}\nCount: {count}\nContext:\n{script_snippet}"
+        user_msg = f"Language: {lang}\nCount: {count}\nContext:\n{script_snippet}\n\nWrite the hashtags in {lang}."
         
         response = self.client.chat.completions.create(
             model=self.model,
@@ -113,12 +175,14 @@ class SEOEngine:
             clean_tags.append(t)
         return clean_tags[:count]
 
-    def generate_thumbnail_hook(self, script_snippet: str, lang: str = "es", custom_rules: Optional[str] = None, channel_name: Optional[str] = None) -> str:
+    def generate_thumbnail_hook(self, script_snippet: str, lang: Optional[str] = None, custom_rules: Optional[str] = None, channel_name: Optional[str] = None) -> str:
         """Generates a catchy short hook for a YouTube thumbnail."""
-        
+        if lang is None:
+            lang = detect_language(script_snippet)
+
         # Determine niche/style based on channel name
         is_jesus = channel_name and ("jesus" in channel_name.lower() or "jesús" in channel_name.lower())
-        
+
         if is_jesus:
             niche_desc = "Christian/Spiritual channel. The hook must be DIVINE, SOLEMN, and PROFOUND."
             format_desc = (
@@ -126,23 +190,27 @@ class SEOEngine:
                 "Part 1: A category or label (e.g. 'EL MISTERIO', 'LA REVELACIÓN'). "
                 "Part 2: The main shocking title (e.g. 'EL APOCALIPSIS', 'JUAN VIO ESTO'). "
                 "Part 3: A small curiosity or result (e.g. 'nadie te lo contó', 'mira el final'). "
-                "Example: 'LA REVELACIÓN...EL APOCALIPSIS...mira el final'"
+                "Example (Spanish): 'LA REVELACIÓN...EL APOCALIPSIS...mira el final'. "
+                "Translate the FORMAT (3 parts separated by '...') to the script language."
             )
         else:
             niche_desc = "Mystery and Horror channel. The hook must be SHOCKING, AGGRESSIVE, and IRRESISTIBLE."
             format_desc = (
-                "The hook must be 2-5 words long, in ALL CAPS. "
+                "The hook must be 2-5 words long, in ALL CAPS (use the script's native uppercase form; "
+                "Korean / Japanese / Chinese have no separate caps — use them as-is, big and bold). "
                 "Use '...' to separate the hook into two parts for a two-line layout. "
-                "Example: 'ESTABA... ALLÍ', 'NO MIRES... ATRÁS'."
+                "Example (Spanish): 'ESTABA... ALLÍ', 'NO MIRES... ATRÁS'. "
+                "Example (Korean): '그는 사라졌다... 영원히', '보지 마라... 뒤를'. "
+                "Translate the FORMAT (2 parts, '...' separator) to the script language."
             )
 
         system_msg = (
             f"You are an expert YouTube CLICKBAIT strategist for a {niche_desc}. "
             "Your goal is to create an IRRESISTIBLE hook. "
-            "Use psychological triggers like 'THE FORBIDDEN', 'THE UNKNOWN', 'LETHAL', 'TERRIFYING', 'SECRET' (adapted to the niche). "
+            "Use psychological triggers like 'THE FORBIDDEN', 'THE UNKNOWN', 'LETHAL', 'TERRIFYING', 'SECRET' (adapted to the niche AND to the target language). "
             f"{format_desc} "
             f"{f'Additional brand rules: {custom_rules}' if custom_rules else ''} "
-            f"The output must be in {'SPANISH' if lang == 'es' else 'the requested language'}. "
+            f"The hook MUST be written entirely in: {lang}. Do NOT mix languages. "
             "Output ONLY the text, no quotes or emojis."
         )
         user_msg = f"Script snippet:\n{script_snippet}\n\nWrite a short thumbnail hook."

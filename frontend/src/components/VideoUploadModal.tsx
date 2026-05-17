@@ -23,7 +23,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const [publishAt, setPublishAt] = useState('');
   
   // SEO options
-  const [seoLanguage, setSeoLanguage] = useState('es');
+  const [seoLanguage, setSeoLanguage] = useState('auto');
   const [seoProvider, setSeoProvider] = useState('openai');
 
   // Thumbnail actions
@@ -281,13 +281,23 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
               <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
                 <div style={{ flex: 1 }}>
                   <label className="yt-section-label" style={{ fontSize: '0.7rem' }}>Idioma SEO</label>
-                  <select 
+                  <select
                     className="yt-select"
                     value={seoLanguage}
                     onChange={(e) => setSeoLanguage(e.target.value)}
                   >
+                    <option value="auto">Auto (detectar del guion)</option>
                     <option value="es">Español</option>
                     <option value="en">Inglés</option>
+                    <option value="ko">Coreano (한국어)</option>
+                    <option value="ja">Japonés (日本語)</option>
+                    <option value="zh">Chino (中文)</option>
+                    <option value="ru">Ruso (Русский)</option>
+                    <option value="ar">Árabe (العربية)</option>
+                    <option value="pt">Portugués</option>
+                    <option value="fr">Francés</option>
+                    <option value="de">Alemán</option>
+                    <option value="it">Italiano</option>
                   </select>
                 </div>
                 <div style={{ flex: 1 }}>

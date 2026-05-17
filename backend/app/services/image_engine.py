@@ -773,6 +773,33 @@ class ImageEngine:
         # Font configuration: prefer bundled condensed display fonts (Anton, Bebas Neue)
         # for that "PENTECOSTES" look, fall back to system fonts.
         bundled_fonts_dir = Path(__file__).parent.parent / "fonts"
+
+        # CJK detection: if the hook contains Hangul / kana / Han characters, the
+        # bundled display fonts (Anton, Bebas Neue) and system Latin fonts (Arial,
+        # DejaVu) won't have glyphs for them and Pillow renders empty boxes (□□).
+        # Prepend Noto Sans CJK (installed via fonts-noto-cjk in the Dockerfile)
+        # so CJK text renders correctly. Aesthetic tradeoff: Noto Sans CJK Bold
+        # is not condensed like Anton, so CJK thumbnails will look slightly less
+        # "wide-and-chunky" than Latin ones — there's no widely available
+        # condensed CJK display font equivalent.
+        def _has_cjk(s: str) -> bool:
+            for c in s or "":
+                cp = ord(c)
+                if (0xAC00 <= cp <= 0xD7AF       # Hangul syllables
+                        or 0x3040 <= cp <= 0x309F  # Hiragana
+                        or 0x30A0 <= cp <= 0x30FF  # Katakana
+                        or 0x4E00 <= cp <= 0x9FFF):  # CJK Unified Ideographs
+                    return True
+            return False
+
+        cjk_font_paths = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansKR-Bold.otf",
+            "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+            "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+        ]
+
         font_paths_heavy = [
             str(bundled_fonts_dir / "Anton-Regular.ttf"),       # condensed display
             str(bundled_fonts_dir / "BebasNeue-Regular.ttf"),   # alt condensed
@@ -787,6 +814,11 @@ class ImageEngine:
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             str(bundled_fonts_dir / "Anton-Regular.ttf"),
         ]
+
+        # If the hook is CJK, prepend the CJK font list so it wins the fallback.
+        if _has_cjk(text):
+            font_paths_heavy = cjk_font_paths + font_paths_heavy
+            font_paths_bold = cjk_font_paths + font_paths_bold
 
         font_path_heavy = next((p for p in font_paths_heavy if Path(p).exists()), None)
         font_path_bold = next((p for p in font_paths_bold if Path(p).exists()), font_path_heavy)
@@ -924,7 +956,13 @@ class ImageEngine:
             font1 = get_fitting_font(line1.upper(), font_path_heavy, max_w, size_1)
 
             # Italic font for the subtitle line. Bold italic if available, otherwise fall back.
-            italic_candidates = [
+            # If line2 has CJK characters, prepend CJK fonts: italic is not idiomatic in
+            # Asian scripts and the Latin italic fonts have no Hangul/Kana/Han glyphs, so
+            # without this Pillow would render line2 as invisible boxes.
+            italic_candidates = []
+            if _has_cjk(line2):
+                italic_candidates += cjk_font_paths
+            italic_candidates += [
                 "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
                 "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",

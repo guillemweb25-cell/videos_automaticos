@@ -1,0 +1,151 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 0,
+      "steps": 15,
+      "cfg": 7,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "Base KSampler"
+    }
+  },
+  "4": {
+    "inputs": {
+      "ckpt_name": "SDXL/juggernautXL_ragnarokBy.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "(painterly illustration, masterpiece:1.3), (traditional ink wash painting:1.2), hand-painted aesthetic, painterly brushwork visible, warm earthen palette, soft golden backlight, atmospheric haze, deep contrast, narrative dramatic composition, expressive emotions, 8k resolution, highly detailed textures, (realistic skin:1.2), (detailed hands:1.2)",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "positive"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "(nudity:2.0), (naked:2.0), (nude:2.0), (nsfw:2.0), (topless:2.0), (bare chest:1.9), (bare breasts:2.0), (exposed breasts:2.0), (nipples:2.0), (uncovered torso:1.9), (cleavage:1.7), (revealing clothing:1.7), (see-through clothing:1.8), (sheer fabric:1.7), (transparent fabric:1.7), (buttocks:1.9), (erotic:1.9), (sexual:1.9), (explicit:1.9), (genitals:2.0), (photorealistic:1.6), (photography:1.6), (3d render:1.6), (computer game art:1.5), (anime style:1.6), (manhwa:1.6), (webtoon:1.6), (manga:1.5), (cel shading:1.4), (screentone:1.4), (flat colors:1.3), (western cartoon:1.4), (disney style:1.4), (pixar style:1.4), (neon colors:1.4), (oversaturated:1.4), (blue cosmic background:1.5), (sacred geometry:1.3), (modern clothing:1.4), (electronic devices:1.5), (cars:1.5), (contemporary architecture:1.4), (modern buildings:1.4), (WWII bomber:1.6), (B-17:1.6), (B-29:1.6), (military aircraft:1.6), (warplane:1.6), (military markings:1.6), (star insignia on aircraft:1.6), (crashed plane on sand:1.5), (plane on the ground:1.4), (modern jet:1.4), (modern airliner:1.4), (passenger jet:1.4), embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), (polydactyly:2.0), (multiple hands:1.8), (fused fingers:1.8), (mutated hands:1.8), (extra limbs:1.8), (poorly drawn hands:1.8), (missing fingers:1.8), (extra digits:1.8), (bad anatomy:1.5), (asymmetric eyes:1.4), (disfigured face:1.5), (distorted anatomy:1.5), text, watermark, logo, frame, border, low quality, blurry, lens flare, bright starburst sun, cluttered composition",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "negative"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "11",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "MysticalCabala_Ultra",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "10": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "scale_by": 1.25,
+      "samples": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "LatentUpscaleBy",
+    "_meta": {
+      "title": "Latent Upscale"
+    }
+  },
+  "11": {
+    "inputs": {
+      "seed": 0,
+      "steps": 10,
+      "cfg": 7,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 0.45,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "Refinement KSampler"
+    }
+  }
+}

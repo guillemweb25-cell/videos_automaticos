@@ -260,7 +260,11 @@ async def regenerate_youtube_title(
         api_key=(settings.grok_api_key if target_provider == "grok" else settings.openai_api_key), 
         provider=target_provider
     )
-    title = seo.generate_video_title(script_snippet, lang=lang)
+    # `lang` may arrive as "auto" or empty from the frontend dropdown — both
+    # mean "infer from the script". SEOEngine.generate_* autodetects when lang
+    # is None, so we forward that.
+    effective_lang = None if lang in (None, "", "auto") else lang
+    title = seo.generate_video_title(script_snippet, lang=effective_lang)
     
     # Save to DB
     video.youtube_title = title
@@ -306,7 +310,8 @@ async def regenerate_youtube_description(
         api_key=(settings.grok_api_key if target_provider == "grok" else settings.openai_api_key), 
         provider=target_provider
     )
-    description = seo.generate_description(script_snippet[:4000], lang=lang)
+    effective_lang = None if lang in (None, "", "auto") else lang
+    description = seo.generate_description(script_snippet[:4000], lang=effective_lang)
     
     # Save to DB
     video.youtube_description = description
@@ -352,7 +357,8 @@ async def regenerate_youtube_tags(
         api_key=(settings.grok_api_key if target_provider == "grok" else settings.openai_api_key), 
         provider=target_provider
     )
-    tags = seo.generate_video_questions_tags(script_snippet[:4000], lang=lang)
+    effective_lang = None if lang in (None, "", "auto") else lang
+    tags = seo.generate_video_questions_tags(script_snippet[:4000], lang=effective_lang)
     
     # Save to DB
     video.youtube_tags = tags
