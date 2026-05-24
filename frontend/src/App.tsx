@@ -19,6 +19,18 @@ function App() {
   // Selected Channel State
   const [selectedChannel, setSelectedChannel] = useState<ChannelResponse | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Desktop sidebar collapse — separate from mobile sidebarOpen.
+  // Persisted in localStorage so the choice survives reloads.
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(
+    () => localStorage.getItem('desktopSidebarCollapsed') === '1'
+  )
+  const toggleDesktopSidebar = () => {
+    setDesktopSidebarCollapsed((prev: boolean) => {
+      const next = !prev
+      localStorage.setItem('desktopSidebarCollapsed', next ? '1' : '0')
+      return next
+    })
+  }
   const [showSettings, setShowSettings] = useState(false)
   const [showPayments, setShowPayments] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
@@ -257,9 +269,17 @@ function App() {
       )}
 
       {/* Sidebar */}
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''} ${desktopSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
           <h1>🎬 VideoBot</h1>
+          <button
+            className="sidebar-collapse-btn"
+            onClick={toggleDesktopSidebar}
+            title="Ocultar barra lateral"
+            aria-label="Ocultar barra lateral"
+          >
+            «
+          </button>
         </div>
         
         <div className="sidebar-nav">
@@ -348,6 +368,16 @@ function App() {
           <button className="menu-toggle" onClick={() => setSidebarOpen(true)}>
             ☰
           </button>
+          {desktopSidebarCollapsed && (
+            <button
+              className="sidebar-show-btn-desktop"
+              onClick={toggleDesktopSidebar}
+              title="Mostrar barra lateral"
+              aria-label="Mostrar barra lateral"
+            >
+              »
+            </button>
+          )}
           <div style={{ fontWeight: 600 }}>
             {showSettings ? 'Ajustes' : showPayments ? 'Créditos y Pagos' : showAdmin ? 'Panel de Administración' : showOrphans ? 'Limpieza de vídeos' : selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
           </div>

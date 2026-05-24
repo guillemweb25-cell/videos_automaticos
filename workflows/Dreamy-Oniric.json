@@ -64,7 +64,7 @@
   },
   "7": {
     "inputs": {
-      "text": "nsfw, nude, sharp edges, high contrast, harsh lighting, hyper-realistic, photography, mundane, boring, realistic skin, ordinary, embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), text, watermark",
+      "text": "(nudity:2.0), (naked:2.0), (nude:2.0), (nsfw:2.0), (topless:2.0), (bare chest:1.9), (bare breasts:2.0), (exposed breasts:2.0), (nipples:2.0), (uncovered torso:1.9), (cleavage:1.7), (revealing clothing:1.7), (see-through clothing:1.8), (sheer fabric:1.7), (transparent fabric:1.7), (naked woman:2.0), (nude female:2.0), (bare female body:2.0), (buttocks:1.9), (erotic:1.9), (sexual:1.9), (genitals:2.0), sharp edges, high contrast, harsh lighting, hyper-realistic, photography, mundane, boring, realistic skin, ordinary, embedding:SDXL_Negative, (extra fingers:2.0), (deformed hands:2.0), text, watermark",
       "clip": [
         "4",
         1

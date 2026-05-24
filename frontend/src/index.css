@@ -57,7 +57,81 @@ body {
   display: flex;
   flex-direction: column;
   z-index: 100;
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease, width 0.3s ease, padding 0.3s ease, border 0.3s ease;
+}
+
+/* Desktop collapsed state — toggled by the « button in the sidebar header.
+   The main-wrapper expands to fill the freed space because .app-layout is flex. */
+.sidebar.collapsed {
+  width: 0;
+  border-right: none;
+  overflow: hidden;
+}
+.sidebar.collapsed > * {
+  display: none;
+}
+
+/* Header layout for the new collapse button (« on the right of the title) */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sidebar-collapse-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: var(--transition);
+}
+.sidebar-collapse-btn:hover {
+  color: #fff;
+  border-color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+/* Desktop "show sidebar" button that appears in the top-header when the
+   sidebar is collapsed. Hidden on mobile (mobile uses the existing ☰ menu). */
+.sidebar-show-btn-desktop {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin-right: 12px;
+  transition: var(--transition);
+}
+.sidebar-show-btn-desktop:hover {
+  color: #fff;
+  border-color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.1);
+}
+@media (max-width: 768px) {
+  /* On mobile the toggle role is played by .menu-toggle (☰); the desktop
+     show button is irrelevant because the sidebar is a drawer anyway. */
+  .sidebar-show-btn-desktop {
+    display: none;
+  }
+  .sidebar-collapse-btn {
+    display: none;
+  }
 }
 
 /* Mobile Sidebar behavior */
