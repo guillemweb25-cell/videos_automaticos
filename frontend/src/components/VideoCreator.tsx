@@ -238,10 +238,13 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
       }
       setStatus('audio_ready');
       
-      // Give a tiny delay for React to settle, then run standard generate
+      // Give a tiny delay for React to settle, then run standard generate.
+      // Pass forceStartStatus='audio_ready' so the closure-captured stale `status`
+      // (which may still hold 'seo' / 'rendering' / 'ready' from before the reset)
+      // doesn't make the pipeline skip image generation.
       setTimeout(() => {
          setIsBusy(false);
-         handleGenerate();
+         handleGenerate('audio_ready');
       }, 500);
 
     } catch (err: any) {
@@ -250,7 +253,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (forceStartStatus?: string) => {
     if (!title || !script) {
       alert('Por favor, indica un título y un guion.');
       return;
@@ -305,10 +308,16 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
  
       if (stopRequested.current) throw new Error('Generación detenida por el usuario.');
 
-      // Determine what to skip based on either the record or our current progress 
-      let vStatus = (initialVideo?.status as any) || 'idle'; 
+      // Determine what to skip based on either the record or our current progress.
+      // forceStartStatus overrides everything — used by handleResetImages so the
+      // stale React `status` closure (captured before setStatus('audio_ready') flushed)
+      // doesn't make the pipeline skip image generation right after a reset.
+      let vStatus = (initialVideo?.status as any) || 'idle';
       if (['audio_ready', 'images_ready', 'seo', 'rendering', 'completed'].includes(status)) {
         vStatus = status;
+      }
+      if (forceStartStatus) {
+        vStatus = forceStartStatus;
       }
 
       // 2. Upload Script (Always do it if not already generating images/rendering to be safe, 
@@ -672,10 +681,10 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
               🔄 Forzar Regenerar Imágenes
             </button>
           )}
-          <button 
-            className="btn btn-primary" 
+          <button
+            className="btn btn-primary"
             style={{ minWidth: '200px' }}
-            onClick={handleGenerate}
+            onClick={() => handleGenerate()}
             disabled={isBusy || isLocked}
           >
             {status === 'idle' && !initialVideo ? 'Lanzar Generación 🚀' : 'Reintentar / Continuar'}

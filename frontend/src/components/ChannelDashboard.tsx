@@ -51,6 +51,10 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
   const [titlesCopied, setTitlesCopied] = useState(false);
   const [videosLoadedExtended, setVideosLoadedExtended] = useState(false);
   const [generations, setGenerations] = useState<VideoResponse[]>([]);
+  // Live render-progress per video, polled while a video is in "rendering" state.
+  // Backend writes to <base_dir>/output/render_progress.txt and exposes
+  // /videos/{id}/render-progress. We poll every 2.5s and update the UI bar.
+  const [renderProgress, setRenderProgress] = useState<{ [id: number]: number }>({});
   const [downloads, setDownloads] = useState<string[]>([]);
   const [musicFiles, setMusicFiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);

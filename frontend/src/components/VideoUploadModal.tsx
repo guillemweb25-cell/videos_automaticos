@@ -141,8 +141,15 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
       setTimeout(() => onClose(), 2000);
     } catch (err: any) {
       console.error(err);
-      setUploadStatus(isSync ? "Error al sincronizar" : "Error al subir el vídeo");
-      // status already set above via setUploadStatus
+      // Surface the actual backend error message (e.g. "Not authenticated with
+      // YouTube", "El archivo de vídeo no existe…") so the user can act on it
+      // instead of staring at a generic "Error al subir el vídeo".
+      const detail = err?.message || (isSync ? "Error al sincronizar" : "Error al subir el vídeo");
+      const friendly: { [k: string]: string } = {
+        "Not authenticated with YouTube":
+          "No has conectado este canal con YouTube (o el token caducó). Ve a Ajustes del canal → Conectar YouTube.",
+      };
+      setUploadStatus(friendly[detail] || `❌ ${detail}`);
     } finally {
       setUploading(false);
     }

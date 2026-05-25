@@ -651,12 +651,18 @@ class ImageEngine:
             style = "grabovoi"
         elif "sueno" in cn or "sueño" in cn or "despertar" in cn or "interpretacion" in cn:
             style = "despertar"
+        elif "korean" in cn or "koreano" in cn or "minhwa" in cn or any(
+            # Channel name written in Korean characters (Hangul) → treat as Korean channel.
+            "가" <= ch <= "힯" for ch in (channel_name or "")
+        ):
+            style = "koreano"
 
         # Add age boosters if child/young age mentioned in the prompt — UNLESS the channel
-        # explicitly forbids children (e.g. Grabovoi, Despertar). For those, strip child
-        # mentions and rely on the negative prompt to keep them out of the render.
+        # explicitly forbids children (e.g. Grabovoi, Despertar, Koreano).
+        # When forbidden, strip child mentions from the positive (don't reinforce them)
+        # so SDXL doesn't render a child even if the LLM accidentally wrote "young".
         vp_lower = visual_prompt.lower()
-        children_forbidden = style in ("grabovoi", "despertar")
+        children_forbidden = style in ("grabovoi", "despertar", "koreano")
         if any(x in vp_lower for x in ["child", "girl", "boy", "ten", "aged 10", "young"]):
             if children_forbidden:
                 # Scrub child-related tokens; don't reinforce them.
