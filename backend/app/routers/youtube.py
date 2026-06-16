@@ -36,6 +36,51 @@ class VideoMetadataUpdateRequest(BaseModel):
     description: str
     tags: str
 
+
+class ScanPublicChannelRequest(BaseModel):
+    """Request body for /youtube/scan-public-channel.
+
+    Accepts a YouTube channel URL ('https://youtube.com/@handle' or
+    'https://youtube.com/channel/UCxxx'), a bare handle ('@handle' or
+    'handle'), and an optional cap on how many videos to fetch.
+    """
+    url: str
+    max_videos: Optional[int] = 200
+
+
+@router.post("/scan-public-channel")
+async def scan_public_channel(
+    req: ScanPublicChannelRequest,
+    current_user = Depends(get_current_user),
+):
+    """Scrapes a PUBLIC YouTube channel's video list (no OAuth needed) via
+    yt-dlp. Use for competitor / niche research — separate from the OAuth-
+    authenticated channel data we already serve at /youtube/videos/{id}.
+
+    Runs the (blocking) yt-dlp call in a thread so the uvicorn event loop
+    isn't blocked while we fetch — without this, a channel with many
+    missing view_counts ties up the server for tens of seconds.
+
+    Returns: { ok, count, videos: [{video_id, title, view_count,
+    duration_seconds, upload_date, url}] } ordered as YouTube returns them
+    (newest first). The frontend can sort by view_count / date as needed.
+    """
+    import asyncio
+    try:
+        print(f"[scan-public-channel] start url={req.url!r} max={req.max_videos}", flush=True)
+        videos = await asyncio.to_thread(
+            YouTubeDLService.scan_channel,
+            req.url,
+            req.max_videos or 200,
+        )
+        print(f"[scan-public-channel] done — {len(videos)} videos", flush=True)
+        return {"ok": True, "count": len(videos), "videos": videos}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=f"Error escaneando canal: {e}")
+
+
 @router.get("/channel/{channel_id}")
 async def get_youtube_channel_info(
     channel_id: int,

@@ -10,7 +10,7 @@ interface ChannelDashboardProps {
   onChannelUpdated?: (updated: ChannelResponse) => void;
 }
 
-type TabType = 'overview' | 'videos' | 'shorts' | 'create' | 'youtube' | 'transcribe' | 'generations';
+type TabType = 'overview' | 'videos' | 'shorts' | 'create' | 'youtube' | 'transcribe' | 'generations' | 'analyzer';
 
 const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelUpdated }) => {
   const [activeTab, _setActiveTab] = useState<TabType>(() => {
@@ -51,6 +51,36 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
   const [titlesCopied, setTitlesCopied] = useState(false);
   const [videosLoadedExtended, setVideosLoadedExtended] = useState(false);
   const [generations, setGenerations] = useState<VideoResponse[]>([]);
+  // "Analizar Canal" tab — scrapes a public YouTube channel via yt-dlp
+  // (no OAuth) to research competitor titles / view counts. Independent
+  // from the user's own connected channels.
+  const [analyzerUrl, setAnalyzerUrl] = useState('');
+  const [analyzerVideos, setAnalyzerVideos] = useState<{
+    video_id: string;
+    title: string;
+    view_count: number | null;
+    duration_seconds: number | null;
+    upload_date: string | null;
+    url: string | null;
+  }[]>([]);
+  const [analyzerLoading, setAnalyzerLoading] = useState(false);
+  const [analyzerError, setAnalyzerError] = useState('');
+  const [analyzerSort, setAnalyzerSort] = useState<'date' | 'views'>('views');
+
+  const handleScanPublicChannel = async () => {
+    if (!analyzerUrl.trim()) return;
+    setAnalyzerLoading(true);
+    setAnalyzerError('');
+    setAnalyzerVideos([]);
+    try {
+      const res = await api.scanPublicChannel(analyzerUrl.trim(), 200);
+      setAnalyzerVideos(res.videos);
+    } catch (err: any) {
+      setAnalyzerError(err?.message || 'Error al escanear el canal.');
+    } finally {
+      setAnalyzerLoading(false);
+    }
+  };
   // Live render-progress per video, polled while a video is in "rendering" state.
   // Backend writes to <base_dir>/output/render_progress.txt and exposes
   // /videos/{id}/render-progress. We poll every 2.5s and update the UI bar.
@@ -412,6 +442,7 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
         <button className={`tab-btn ${activeTab === 'create' ? 'active' : ''}`} onClick={() => { setActiveTab('create'); setSelectedVideo(null); }}>✨ Crear Vídeo</button>
         <button className={`tab-btn ${activeTab === 'youtube' ? 'active' : ''}`} onClick={() => setActiveTab('youtube')}>YouTube a MP3</button>
         <button className={`tab-btn ${activeTab === 'transcribe' ? 'active' : ''}`} onClick={() => setActiveTab('transcribe')}>Transcripción</button>
+        <button className={`tab-btn ${activeTab === 'analyzer' ? 'active' : ''}`} onClick={() => setActiveTab('analyzer')}>🔍 Analizar Canal</button>
       </div>
 
       <div className="dashboard-content">
@@ -947,6 +978,125 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
           <div className="glass-panel">
             <h2>Transcripción con AI</h2>
             <p style={{ color: '#94a3b8' }}>Selecciona uno de tus audios descargados para transcribirlo.</p>
+          </div>
+        )}
+
+        {activeTab === 'analyzer' && (
+          <div className="glass-panel">
+            <h2>🔍 Analizar Canal Externo</h2>
+            <p style={{ color: '#94a3b8', marginBottom: '20px' }}>
+              Pega la URL de cualquier canal de YouTube (o su <code>@handle</code>) para ver su catálogo
+              ordenado por vistas o por fecha. Útil para investigar la competencia o explorar nichos.
+              Sin OAuth, sin quota — usa yt-dlp.
+            </p>
+
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <input
+                type="text"
+                placeholder="https://youtube.com/@canal  o  @canal"
+                value={analyzerUrl}
+                onChange={(e) => setAnalyzerUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleScanPublicChannel(); }}
+                style={{ flex: 1, padding: '10px', fontSize: '0.95rem' }}
+                disabled={analyzerLoading}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={handleScanPublicChannel}
+                disabled={analyzerLoading || !analyzerUrl.trim()}
+                style={{ minWidth: '140px' }}
+              >
+                {analyzerLoading ? 'Escaneando…' : '🔍 Escanear'}
+              </button>
+            </div>
+
+            {analyzerError && (
+              <div className="error-text" style={{ marginBottom: '16px' }}>{analyzerError}</div>
+            )}
+
+            {analyzerVideos.length > 0 && (
+              <>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ color: '#94a3b8' }}>
+                    {analyzerVideos.length} vídeos · ordenados por
+                  </span>
+                  <button
+                    className={`btn ${analyzerSort === 'views' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ padding: '4px 12px', fontSize: '0.85rem' }}
+                    onClick={() => setAnalyzerSort('views')}
+                  >
+                    👁️ Vistas
+                  </button>
+                  <button
+                    className={`btn ${analyzerSort === 'date' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ padding: '4px 12px', fontSize: '0.85rem' }}
+                    onClick={() => setAnalyzerSort('date')}
+                  >
+                    📅 Fecha
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 12px', fontSize: '0.85rem', marginLeft: 'auto' }}
+                    onClick={() => {
+                      const sorted = [...analyzerVideos].sort((a, b) =>
+                        analyzerSort === 'views'
+                          ? (b.view_count || 0) - (a.view_count || 0)
+                          : (b.upload_date || '').localeCompare(a.upload_date || '')
+                      );
+                      const lines = sorted.map((v, i) =>
+                        `${i + 1}. ${v.title} — ${
+                          v.view_count != null ? v.view_count.toLocaleString() + ' vistas' : 'sin datos'
+                        }`
+                      );
+                      navigator.clipboard.writeText(lines.join('\n'));
+                    }}
+                  >
+                    📋 Copiar lista
+                  </button>
+                </div>
+
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
+                      <th style={{ padding: '8px 12px', width: '40px' }}>#</th>
+                      <th style={{ padding: '8px 12px' }}>Título</th>
+                      <th style={{ padding: '8px 12px', width: '120px', textAlign: 'right' }}>Vistas</th>
+                      <th style={{ padding: '8px 12px', width: '100px' }}>Fecha</th>
+                      <th style={{ padding: '8px 12px', width: '70px' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...analyzerVideos]
+                      .sort((a, b) =>
+                        analyzerSort === 'views'
+                          ? (b.view_count || 0) - (a.view_count || 0)
+                          : (b.upload_date || '').localeCompare(a.upload_date || '')
+                      )
+                      .map((v, i) => (
+                        <tr key={v.video_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{i + 1}</td>
+                          <td style={{ padding: '8px 12px' }}>{v.title}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', color: '#a5b4fc' }}>
+                            {v.view_count != null ? v.view_count.toLocaleString() : '—'}
+                          </td>
+                          <td style={{ padding: '8px 12px', color: '#94a3b8', fontSize: '0.85rem' }}>
+                            {v.upload_date
+                              ? `${v.upload_date.slice(0, 4)}-${v.upload_date.slice(4, 6)}-${v.upload_date.slice(6, 8)}`
+                              : '—'}
+                          </td>
+                          <td style={{ padding: '8px 12px' }}>
+                            {v.url && (
+                              <a href={v.url} target="_blank" rel="noreferrer" style={{ color: '#a855f7' }}>
+                                Ver ↗
+                              </a>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </>
+            )}
           </div>
         )}
       </div>

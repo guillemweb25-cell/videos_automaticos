@@ -1052,6 +1052,30 @@ class ApiClient {
     if (!res.ok) throw new Error('Error al obtener estadísticas');
     return res.json();
   }
+
+  async scanPublicChannel(url: string, maxVideos: number = 200): Promise<{
+    ok: boolean;
+    count: number;
+    videos: {
+      video_id: string;
+      title: string;
+      view_count: number | null;
+      duration_seconds: number | null;
+      upload_date: string | null;
+      url: string | null;
+    }[];
+  }> {
+    const res = await fetch(`${this.baseUrl}/youtube/scan-public-channel`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: JSON.stringify({ url, max_videos: maxVideos }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al escanear canal');
+    }
+    return res.json();
+  }
 }
 
 export const api = new ApiClient();

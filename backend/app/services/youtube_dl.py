@@ -2,9 +2,136 @@ import os
 import subprocess
 from pathlib import Path
 
+from yt_dlp import YoutubeDL
+
 DOWNLOAD_BASE = Path("/app/cache/youtube_downloads")
 
 class YouTubeDLService:
+    @staticmethod
+    def scan_channel(
+        url_or_handle: str,
+        max_videos: int = 200,
+        lang: str = "es",
+        fetch_views_individually: bool = True,
+    ) -> list:
+        """
+        Lists a public YouTube channel's videos (no OAuth needed). Uses
+        yt-dlp's Python API in flat mode so we get title + view count +
+        duration without fetching each video page.
+
+        Accepts: full URL ("https://youtube.com/@handle"), bare handle
+        ("@handle" or "handle"), or a /videos URL.
+
+        Params:
+          - lang: ISO language code for HTTP Accept-Language. YouTube
+            auto-translates titles for viewers in other locales, so we have
+            to ask for the original-language version explicitly. Defaults
+            to Spanish since the app's primary audience is Hispanohablante.
+          - fetch_views_individually: when True, do a per-video metadata
+            fetch for any video whose view_count came back null from the
+            flat listing (some channels / YouTube A/B tests don't include
+            view_count inline). Adds ~50-200ms per missing video.
+
+        Returns: list of {video_id, title, view_count, duration_seconds,
+        upload_date (YYYYMMDD or None), url}.
+        """
+        u = (url_or_handle or "").strip()
+        if not u:
+            raise ValueError("URL o handle vacío")
+
+        if u.startswith("@"):
+            u = f"https://www.youtube.com/{u}/videos"
+        elif "youtube.com" not in u and "youtu.be" not in u:
+            # bare handle without @
+            u = f"https://www.youtube.com/@{u}/videos"
+        elif "/videos" not in u and "/shorts" not in u and "/streams" not in u:
+            # channel root → point at /videos tab
+            u = u.rstrip("/") + "/videos"
+
+        # Headers: tell YouTube we want the channel's native language so we
+        # don't get auto-translated titles back. Without this, YouTube
+        # serves English by default to bots without Accept-Language.
+        headers = {
+            "Accept-Language": f"{lang}-ES,{lang};q=0.9,en;q=0.5",
+        }
+
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": "in_playlist",
+            "playlistend": int(max_videos),
+            "skip_download": True,
+            "http_headers": headers,
+            "extractor_args": {
+                # Pass language hint to YouTube's tab extractor too — some
+                # versions of yt-dlp respect this for localized strings.
+                "youtubetab": {"lang": [lang]},
+                "youtube": {"lang": [lang]},
+            },
+        }
+
+        print(f"[scan_channel] fetching listing: {u}", flush=True)
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(u, download=False)
+
+        entries = (info or {}).get("entries") or []
+        print(f"[scan_channel] listing returned {len(entries)} entries", flush=True)
+        results = []
+        for e in entries:
+            if not e:
+                continue
+            vid = e.get("id")
+            results.append({
+                "video_id": vid,
+                "title": e.get("title"),
+                "view_count": e.get("view_count"),
+                "duration_seconds": e.get("duration"),
+                "upload_date": e.get("upload_date"),
+                "url": f"https://www.youtube.com/watch?v={vid}" if vid else None,
+            })
+
+        # Fallback: if view_count is null for some/all entries, fetch each
+        # missing video individually. Some channels don't expose view_count
+        # in the flat listing — only on the video page itself. We cap the
+        # extra fetches to keep response time bounded.
+        if fetch_views_individually:
+            missing = [r for r in results if r["view_count"] is None and r["video_id"]]
+            if missing:
+                detail_opts = {
+                    "quiet": True,
+                    "no_warnings": True,
+                    "skip_download": True,
+                    "http_headers": headers,
+                    "extractor_args": opts["extractor_args"],
+                }
+                # Cap at 30 detail fetches: keeps the worst-case wait under
+                # ~10s for a totally view-less listing while still covering
+                # the most recent videos (which is what researchers want).
+                MAX_DETAIL_FETCHES = 30
+                print(f"[scan_channel] {len(missing)} videos missing view_count, "
+                      f"fetching detail for first {min(len(missing), MAX_DETAIL_FETCHES)}",
+                      flush=True)
+                with YoutubeDL(detail_opts) as ydl:
+                    for i, r in enumerate(missing[:MAX_DETAIL_FETCHES]):
+                        try:
+                            d = ydl.extract_info(r["url"], download=False)
+                            r["view_count"] = d.get("view_count")
+                            # Also pull upload_date if it was missing
+                            if not r["upload_date"]:
+                                r["upload_date"] = d.get("upload_date")
+                            # And use the original (not auto-translated) title
+                            # if we got a different / richer one back.
+                            orig_title = d.get("title")
+                            if orig_title and orig_title != r["title"]:
+                                r["title"] = orig_title
+                            if (i + 1) % 5 == 0:
+                                print(f"[scan_channel] detail fetch progress: {i+1}/{min(len(missing), MAX_DETAIL_FETCHES)}", flush=True)
+                        except Exception as ex:
+                            print(f"[scan_channel] detail fetch failed for {r['video_id']}: {ex}", flush=True)
+
+        return results
+
+
     @staticmethod
     def download_audio(url: str, channel_name: str) -> str:
         """
