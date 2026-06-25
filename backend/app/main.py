@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
@@ -81,6 +82,20 @@ def recover_interrupted_videos():
         print(f"[startup] WARNING: could not recover interrupted videos: {e}", flush=True)
     finally:
         db.close()
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    """Root probe. Returns 200 so uptime monitors / reverse-proxy health checks
+    hitting the API domain root don't spam the logs with 404s."""
+    return {"status": "ok", "service": "Videos Automáticos API", "docs": "/docs"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Browsers auto-request /favicon.ico when the API URL is opened directly.
+    Return 204 No Content instead of a noisy 404."""
+    return Response(status_code=204)
 
 
 @app.get("/health")

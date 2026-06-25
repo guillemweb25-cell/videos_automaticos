@@ -308,6 +308,41 @@ STYLES: Dict[str, StyleSpec] = {
         ),
         "post_note": "Painterly ink-wash brushwork visible; warm earthen palette; soft golden backlight.",
     },
+    "lallamavioleta": {
+        "display_name": "La Llama Violeta (Saint Germain)",
+        "image_style_prompt": (
+            "Cinematic mystical photorealistic 3D render, dramatic spiritual atmosphere, "
+            "deep violet and gold colour palette (#7B2CBF, #9D4EDD, #C77DFF, #FFD700), "
+            "dramatic divine light beams from above, a transmuting VIOLET FLAME OF FIRE "
+            "(burning spiritual fire, plasma, glowing embers — NOT an animal) surrounding "
+            "or emanating from the focal subject, dark cosmic background with subtle "
+            "violet sacred geometry, bokeh effect with violet-gold particles, "
+            "high contrast violet-gold-dark, ascension energy, professional composition, "
+            "8k resolution, hyper-detailed textures; no on-image text"
+        ),
+        "negative_prompt": (
+            "(llama animal:1.6), (alpaca:1.5), (vicuna:1.5), (guanaco:1.4), (camelid:1.5), "
+            "lama glama, andean animal, camel, fur animal, wool animal, livestock, "
+            "farm animal, zoo animal, quadruped, hooves, animal snout, four-legged creature, "
+            + NEGATIVE_BASE
+            + ", cartoon, anime, manga, cel shading, flat colors, "
+            "western cartoon, disney style, pixar style, comic book, "
+            "bright backgrounds, pastel colors, washed-out, desaturated, "
+            "modern clothing, electronic devices, cars, contemporary architecture, "
+            "neon green, hot pink, lime yellow, "
+            "low quality, blurry, deformed, cluttered composition, "
+            "ugly, plastic CGI, cheap rendering"
+        ),
+        "post_note": (
+            "Photorealistic mystical 3D render; deep violet + gold palette; dramatic divine "
+            "lighting; transmuting violet flame as recurring visual motif; dark cosmic backgrounds. "
+            "CRITICAL DISAMBIGUATION: in this channel the Spanish word 'llama' and the term "
+            "'Llama Violeta' ALWAYS mean a VIOLET FLAME OF FIRE (spiritual fire, plasma, burning "
+            "violet energy) — they NEVER mean the Andean llama animal (lama glama, alpaca, "
+            "camelid). NEVER depict any animal. Whenever the narration says 'llama', render "
+            "burning violet fire/flame, never a creature."
+        ),
+    },
 }
 
 ALIASES = {
@@ -343,6 +378,10 @@ ALIASES = {
     "koreano": "koreano_minhwa",
     "korean": "koreano_minhwa",
     "minhwa": "koreano_minhwa",
+    "llamavioleta": "lallamavioleta",
+    "violeta": "lallamavioleta",
+    "saintgermain": "lallamavioleta",
+    "saint_germain": "lallamavioleta",
 }
 
 

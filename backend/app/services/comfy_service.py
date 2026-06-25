@@ -27,7 +27,26 @@ class ComfyService:
                     print(f"[DEBUG] Target Checkpoint: {node['inputs']['ckpt_name']}")
                     break
 
-            r = await client.post(f"{self.comfy_url}/prompt", json=payload)
+            try:
+                r = await client.post(f"{self.comfy_url}/prompt", json=payload)
+            except httpx.ConnectTimeout as e:
+                # httpx.ConnectTimeout raises with empty args, which makes
+                # str(e) = '' — caught by the upstream try/except as a silent
+                # failure and reported as "FAILED for video N:" with no detail.
+                # Surface a clear, actionable message: this almost always
+                # means the ComfyUI server on the LAN is off, listening only
+                # on 127.0.0.1, or blocked by the Windows firewall.
+                raise RuntimeError(
+                    f"No se puede conectar con el servidor ComfyUI en {self.comfy_url}. "
+                    "Comprueba que ComfyUI está arrancado en la máquina con la GPU "
+                    "y que escucha en 0.0.0.0 (no solo localhost). "
+                    f"Detalle httpx: {type(e).__name__}"
+                ) from e
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError) as e:
+                raise RuntimeError(
+                    f"Error de red con ComfyUI ({self.comfy_url}): "
+                    f"{type(e).__name__}: {e or '(sin mensaje)'}"
+                ) from e
             if r.status_code != 200:
                 print(f"[DEBUG] ComfyUI Error Response: {r.text}")
             r.raise_for_status()

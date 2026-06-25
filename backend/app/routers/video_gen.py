@@ -1067,11 +1067,20 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             db_bg.commit()
             print(f"[BG] Image generation complete for video {vid_id}. Total images: {total_images}")
         except Exception as e:
-            print(f"[BG] Image generation FAILED for video {vid_id}: {e}")
+            import traceback
+            tb = traceback.format_exc()
+            # Print BOTH the message AND the full traceback so the docker logs
+            # are diagnostic. Previously only `str(e)` was printed and many
+            # exceptions (KeyError(''), ValueError() with no message, etc.)
+            # rendered as an empty line, making the failure invisible.
+            print(f"[BG] Image generation FAILED for video {vid_id}: {type(e).__name__}: {e}", flush=True)
+            print(tb, flush=True)
             vid = db_bg.query(Video).filter(Video.id == vid_id).first()
             if vid:
                 vid.status = "failed"
-                vid.last_error = str(e)
+                # Save the exception class too, so an empty str(e) still tells
+                # us *something* in the UI's last_error field.
+                vid.last_error = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
                 db_bg.commit()
         finally:
             db_bg.close()

@@ -7,10 +7,62 @@ import requests
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from openai import OpenAI
-from app.services.style_service import StyleService
+from app.services.style_service import StyleService, ALIASES
 from app.services.comfy_service import ComfyService
 import asyncio
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+
+def scrub_violet_flame_ambiguity(text: str) -> str:
+    """For the 'La Llama Violeta' channel, the Spanish word 'llama' means FLAME,
+    but it is a false friend: SDXL reads the token 'llama' as the Andean animal
+    (lama glama) and renders it. The LLM correctly depicts a violet flame yet
+    often keeps the proper noun 'Llama Violeta' verbatim in the English prompt,
+    which is enough to trigger the animal. Strip the ambiguous token from the
+    POSITIVE prompt entirely (the negative prompt is only a second line of
+    defence and loses the seed lottery sometimes)."""
+    if not text:
+        return text
+    subs = [
+        (r"\bla llama violeta\b", "the violet flame"),
+        (r"\bllamas violetas\b", "violet flames"),
+        (r"\bllama violeta\b", "violet flame"),
+        (r"\bllamas\b", "flames"),
+        (r"\bllama\b", "flame"),
+    ]
+    for pat, rep in subs:
+        text = re.sub(pat, rep, text, flags=re.IGNORECASE)
+    return text
+
+
+def _is_violet_flame_style(style_name: Optional[str]) -> bool:
+    key = ALIASES.get((style_name or "").lower(), (style_name or "").lower())
+    return key == "lallamavioleta"
+
+
+_HUMAN_RE = re.compile(
+    r"\b(figure|person|people|man|men|woman|women|female|male|master|germain|"
+    r"human|being|silhouette|monk|priest|sage|meditat|devotee|seeker|saint)",
+    re.IGNORECASE,
+)
+
+
+def enforce_modest_clothing(text: str) -> str:
+    """The violet-flame channel produces lots of vague 'ethereal figure' prompts
+    with no wardrobe specified. SDXL/Juggernaut fills the gap with the 'ethereal
+    goddess' trope — bare-chested women. When a human is referenced and clothing
+    is not already specified, append an explicit modest-wardrobe clause so the
+    body is covered."""
+    if not text or not _HUMAN_RE.search(text):
+        return text
+    low = text.lower()
+    if "clothed" in low or "robe" in low or "garment" in low:
+        return text
+    clause = (
+        ", (fully clothed:1.3), wearing flowing floor-length violet and gold robes "
+        "that fully cover the body, modest high-neck covered garment, only face and hands visible"
+    )
+    return (text.rstrip().rstrip(".") + clause)[:950]
 
 
 # Universal safety override — prepended to every LLM system prompt.
@@ -56,21 +108,30 @@ SAFETY_OVERRIDE = (
     "   AVOID: literal volcanoes, human bodies in flames, demonic\n"
     "          skull-faces, nude or semi-nude figures, fire monsters.\n"
     "\n"
-    "2) MINORS IN DRAMATIC / VISIONARY / FRIGHTENING SCENES (children\n"
-    "   witnessing apparitions or visions — even if the narration explicitly\n"
-    "   names a minor like Lucía, Francisco, Jacinta, Bernadette, Melania,\n"
-    "   Maximino):\n"
-    "   USE: child seen FROM BEHIND, in 3/4 back-angle, as a silhouette\n"
-    "        against the light, OR shift the camera entirely to what the\n"
-    "        child is witnessing (the apparition above, the divine light,\n"
-    "        the distant atmosphere). Distress is implied through posture\n"
-    "        and context, NEVER through a facial close-up.\n"
-    "   ALWAYS: fully clothed in period-accurate modest clothing — long-\n"
-    "        sleeved blouse + long skirt + headscarf for girls, long-sleeved\n"
-    "        shirt + long trousers + cap for boys. NO bare shoulders,\n"
-    "        NO bare torso, NO exposed neckline, NO sleeveless top, NO\n"
-    "        thin straps. Hands and face are the only exposed skin.\n"
-    "   AVOID: any close-up where the child's terror is the focal subject.\n"
+    "2) MINORS — STRICTLY CONDITIONAL on the narration EXPLICITLY mentioning a\n"
+    "   named minor (e.g. Lucía, Francisco, Jacinta, Bernadette, Melania,\n"
+    "   Maximino) or directly describing 'three children', 'a small boy',\n"
+    "   'a young girl' etc. by literal English/Spanish words in the phrase\n"
+    "   being visualised THIS image:\n"
+    "   IF the narration does NOT contain any explicit reference to a minor,\n"
+    "   your prompt MUST NOT contain the words 'child', 'children', 'kid',\n"
+    "   'boy', 'girl', 'baby', 'infant', 'minor', 'teenager', 'youngster' or\n"
+    "   any close synonym. Default to ADULT subjects in their 30s-60s.\n"
+    "   The substitutions in this section apply ONLY when minors are\n"
+    "   explicitly invoked by the narration — they are NOT a general\n"
+    "   composition template for adults.\n"
+    "   When a minor IS named in the narration:\n"
+    "     USE: child seen FROM BEHIND, in 3/4 back-angle, as a silhouette\n"
+    "          against the light, OR shift the camera entirely to what the\n"
+    "          child is witnessing (the apparition above, the divine light,\n"
+    "          the distant atmosphere). Distress is implied through posture\n"
+    "          and context, NEVER through a facial close-up.\n"
+    "     ALWAYS: fully clothed in period-accurate modest clothing — long-\n"
+    "          sleeved blouse + long skirt + headscarf for girls, long-sleeved\n"
+    "          shirt + long trousers + cap for boys. NO bare shoulders,\n"
+    "          NO bare torso, NO exposed neckline, NO sleeveless top, NO\n"
+    "          thin straps. Hands and face are the only exposed skin.\n"
+    "     AVOID: any close-up where the child's terror is the focal subject.\n"
     "\n"
     "3) GRAPHIC VIOLENCE (corpses, dead bodies, gunshots, blood, battlefield,\n"
     "   assassination, martyrdom):\n"
@@ -255,6 +316,11 @@ class ImageEngine:
             p = p.strip("-• ").strip()
             if len(p.split()) > 3:
                 prompts.append(p[:800])
+        # Violet-flame channel post-processing: (1) remove the ambiguous 'llama'
+        # token so SDXL stops drawing the animal, (2) force modest wardrobe on
+        # human figures so 'ethereal figure' prompts don't render bare-chested.
+        if _is_violet_flame_style(style_name):
+            prompts = [enforce_modest_clothing(scrub_violet_flame_ambiguity(p)) for p in prompts]
         print(f"[generate_prompts] Returning {len(prompts[:n])} prompt(s); first: {(prompts[0][:120] if prompts else 'NONE')!r}", flush=True)
         return prompts[:n]
 
@@ -292,7 +358,10 @@ class ImageEngine:
             temperature=0.7
         )
         
-        return response.choices[0].message.content.strip()[:800]
+        out = response.choices[0].message.content.strip()[:800]
+        if _is_violet_flame_style(style_name):
+            out = enforce_modest_clothing(scrub_violet_flame_ambiguity(out))
+        return out
 
     def upload_init_image(self, image_path: Path) -> str:
         """Uploads an image to Leonardo.ai and returns the initImageId."""
@@ -657,13 +726,20 @@ class ImageEngine:
             "가" <= ch <= "힯" for ch in (channel_name or "")
         ):
             style = "koreano"
+        elif "llamavioleta" in cn or "llama violeta" in cn or "saintgermain" in cn or "saint germain" in cn:
+            style = "lallamavioleta"
+
+        # False-friend scrub + modest wardrobe for the violet-flame channel
+        # (see generate_prompts).
+        if style == "lallamavioleta":
+            visual_prompt = enforce_modest_clothing(scrub_violet_flame_ambiguity(visual_prompt))
 
         # Add age boosters if child/young age mentioned in the prompt — UNLESS the channel
-        # explicitly forbids children (e.g. Grabovoi, Despertar, Koreano).
+        # explicitly forbids children (e.g. Grabovoi, Despertar, Koreano, LlamaVioleta).
         # When forbidden, strip child mentions from the positive (don't reinforce them)
         # so SDXL doesn't render a child even if the LLM accidentally wrote "young".
         vp_lower = visual_prompt.lower()
-        children_forbidden = style in ("grabovoi", "despertar", "koreano")
+        children_forbidden = style in ("grabovoi", "despertar", "koreano", "lallamavioleta")
         if any(x in vp_lower for x in ["child", "girl", "boy", "ten", "aged 10", "young"]):
             if children_forbidden:
                 # Scrub child-related tokens; don't reinforce them.
