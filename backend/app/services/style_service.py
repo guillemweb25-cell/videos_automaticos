@@ -343,6 +343,32 @@ STYLES: Dict[str, StyleSpec] = {
             "burning violet fire/flame, never a creature."
         ),
     },
+    "zencrayon": {
+        "display_name": "Zen Crayon 3D (kids drawing)",
+        "image_style_prompt": (
+            "ais-crayz, whimsical child's drawing turned into a soft 3D render, playful "
+            "claymation style, chunky rounded shapes, soft matte plasticine clay texture, harmonious muted "
+            "natural color palette, soft storybook lighting, cute and friendly, clear simple composition"
+        ),
+        "negative_prompt": (
+            "(from behind:1.3), (back turned:1.3), (rear view:1.3), (facing away:1.2), back of head, "
+            "(oversaturated:1.3), (rainbow colors:1.3), (neon colors:1.3), garish, "
+            "(crayons:1.7), (crayon sticks:1.7), (colored pencils:1.6), (pencils:1.5), "
+            "(box of crayons:1.5), drawing crayons, wax crayon objects, scattered crayons, "
+            "(photorealistic:1.3), realistic photograph, gritty, horror, scary, creepy, "
+            "dark gloomy, text, watermark, signature, logo, blurry, low quality, jpeg artifacts, "
+            "extra fingers, deformed hands, bad anatomy, "
+            "(nudity:2.0), (nsfw:2.0), (nude:2.0), (bare breasts:1.9)"
+        ),
+        "post_note": (
+            "Whimsical 'kids crayon drawing turned 3D' channel. Depict each concept as a cute, "
+            "friendly 3D-rendered scene that looks like a child's crayon drawing brought to life: "
+            "chunky rounded characters and objects, waxy crayon textures, bright saturated colors, "
+            "soft lighting, storybook charm. Keep it warm, playful, clear and family-friendly. "
+            "ALWAYS start the prompt with the trigger word 'ais-crayz'. 1-2 characters, fully "
+            "clothed, no nudity, nothing scary or gory."
+        ),
+    },
 }
 
 ALIASES = {
@@ -382,6 +408,12 @@ ALIASES = {
     "violeta": "lallamavioleta",
     "saintgermain": "lallamavioleta",
     "saint_germain": "lallamavioleta",
+    "zenesp": "zencrayon",
+    "zennesp": "zencrayon",
+    "zen": "zencrayon",
+    "zendoodle": "zencrayon",
+    "crayon": "zencrayon",
+    "zen_crayon": "zencrayon",
 }
 
 

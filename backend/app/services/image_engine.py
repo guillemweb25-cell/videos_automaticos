@@ -56,12 +56,13 @@ def enforce_modest_clothing(text: str) -> str:
     if not text or not _HUMAN_RE.search(text):
         return text
     low = text.lower()
-    if "clothed" in low or "robe" in low or "garment" in low:
+    if "clothed" in low or "robe" in low or "garment" in low or "dressed" in low:
         return text
-    clause = (
-        ", (fully clothed:1.3), wearing flowing floor-length violet and gold robes "
-        "that fully cover the body, modest high-neck covered garment, only face and hands visible"
-    )
+    # Short, non-dominant clause: keep the safety (covered body, no exposed skin)
+    # WITHOUT dictating a specific 'flowing floor-length robe', which homogenised
+    # every image into the same standing-figure composition. Wardrobe styling is
+    # left to the channel style; nudity is also caught by the weighted negative.
+    clause = ", (fully clothed:1.2), modest clothing covering the body, no exposed skin below the neck"
     return (text.rstrip().rstrip(".") + clause)[:950]
 
 
@@ -220,7 +221,10 @@ class ImageEngine:
 
             "CHRONOLOGY & VARIETY: "
             "- Maintain character consistency (age, face, clothing) across the video, but CHANGE composition, angle, and specific interaction every prompt. "
-            "- If 'Recent History' shows a composition or focal element was used (e.g., 'two faces close', 'silhouettes merging'), use a COMPLETELY DIFFERENT visual approach for this prompt. Switch metaphor family entirely. "
+            "- VARY THE SHOT TYPE every image: deliberately alternate between wide establishing shots, medium shots, extreme close-ups (a hand, an eye, a single object), profile / side views, low angle and high angle. NEVER output two consecutive 'a single figure standing centered facing the camera' compositions — that is the #1 failure to avoid. "
+            "- NOT every image needs a person. Many images should focus on an OBJECT, SYMBOL, PLACE or ACTION drawn from the narration (e.g. a doorway, a path, a broken chain, a letter, a window at dawn, an empty chair). Only put a human as the main subject when the phrase is specifically about a person. "
+            "- Do NOT let the channel's recurring style motif become the SUBJECT of every image. The style element (a flame, an aura, a colour) is ATMOSPHERE/wrapper — depict the SPECIFIC concept of THIS paragraph as the subject, not the motif over and over. Avoid repeatedly showing hands cupping a glowing orb. "
+            "- If 'Recent History' shows a composition or focal element was used (e.g., 'two faces close', 'silhouettes merging', 'figure facing camera'), use a COMPLETELY DIFFERENT visual approach for this prompt. Switch metaphor family AND shot type entirely. "
             "- IF THE VIDEO INVOLVES SUPERNATURAL/CELESTIAL BEINGS (Angels, Demons, Spirits), DESCRIBE their supernatural features (wings, glowing aura, ethereal light) so they don't render as ordinary humans. "
 
             "CULTURAL AND TEMPORAL AUTHENTICITY (this is mandatory anti-bias guidance, not optional flavour): "
@@ -229,6 +233,12 @@ class ImageEngine:
             "- Do NOT substitute Greco-Roman togas/peplums, Levantine biblical robes, generic medieval European dress, Slavic Orthodox aesthetic with onion-domed churches, Tuscan/Mediterranean landscape with olive groves and cypresses, or Middle Eastern turbans for cultures and eras where they do not belong. "
             "- Examples (illustrative, not exhaustive): a 16th-century Nahua man on the Mexican altiplano wears a full-body tilma of agave fibre, has Mesoamerican features, and the landscape is arid high-desert with maguey and basalt — NOT a Greco-Roman peplum on Tuscan hills. A 19th-century Quechua herder wears a wool poncho and chullo on the Andes — NOT a Galilean tunic. A 20th-century rural European peasant wears period coats, hats and boots — NOT a biblical robe. "
             "- Before writing the prompt, reread the phrase and explicitly identify: which century, which country / region, which ethnic group, which climate. Then describe accordingly. "
+
+            "CAMERA & ORIENTATION (default — unless a higher-priority safety rule above overrides it): "
+            "show human characters FACING the camera or in a 3/4 FRONT view so the FACE is visible and "
+            "expressive. Do NOT default to back-to-camera, rear view, 'seen from behind', over-the-shoulder, "
+            "or a lone figure staring away into the distance. Only place a character with their back to the "
+            "camera when the narration or a safety rule explicitly requires it. "
 
             "ANATOMICAL CORRECTNESS: "
             "- Two arms, two legs, five fingers per hand. "
