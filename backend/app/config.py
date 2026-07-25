@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     COMFY_SEED: int | None = None
     LOCAL_TTS_URL: str = "http://192.168.1.32:8022"
 
+    # Telegram notifications (optional). Set both in .env to receive a message
+    # when image generation and render finish (or fail).
+    TELEGRAM_BOT_TOKEN: str | None = None
+    TELEGRAM_CHAT_ID: str | None = None
+
     # Stripe
     STRIPE_SECRET_KEY: str | None = None
     STRIPE_WEBHOOK_SECRET: str | None = None

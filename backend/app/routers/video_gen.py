@@ -25,6 +25,7 @@ from app.schemas.video import (
 from app.config import get_settings
 
 from app.services.audio_engine import AudioEngine
+from app.services.telegram_service import send_telegram
 from app.services.image_engine import ImageEngine
 from app.services.rendering_engine import RenderingEngine
 from app.services.seo_engine import SEOEngine
@@ -1066,6 +1067,11 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             vid.status = "images_ready"
             db_bg.commit()
             print(f"[BG] Image generation complete for video {vid_id}. Total images: {total_images}")
+            await asyncio.to_thread(
+                send_telegram,
+                f"✅ Imágenes listas — vídeo #{vid_id}\n{vid.title or ''}\n"
+                f"{total_images} imágenes generadas. Listo para revisar/renderizar.",
+            )
         except Exception as e:
             import traceback
             tb = traceback.format_exc()
@@ -1082,6 +1088,10 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                 # us *something* in the UI's last_error field.
                 vid.last_error = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
                 db_bg.commit()
+            await asyncio.to_thread(
+                send_telegram,
+                f"❌ Generación de imágenes FALLÓ — vídeo #{vid_id}\n{type(e).__name__}: {e}",
+            )
         finally:
             db_bg.close()
     
@@ -2445,10 +2455,16 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None):
         video.status = "ready"
         db.commit()
 
+        send_telegram(
+            f"🎬 Render terminado — vídeo #{video.id}\n{video.title or ''}\nMP4 listo para subir."
+        )
         return {"ok": True, "output": str(out_path), "bg_music": str(bg_music_path) if bg_music_path else None, "subtitles": subtitles}
     except Exception as e:
         video.status = "failed"
         video.last_error = str(e)
         db.commit()
+        send_telegram(
+            f"❌ Render FALLÓ — vídeo #{video.id}\n{video.title or ''}\n{type(e).__name__}: {e}"
+        )
         raise
 
