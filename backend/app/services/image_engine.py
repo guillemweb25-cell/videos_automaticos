@@ -503,7 +503,7 @@ class ImageEngine:
         
         return {"amount": cost_amount, "seed": img_data.get("seed")}
 
-    async def generate_comfy_image(self, prompt: str, out_path: Path, size: str = "1024x1024", negative_prompt: Optional[str] = None, workflow_name: str = "Comic-Horror.json", seed: Optional[int] = None) -> Dict[str, Any]:
+    async def generate_comfy_image(self, prompt: str, out_path: Path, size: str = "1024x1024", negative_prompt: Optional[str] = None, workflow_name: str = "Comic-Horror.json", seed: Optional[int] = None, loras: Optional[List[Dict[str, Any]]] = None, trigger_words: Optional[str] = None) -> Dict[str, Any]:
         """Generates an image using local ComfyUI via ComfyService."""
         # Use absolute path inside Docker container
         workflow_path = Path("/app/workflows") / workflow_name
@@ -531,7 +531,9 @@ class ImageEngine:
             negative_prompt=negative_prompt,
             width=w,
             height=h,
-            seed=seed
+            seed=seed,
+            loras=loras,
+            trigger_words=trigger_words
         )
 
         print(f"Executing ComfyUI workflow: {workflow_name}")

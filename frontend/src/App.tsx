@@ -5,6 +5,7 @@ import { Settings } from './components/Settings'
 import { Payments } from './components/Payments'
 import { AdminDashboard } from './components/AdminDashboard'
 import OrphansManager from './components/OrphansManager'
+import { LoraManager } from './components/LoraManager'
 
 function App() {
   const [user, setUser] = useState<UserResponse | null>(null)
@@ -35,6 +36,7 @@ function App() {
   const [showPayments, setShowPayments] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
   const [showOrphans, setShowOrphans] = useState(false)
+  const [showLoras, setShowLoras] = useState(false)
 
   // Channel Form State
   const [channelName, setChannelName] = useState('')
@@ -106,6 +108,7 @@ function App() {
     setShowAdmin(false)
     setShowOrphans(false)
     setSelectedChannel(null)
+    setShowLoras(false)
     setSidebarOpen(false)
   }
 
@@ -115,6 +118,7 @@ function App() {
     setShowPayments(false)
     setShowOrphans(false)
     setSelectedChannel(null)
+    setShowLoras(false)
     setSidebarOpen(false)
   }
 
@@ -124,6 +128,7 @@ function App() {
     setShowPayments(false)
     setShowAdmin(false)
     setSelectedChannel(null)
+    setShowLoras(false)
     setSidebarOpen(false)
   }
 
@@ -133,11 +138,22 @@ function App() {
     setShowPayments(false)
     setShowAdmin(false)
     setShowOrphans(false)
+    setShowLoras(false)
     if (channel) {
       localStorage.setItem('selectedChannelId', channel.id.toString())
     } else {
       localStorage.removeItem('selectedChannelId')
     }
+    setSidebarOpen(false)
+  }
+
+  const handleShowLoras = () => {
+    setShowLoras(true)
+    setShowSettings(false)
+    setShowPayments(false)
+    setShowAdmin(false)
+    setShowOrphans(false)
+    setSelectedChannel(null)
     setSidebarOpen(false)
   }
 
@@ -147,6 +163,7 @@ function App() {
     setShowAdmin(false)
     setShowOrphans(false)
     setSelectedChannel(null)
+    setShowLoras(false)
     setSidebarOpen(false)
   }
 
@@ -323,6 +340,15 @@ function App() {
             <span>Limpieza</span>
           </div>
 
+          <div
+            className={`channel-link ${showLoras ? 'active' : ''}`}
+            onClick={handleShowLoras}
+            style={{ marginTop: '4px' }}
+          >
+            <div className="channel-icon" style={{ background: '#4c1d95' }}>🎛️</div>
+            <span>LoRAs</span>
+          </div>
+
           {user.is_admin && (
             <div 
               className={`channel-link ${showAdmin ? 'active' : ''}`}
@@ -379,7 +405,7 @@ function App() {
             </button>
           )}
           <div style={{ fontWeight: 600 }}>
-            {showSettings ? 'Ajustes' : showPayments ? 'Créditos y Pagos' : showAdmin ? 'Panel de Administración' : showOrphans ? 'Limpieza de vídeos' : selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
+            {showLoras ? 'LoRAs' : showSettings ? 'Ajustes' : showPayments ? 'Créditos y Pagos' : showAdmin ? 'Panel de Administración' : showOrphans ? 'Limpieza de vídeos' : selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
           </div>
           {selectedChannel && (
             <button className="btn-delete" onClick={() => handleDeleteChannel(selectedChannel.id)}>
@@ -389,7 +415,9 @@ function App() {
         </header>
         
         <div className="content-area">
-          {showSettings ? (
+          {showLoras ? (
+            <LoraManager />
+          ) : showSettings ? (
             <Settings />
           ) : showPayments ? (
             <Payments user={user} onUpdateUser={(updated) => setUser(updated)} />

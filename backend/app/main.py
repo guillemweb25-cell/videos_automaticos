@@ -4,7 +4,7 @@ from fastapi.responses import Response
 
 from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
-from app.routers import auth, channels, youtube, video_gen, settings, payments, admin
+from app.routers import auth, channels, youtube, video_gen, settings, payments, admin, loras
 
 settings_config = get_settings()
 
@@ -40,6 +40,7 @@ app.add_middleware(
 # Routers
 app.include_router(auth.router)
 app.include_router(channels.router)
+app.include_router(loras.router)
 app.include_router(settings.router)
 app.include_router(youtube.router)
 app.include_router(video_gen.public_router, prefix="/videos", tags=["video-gen-public"])

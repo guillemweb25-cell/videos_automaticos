@@ -811,7 +811,13 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
             
             # Load channel for custom style
             channel = db_bg.query(Channel).filter(Channel.id == vid.channel_id).first()
-            
+
+            # Resolve the channel's assigned LoRAs once (injected into every ComfyUI image).
+            from app.services.lora_service import resolve_channel_loras
+            channel_loras, channel_trigger = resolve_channel_loras(db_bg, channel)
+            if channel_loras:
+                print(f"[loras] channel {channel.id} using {len(channel_loras)} LoRA(s); trigger: {channel_trigger[:80]!r}", flush=True)
+
             seconds_per_image = 10.0
             all_prompts_data = {
                 "video_id": vid_id,
@@ -981,6 +987,8 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                                 size=f"{vid.width}x{vid.height}",
                                 negative_prompt=neg,
                                 workflow_name=current_wf,
+                                loras=channel_loras,
+                                trigger_words=channel_trigger,
                             )
                             cost_info = result
                         else:
@@ -1244,7 +1252,9 @@ async def regenerate_image(
     channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
     style = StyleService.get_channel_style(channel, style_name)
     neg = style.get("negative_prompt")
-    
+    from app.services.lora_service import resolve_channel_loras
+    channel_loras, channel_trigger = resolve_channel_loras(db, channel)
+
     # Check if a specific model was requested (passed as a query param or from somewhere)
     # For now, we'll allow an optional model_id in the regenerate call too if we want
     if generation_mode.upper() == "COMFYUI":
@@ -1258,7 +1268,7 @@ async def regenerate_image(
             else:
                 wf_name = "Comic-Horror.json"
 
-        result = await engine.generate_comfy_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, workflow_name=wf_name, seed=req.seed)
+        result = await engine.generate_comfy_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, workflow_name=wf_name, seed=req.seed, loras=channel_loras, trigger_words=channel_trigger)
         cost_info = result
     else:
         cost_info = await engine.generate_leonardo_image(target_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, model_id=model_id, mode=generation_mode)
@@ -1418,7 +1428,9 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
     
     style = StyleService.get_channel_style(channel, effective_style)
     neg = style.get("negative_prompt")
-    
+    from app.services.lora_service import resolve_channel_loras
+    channel_loras, channel_trigger = resolve_channel_loras(db, channel)
+
     if generation_mode.upper() == "COMFYUI":
         if not wf_name:
             if "ultra" in style_name.lower():
@@ -1430,7 +1442,7 @@ async def add_image(video_id: int, req: AddImageRequest, db: Session = Depends(g
             else:
                 wf_name = "Comic-Horror.json"
 
-        cost_info = await engine.generate_comfy_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, workflow_name=wf_name)
+        cost_info = await engine.generate_comfy_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, workflow_name=wf_name, loras=channel_loras, trigger_words=channel_trigger)
     else:
         cost_info = await engine.generate_leonardo_image(new_prompt, out_path, size=f"{video.width}x{video.height}", negative_prompt=neg, init_image_id=init_image_id, model_id=model_id, mode=generation_mode)
 

@@ -3,7 +3,7 @@ import random
 import asyncio
 import httpx
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from app.config import get_settings
 
 settings = get_settings()
@@ -164,9 +164,85 @@ class ComfyService:
         print(f"[DEBUG] Snapping {width}x{height} (ratio {target_ratio:.2f}) to SDXL bucket {best_bucket[0]}x{best_bucket[1]} (ratio {best_bucket[0]/best_bucket[1]:.2f})")
         return best_bucket
 
-    def prepare_workflow(self, 
-        base_workflow: Dict[str, Any], 
-        prompt: str, 
+    async def get_available_loras(self) -> List[str]:
+        """Ask ComfyUI for the exact list of LoRA files it can load (the enum in
+        LoraLoader.lora_name). Returns the strings verbatim — including any
+        subfolder prefix with the OS separator ComfyUI uses — so they can be
+        stored as-is in a LoraLoader node. Returns [] if ComfyUI is unreachable."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(f"{self.comfy_url}/object_info/LoraLoader")
+                r.raise_for_status()
+                data = r.json()
+                return list(data["LoraLoader"]["input"]["required"]["lora_name"][0])
+        except Exception as e:
+            print(f"[loras] could not fetch lora list from ComfyUI: {type(e).__name__}: {e}", flush=True)
+            return []
+
+    def _inject_loras(self, workflow: Dict[str, Any], loras: Optional[List[Dict[str, Any]]]) -> None:
+        """Insert a chain of LoraLoader nodes right after the checkpoint loader
+        and rewire every MODEL/CLIP consumer through them. Mutates `workflow`
+        in place. Safe no-op if `loras` is empty or the workflow has no
+        CheckpointLoaderSimple (e.g. non-SDXL graphs)."""
+        if not loras:
+            return
+
+        ckpt_id = None
+        for nid, node in workflow.items():
+            if node.get("class_type") == "CheckpointLoaderSimple":
+                ckpt_id = nid
+                break
+        if ckpt_id is None:
+            print("[loras] no CheckpointLoaderSimple in workflow — skipping LoRA injection", flush=True)
+            return
+
+        digit_ids = [int(k) for k in workflow.keys() if str(k).isdigit()]
+        next_id = (max(digit_ids) + 1) if digit_ids else 1
+
+        model_src = [ckpt_id, 0]
+        clip_src = [ckpt_id, 1]
+        new_ids = []
+        for lora in loras:
+            fname = lora.get("filename")
+            if not fname:
+                continue
+            nid = str(next_id)
+            next_id += 1
+            workflow[nid] = {
+                "inputs": {
+                    "lora_name": fname,
+                    "strength_model": float(lora.get("model_strength", 1.0) or 0.0),
+                    "strength_clip": float(lora.get("clip_strength", 1.0) or 0.0),
+                    "model": model_src,
+                    "clip": clip_src,
+                },
+                "class_type": "LoraLoader",
+                "_meta": {"title": f"LoRA {lora.get('label', fname)}"},
+            }
+            new_ids.append(nid)
+            model_src = [nid, 0]
+            clip_src = [nid, 1]
+
+        if not new_ids:
+            return
+
+        # Rewire every OTHER node's MODEL([ckpt,0]) and CLIP([ckpt,1]) references to
+        # the tail of the LoRA chain. VAE ([ckpt,2]) and the LoRA nodes stay.
+        new_id_set = set(new_ids)
+        for nid, node in workflow.items():
+            if nid in new_id_set:
+                continue
+            for key, val in node.get("inputs", {}).items():
+                if isinstance(val, list) and len(val) == 2 and val[0] == ckpt_id:
+                    if val[1] == 0:
+                        node["inputs"][key] = list(model_src)
+                    elif val[1] == 1:
+                        node["inputs"][key] = list(clip_src)
+        print(f"[loras] injected {len(new_ids)} LoRA(s) after checkpoint node {ckpt_id}", flush=True)
+
+    def prepare_workflow(self,
+        base_workflow: Dict[str, Any],
+        prompt: str,
         negative_prompt: Optional[str] = None,
         width: int = 1024,
         height: int = 1024,
@@ -174,13 +250,25 @@ class ComfyService:
         negative_node_id: Optional[str] = None,
         latent_node_id: Optional[str] = None,
         seed_node_id: Optional[str] = None,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        loras: Optional[List[Dict[str, Any]]] = None,
+        trigger_words: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Injects parameters into a workflow dictionary.
         Tries to find nodes by ID, then by Title, then by Class Type.
+
+        `loras`: optional list of {filename, model_strength, clip_strength, label}
+        to inject as LoraLoader nodes after the checkpoint.
+        `trigger_words`: optional string prepended to the positive prompt (LoRA
+        activation words).
         """
         workflow = json.loads(json.dumps(base_workflow)) # Deep copy
+
+        # 0. Inject LoRAs (chained LoraLoader nodes after the checkpoint), before
+        #    we resolve positive/negative nodes — injection only rewires MODEL/CLIP
+        #    edges, so the CLIPTextEncode nodes keep their identity.
+        self._inject_loras(workflow, loras)
 
         # 1. Find Positive Prompt Node
         pos_node = None
@@ -202,8 +290,9 @@ class ComfyService:
         
         if pos_node:
             existing_text = pos_node["inputs"].get("text", "")
-            # Put the user prompt first to give it more weight
-            final_pos = f"{prompt}, {existing_text}" if existing_text else prompt
+            # Order: LoRA trigger words -> user prompt -> workflow style block.
+            parts = [p for p in [(trigger_words or "").strip(), prompt, existing_text] if p]
+            final_pos = ", ".join(parts)
             pos_node["inputs"]["text"] = final_pos
             print(f"[DEBUG] Final Positive Prompt: {final_pos}")
 

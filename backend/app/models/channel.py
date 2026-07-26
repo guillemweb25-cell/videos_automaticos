@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -16,6 +16,7 @@ class Channel(Base):
     negative_prompt = Column(Text, nullable=True)  # Custom negative prompt
     default_style = Column(String(100), nullable=True)  # Alias del estilo por defecto (epic, onirico, ...)
     default_workflow = Column(String(255), nullable=True)  # Workflow ComfyUI .json por defecto
+    loras = Column(JSON, nullable=True)  # Lista ordenada de ids de LoRA a inyectar (registro `loras`)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False)

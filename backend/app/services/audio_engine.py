@@ -245,7 +245,23 @@ class AudioEngine:
                     
         if current_part:
             parts.append(current_part.strip())
-            
+
+        # Merge chunks that are too short into a neighbour. Autoregressive TTS
+        # (XTTS-v2 especially) produces artifacts — a sudden deep, slowed
+        # "tomb" voice — when handed a tiny standalone fragment such as
+        # "Los mayores no.". Never send a chunk shorter than MIN_LEN chars on
+        # its own; fold it into the previous chunk (mild overflow is fine).
+        MIN_LEN = 60
+        if len(parts) > 1:
+            merged: List[str] = []
+            for p in parts:
+                if merged and (len(p) < MIN_LEN or len(merged[-1]) < MIN_LEN) \
+                        and len(merged[-1]) + 1 + len(p) <= limit + 120:
+                    merged[-1] = f"{merged[-1]} {p}"
+                else:
+                    merged.append(p)
+            parts = merged
+
         return parts
 
     @staticmethod

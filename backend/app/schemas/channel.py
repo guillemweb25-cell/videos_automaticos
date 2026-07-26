@@ -10,6 +10,7 @@ class ChannelBase(BaseModel):
     negative_prompt: str | None = None
     default_style: str | None = None
     default_workflow: str | None = None
+    loras: list[int] | None = None
 
 
 class ChannelCreate(ChannelBase):
@@ -24,6 +25,7 @@ class ChannelUpdate(BaseModel):
     negative_prompt: str | None = None
     default_style: str | None = None
     default_workflow: str | None = None
+    loras: list[int] | None = None
 
 
 class ChannelResponse(ChannelBase):

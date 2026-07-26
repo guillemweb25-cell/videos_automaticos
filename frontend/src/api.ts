@@ -67,6 +67,19 @@ export interface ChannelResponse {
   negative_prompt?: string;
   default_style?: string | null;
   default_workflow?: string | null;
+  loras?: number[] | null;
+}
+
+export interface Lora {
+  id: number;
+  label: string;
+  filename: string;
+  trigger_words?: string | null;
+  model_strength: number;
+  clip_strength: number;
+  notes?: string | null;
+  user_id: number;
+  created_at: string;
 }
 
 export interface YouTubeChannelInfo {
@@ -1075,6 +1088,54 @@ class ApiClient {
       throw new Error(err.detail || 'Error al escanear canal');
     }
     return res.json();
+  }
+
+  // LoRA Methods
+  async getLoras(): Promise<Lora[]> {
+    const res = await fetch(`${this.baseUrl}/loras/`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener LoRAs');
+    return res.json();
+  }
+
+  async getAvailableLoraFiles(): Promise<string[]> {
+    const res = await fetch(`${this.baseUrl}/loras/available-files`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener ficheros de LoRA de ComfyUI');
+    return res.json();
+  }
+
+  async createLora(data: Partial<Lora>): Promise<Lora> {
+    const res = await fetch(`${this.baseUrl}/loras/`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al crear LoRA');
+    }
+    return res.json();
+  }
+
+  async updateLora(id: number, data: Partial<Lora>): Promise<Lora> {
+    const res = await fetch(`${this.baseUrl}/loras/${id}`, {
+      method: 'PATCH',
+      headers: this.getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al actualizar LoRA');
+    return res.json();
+  }
+
+  async deleteLora(id: number): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/loras/${id}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al eliminar LoRA');
   }
 }
 
