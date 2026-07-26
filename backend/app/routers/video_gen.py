@@ -473,6 +473,7 @@ async def generate_audio(
 
     video.status = "generating_audio"
     video.voice = voice
+    video.tts_provider = provider  # remember it so single-paragraph regen matches
     video.last_error = None
     db.commit()
 
@@ -537,6 +538,112 @@ async def generate_audio(
     loop.run_in_executor(None, _do_audio_sync, video_id, voice, provider)
 
     return {"ok": True, "background": True, "status": "generating_audio"}
+
+
+def _infer_tts_provider(voice: str) -> str:
+    """Best-effort provider from the voice id, used only for old videos that
+    predate the stored `tts_provider`. Checks the local XTTS catalogue FIRST
+    because a cloned seed name (e.g. 'grandpa') can collide with an ElevenLabs
+    preset, and this setup is XTTS-first."""
+    from app.services.audio_engine import VOICES as _TIKTOK_VOICES
+    from app.services.elevenlabs_voices import ELEVEN_VOICES
+    if voice in _TIKTOK_VOICES:
+        return "tiktok"
+    try:
+        url = getattr(get_settings(), "LOCAL_TTS_URL", "http://192.168.1.46:8022")
+        r = requests.get(f"{url}/voices", timeout=5)
+        if r.ok:
+            xtts_voices = r.json().get("voices") or []
+            if voice in xtts_voices:
+                return "local_xtts"
+            # We reached the XTTS server and the voice is NOT one of its seeds —
+            # only now is it safe to trust an ElevenLabs preset name.
+            if voice in ELEVEN_VOICES:
+                return "elevenlabs"
+    except Exception:
+        pass
+    # XTTS server unreachable/busy (its /generate blocks /voices) or ambiguous:
+    # default to local XTTS. NEVER fall through to ElevenLabs when uncertain — a
+    # cloned seed name (e.g. 'grandpa') collides with an ElevenLabs preset.
+    return "local_xtts"
+
+
+@router.post("/{video_id}/paragraphs/{paragraph_id}/regenerate-audio")
+async def regenerate_paragraph_audio(
+    video_id: int,
+    paragraph_id: int,
+    provider: Optional[str] = None,
+    voice: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Re-synthesize ONLY this paragraph's audio (e.g. to fix a TTS glitch)
+    without redoing the whole video. Overwrites its mp3, updates its duration in
+    paragraphs_durations.json and the video total, and drops the stale word
+    transcript so image/subtitle timing re-derives at render."""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    base_dir = Path(video.base_dir)
+    plan_path = base_dir / "plan.json"
+    if not plan_path.exists():
+        raise HTTPException(status_code=400, detail="Script no subido")
+    plan = json.loads(plan_path.read_text())
+    item = next((p for p in plan if p.get("idx") == paragraph_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Párrafo no encontrado")
+
+    text = item["spoken"]
+    vc = voice or video.voice or "es_mx_002"
+    # Prefer the provider actually used to generate the video; fall back to the
+    # request override, then to inference for old videos without it stored.
+    prov = (provider or getattr(video, "tts_provider", None) or _infer_tts_provider(vc)).lower()
+    out_path = base_dir / "audio/chunks" / f"{paragraph_id:03d}.mp3"
+
+    # ElevenLabs needs the key — fetch it before the worker thread (the request
+    # DB session must not be used off-thread).
+    eleven_key = None
+    if prov == "elevenlabs":
+        s = get_user_settings_for_video(video, db)
+        eleven_key = s.elevenlabs_api_key if s else None
+
+    def _work():
+        # Synthesize to a temp file and only swap it in on success, so a failed
+        # regen (e.g. ElevenLabs 402) never leaves the paragraph without audio.
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out_path.parent / f"{out_path.stem}.regen.tmp{out_path.suffix}"
+        tmp.unlink(missing_ok=True)
+        if prov == "elevenlabs":
+            AudioEngine.synthesize_elevenlabs(text, vc, tmp, api_key=eleven_key)
+        elif prov == "local_xtts":
+            AudioEngine.synthesize_local_xtts(text, vc, tmp)
+        else:
+            AudioEngine.synthesize_tiktok(text, vc, tmp)
+        tmp.replace(out_path)  # original preserved if synthesis raised above
+        return AudioEngine.get_duration(out_path)
+
+    try:
+        dur = await asyncio.to_thread(_work)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al regenerar audio: {e}")
+
+    durations_path = base_dir / "paragraphs_durations.json"
+    if durations_path.exists():
+        durs = json.loads(durations_path.read_text())
+        if not any(d.get("id") == paragraph_id for d in durs):
+            durs.append({"id": paragraph_id, "seconds": dur, "file": out_path.name})
+        for d in durs:
+            if d.get("id") == paragraph_id:
+                d["seconds"] = dur
+                d["file"] = out_path.name
+        durations_path.write_text(json.dumps(durs, indent=2))
+        video.duration_seconds = sum(d.get("seconds", 0) for d in durs)
+        db.commit()
+
+    # Drop stale word-level transcript for this paragraph (audio changed).
+    (base_dir / "transcripts" / f"p{paragraph_id:03d}.json").unlink(missing_ok=True)
+
+    return {"ok": True, "paragraph_id": paragraph_id, "seconds": dur}
 
 
 @router.get("/{video_id}/audio-progress")

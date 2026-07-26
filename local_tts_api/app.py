@@ -57,13 +57,36 @@ async def generate_audio(
 
         print(f"Generating audio for text: {text[:50]}... in {language} with voice {voice_id}")
         
-        # Generate audio using XTTSv2
-        tts.tts_to_file(
-            text=text,
-            speaker_wav=str(ref_path),
-            language=language,
-            file_path=output_path
+        # Generate audio using XTTSv2.
+        # Tuned generation to reduce the end-of-clip hallucination artifact
+        # (the "reversed / garbled audio" heard at sentence joins): a high
+        # repetition_penalty and lower temperature make XTTS-v2 far more stable.
+        # Wrapped defensively so an unsupported kwarg on this TTS build can never
+        # break synthesis — it just falls back to plain generation.
+        gen_kwargs = dict(
+            temperature=0.65,
+            repetition_penalty=10.0,
+            length_penalty=1.0,
+            top_k=50,
+            top_p=0.85,
+            enable_text_splitting=True,
         )
+        try:
+            tts.tts_to_file(
+                text=text,
+                speaker_wav=str(ref_path),
+                language=language,
+                file_path=output_path,
+                **gen_kwargs,
+            )
+        except TypeError as e:
+            print(f"[xtts] generation kwargs unsupported ({e}); falling back to defaults", flush=True)
+            tts.tts_to_file(
+                text=text,
+                speaker_wav=str(ref_path),
+                language=language,
+                file_path=output_path,
+            )
 
         # Return the generated file and schedule its deletion
         background_tasks.add_task(remove_file, output_path)

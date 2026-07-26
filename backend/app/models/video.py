@@ -20,6 +20,7 @@ class Video(Base):
     
     # Generation Parameters Persistence
     voice = Column(String(100), nullable=True)
+    tts_provider = Column(String(50), nullable=True)  # tiktok | elevenlabs | local_xtts
     style = Column(String(100), nullable=True)
     max_images_per_paragraph = Column(Integer, default=2)
     llm_provider = Column(String(50), default="openai")

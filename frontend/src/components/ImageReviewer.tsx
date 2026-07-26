@@ -11,6 +11,8 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [addingImage, setAddingImage] = useState<number | null>(null);
   const [regeneratingParagraph, setRegeneratingParagraph] = useState<number | null>(null);
+  const [regeneratingAudio, setRegeneratingAudio] = useState<number | null>(null);
+  const [audioBust, setAudioBust] = useState<{ [key: number]: number }>({});
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [converting, setConverting] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
@@ -213,6 +215,19 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
       alert(error?.message || "Error al auto-completar imágenes");
     } finally {
       setAddingImage(null);
+    }
+  };
+
+  const handleRegenerateAudio = async (paraId: number) => {
+    setRegeneratingAudio(paraId);
+    try {
+      await api.regenerateParagraphAudio(videoId, paraId);
+      // Bust the <audio> cache so the player reloads the freshly synthesized file.
+      setAudioBust(prev => ({ ...prev, [paraId]: Date.now() }));
+    } catch (e: any) {
+      alert(e.message || 'Error al regenerar el audio');
+    } finally {
+      setRegeneratingAudio(null);
     }
   };
 
@@ -745,11 +760,24 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                 
                 <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <label style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 'bold' }}>AUDIO:</label>
-                  <audio 
-                    controls 
-                    src={`${API_URL}${item.audio_url}`} 
-                    style={{ height: '32px', flex: 1, filter: 'invert(1) hue-rotate(180deg) brightness(1.5)' }} 
+                  <audio
+                    controls
+                    src={`${API_URL}${item.audio_url}${audioBust[item.paragraph_id] ? `?t=${audioBust[item.paragraph_id]}` : ''}`}
+                    style={{ height: '32px', flex: 1, filter: 'invert(1) hue-rotate(180deg) brightness(1.5)' }}
                   />
+                  <button
+                    onClick={() => handleRegenerateAudio(item.paragraph_id)}
+                    disabled={regeneratingAudio === item.paragraph_id}
+                    style={{
+                      fontSize: '0.8rem', padding: '4px 10px', borderRadius: '6px', border: 'none',
+                      cursor: regeneratingAudio === item.paragraph_id ? 'wait' : 'pointer',
+                      background: '#0891b2', color: '#fff', fontWeight: 600, whiteSpace: 'nowrap',
+                      opacity: regeneratingAudio === item.paragraph_id ? 0.6 : 1,
+                    }}
+                    title="Vuelve a sintetizar SOLO el audio de este párrafo (para corregir un glitch de voz), sin rehacer imágenes ni el resto del vídeo"
+                  >
+                    {regeneratingAudio === item.paragraph_id ? '🎧 Regenerando…' : '🎧 Regenerar audio'}
+                  </button>
                 </div>
               </div>
             </div>

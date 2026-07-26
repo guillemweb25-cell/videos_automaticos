@@ -669,6 +669,18 @@ class ApiClient {
     return res.json();
   }
 
+  async regenerateParagraphAudio(videoId: number, paragraphId: number): Promise<{ ok: boolean; paragraph_id: number; seconds: number }> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/paragraphs/${paragraphId}/regenerate-audio`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al regenerar el audio del párrafo');
+    }
+    return res.json();
+  }
+
   async autoFillImages(videoId: number, paragraphId: number, opts?: { styleName?: string; workflowName?: string; modelId?: string; generationMode?: string }): Promise<{ ok: boolean; added: number; current: number; target: number; message?: string; images?: any[] }> {
     const params = new URLSearchParams();
     if (opts?.styleName) params.set('style_name', opts.styleName);
