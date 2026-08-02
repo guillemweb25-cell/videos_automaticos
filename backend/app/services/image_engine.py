@@ -40,6 +40,16 @@ def _is_violet_flame_style(style_name: Optional[str]) -> bool:
     return key == "lallamavioleta"
 
 
+# Styles that intentionally allow nudity (the adult channel) — clothing is NOT
+# forced for these. Everything else is treated as SFW.
+_ADULT_STYLES = {"anime_hentai"}
+
+
+def _is_adult_style(style_name: Optional[str]) -> bool:
+    key = ALIASES.get((style_name or "").lower(), (style_name or "").lower())
+    return key in _ADULT_STYLES
+
+
 _HUMAN_RE = re.compile(
     r"\b(figure|person|people|man|men|woman|women|female|male|master|germain|"
     r"human|being|silhouette|monk|priest|sage|meditat|devotee|seeker|saint)",
@@ -62,7 +72,10 @@ def enforce_modest_clothing(text: str) -> str:
     # WITHOUT dictating a specific 'flowing floor-length robe', which homogenised
     # every image into the same standing-figure composition. Wardrobe styling is
     # left to the channel style; nudity is also caught by the weighted negative.
-    clause = ", (fully clothed:1.2), modest clothing covering the body, no exposed skin below the neck"
+    clause = (
+        ", (fully clothed:1.3), wearing clothes that fully cover the body, "
+        "modest covered clothing, no bare chest, no exposed skin below the neck"
+    )
     return (text.rstrip().rstrip(".") + clause)[:950]
 
 
@@ -326,11 +339,15 @@ class ImageEngine:
             p = p.strip("-• ").strip()
             if len(p.split()) > 3:
                 prompts.append(p[:800])
-        # Violet-flame channel post-processing: (1) remove the ambiguous 'llama'
-        # token so SDXL stops drawing the animal, (2) force modest wardrobe on
-        # human figures so 'ethereal figure' prompts don't render bare-chested.
+        # Clothing enforcement for ALL channels except the adult one: SDXL/
+        # Juggernaut (uncensored) renders unspecified people — especially
+        # "ethereal", "in bed" or "goddess" — as nude, and the negative prompt
+        # loses. Forcing clothing in the POSITIVE is the only reliable fix.
+        if not _is_adult_style(style_name):
+            prompts = [enforce_modest_clothing(p) for p in prompts]
+        # Violet-flame channel: also scrub the ambiguous 'llama' (animal) token.
         if _is_violet_flame_style(style_name):
-            prompts = [enforce_modest_clothing(scrub_violet_flame_ambiguity(p)) for p in prompts]
+            prompts = [scrub_violet_flame_ambiguity(p) for p in prompts]
         print(f"[generate_prompts] Returning {len(prompts[:n])} prompt(s); first: {(prompts[0][:120] if prompts else 'NONE')!r}", flush=True)
         return prompts[:n]
 
@@ -741,10 +758,11 @@ class ImageEngine:
         elif "llamavioleta" in cn or "llama violeta" in cn or "saintgermain" in cn or "saint germain" in cn:
             style = "lallamavioleta"
 
-        # False-friend scrub + modest wardrobe for the violet-flame channel
-        # (see generate_prompts).
+        # Thumbnails must be SFW for YouTube regardless of channel → always force
+        # clothing on people. Also scrub the 'llama' token for the violet channel.
+        visual_prompt = enforce_modest_clothing(visual_prompt)
         if style == "lallamavioleta":
-            visual_prompt = enforce_modest_clothing(scrub_violet_flame_ambiguity(visual_prompt))
+            visual_prompt = scrub_violet_flame_ambiguity(visual_prompt)
 
         # Add age boosters if child/young age mentioned in the prompt — UNLESS the channel
         # explicitly forbids children (e.g. Grabovoi, Despertar, Koreano, LlamaVioleta).

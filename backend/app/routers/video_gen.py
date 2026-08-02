@@ -844,6 +844,57 @@ async def regenerate_paragraph(video_id: int, paragraph_id: int, db: Session = D
     }
 
 
+@router.post("/{video_id}/regenerate-all-prompts")
+async def regenerate_all_prompts(video_id: int, db: Session = Depends(get_db)):
+    """Regenerate the LLM prompts AND images for EVERY paragraph in one pass.
+
+    Use this after changing channel rules (e.g. new anti-nudity / anti-repetition
+    guidance): the video's cached prompts still reflect the OLD rules, so re-rolling
+    seeds alone keeps the same problems. This clears every cached prompt + image and
+    re-runs the standard image-generation flow once, so all prompts come from the LLM
+    fresh. Audio and timing are untouched."""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    base_dir = Path(video.base_dir)
+    prompts_path = base_dir / "image_prompts_all.json"
+    if not prompts_path.exists():
+        raise HTTPException(status_code=400, detail="No hay generación previa. Genera las imágenes primero.")
+
+    data = json.loads(prompts_path.read_text())
+
+    # Delete every generated image so the flow regenerates them all.
+    images_dir = base_dir / "images"
+    if images_dir.exists():
+        for f in images_dir.glob("p*.png"):
+            f.unlink(missing_ok=True)
+
+    # Clear all cached prompts (keep meta) so every paragraph re-runs the LLM fresh.
+    data["items"] = []
+    data["processed_paragraphs"] = 0
+    data["total_images"] = 0
+    prompts_path.write_text(json.dumps(data, indent=2))
+
+    channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
+    default_workflow = channel.default_workflow if channel else None
+    req = ImageGenerationRequest(
+        style_name=data.get("style") or video.style or (
+            (channel.default_style if channel else None) or "stock_photo"
+        ),
+        max_images_per_paragraph=int(
+            data.get("max_images_per_paragraph",
+                     video.max_images_per_paragraph if video.max_images_per_paragraph is not None else 0)
+        ),
+        model_id=data.get("model_id") or "gpt-image-1.5",
+        generation_mode=data.get("generation_mode") or "COMFYUI",
+        workflow_name=data.get("workflow_name") or default_workflow,
+    )
+
+    result = await generate_images(video_id, req, db)
+    return {"ok": True, "regenerated": "all", "background": result.get("background", True)}
+
+
 @router.post("/{video_id}/images")
 async def generate_images(video_id: int, req: ImageGenerationRequest, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()

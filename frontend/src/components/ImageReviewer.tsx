@@ -284,6 +284,29 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
     }
   };
 
+  const handleRegenerateAllPrompts = async () => {
+    if (!confirm("¿Regenerar TODOS los prompts con IA?\n\nSe borran los prompts e imágenes actuales y se generan de NUEVO desde el LLM (así se aplican las reglas nuevas del canal, p. ej. anti-desnudez). El audio no se toca. Puede tardar varios minutos.")) return;
+    setRendering(true); // reuse header-disable state
+    try {
+      await api.regenerateAllPrompts(videoId);
+      // Generation runs in the background — poll until it lands (or ~10 min).
+      const stopAfter = Date.now() + 600_000;
+      const interval = setInterval(async () => {
+        const prog = await api.getImagesProgress(videoId).catch(() => null);
+        await loadData();
+        const done = !prog || prog.status === 'images_ready' || prog.status === 'failed' || Date.now() > stopAfter;
+        if (done) {
+          clearInterval(interval);
+          setRendering(false);
+          if (prog?.status === 'failed') alert('La regeneración falló: ' + (prog.last_error || ''));
+        }
+      }, 4000);
+    } catch (e: any) {
+      setRendering(false);
+      alert(e.message || 'Error al regenerar los prompts');
+    }
+  };
+
   const handleRegenerateAll = async () => {
     if (!confirm("¿Seguro que quieres regenerar TODAS las imágenes? Esto consumirá créditos si no usas ComfyUI.")) return;
     
@@ -629,7 +652,24 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                 ))}
               </select>
             </div>
-            <button 
+            <button
+              onClick={handleRegenerateAllPrompts}
+              disabled={rendering || !!regenerating}
+              title="Borra los prompts e imágenes y los vuelve a generar desde la IA, aplicando las reglas actuales del canal (p. ej. anti-desnudez). No toca el audio."
+              style={{
+                backgroundColor: '#dc2626',
+                color: 'white',
+                padding: '8px 20px',
+                borderRadius: '8px',
+                fontWeight: 'bold',
+                border: 'none',
+                cursor: 'pointer',
+                opacity: (rendering || regenerating) ? 0.5 : 1
+              }}
+            >
+              🔁 Regenerar prompts (IA)
+            </button>
+            <button
               onClick={handleRegenerateAll}
               disabled={rendering || !!regenerating}
               style={{

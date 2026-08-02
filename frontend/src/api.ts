@@ -669,6 +669,18 @@ class ApiClient {
     return res.json();
   }
 
+  async regenerateAllPrompts(videoId: number): Promise<{ ok: boolean; regenerated: string; background: boolean }> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/regenerate-all-prompts`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al regenerar los prompts');
+    }
+    return res.json();
+  }
+
   async regenerateParagraphAudio(videoId: number, paragraphId: number): Promise<{ ok: boolean; paragraph_id: number; seconds: number }> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/paragraphs/${paragraphId}/regenerate-audio`, {
       method: 'POST',
