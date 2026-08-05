@@ -1,43 +1,48 @@
 # Guía de Instalación y Configuración
 
-Sigue estos pasos para levantar el entorno de desarrollo o producción.
+## 1. Requisitos
+- Docker + Docker Compose.
+- **ComfyUI** accesible por red (con checkpoints SDXL y LoRAs instalados en la máquina GPU).
+- Opcional: servicio **`local_tts_api`** (XTTSv2 + GPU) para voces clonadas.
+- Cuentas API según lo que uses: OpenAI y/o Grok (LLM+SEO), ElevenLabs y/o TikTok/XTTS (voz), AssemblyAI (sync subtítulos), Leonardo (opcional), Stripe (créditos).
 
-## 1. Requisitos Previos
-- Docker y Docker Compose instalados.
-- Instancia de ComfyUI (Local o Remota) accesible por red.
-- Cuentas en: OpenAI (opcional para SEO), ElevenLabs, Leonardo.Ai (opcional).
-
-## 2. Configuración del Entorno (`.env`)
-Copia el archivo de ejemplo:
+## 2. `.env`
 ```bash
-cp .env.example .env
+cp .env.example .env   # editar
 ```
-Variables críticas:
-- `COMFY_URL`: URL de tu instancia de ComfyUI (ej. `http://192.168.1.32:8188`).
-- `ELEVENLABS_API_KEY`: Para las voces.
-- `MYSQL_PASSWORD`: Contraseña para MariaDB.
-- `REMOTE_SSH_USER`, `REMOTE_SSH_HOST`, `REMOTE_SSH_PORT`: Para los scripts de sincronización.
+Críticas: `COMFY_URL`, `LOCAL_TTS_URL`, `MYSQL_PASSWORD`, keys de IA. Ver [ENVIRONMENT.md](ENVIRONMENT.md).
+> Tras editar `.env`, **recrea** el contenedor: `docker compose up -d --force-recreate api` (las env vars se cargan al arrancar).
 
-## 3. Despliegue con Docker
-El proyecto está totalmente contenedorizado. Para iniciar:
+## 3. Despliegue
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
-Servicios disponibles:
-- **API (Backend)**: `http://localhost:8000`
-- **Frontend**: `http://localhost:8501`
-- **Base de Datos**: Puerto `3306` interno.
+- API: `http://localhost:8500` · Frontend: `http://localhost:8501` · DB: 3307→3306.
+- Migraciones Alembic corren al arrancar la api (`alembic upgrade head` en `backend/start.sh`).
+- El servicio TTS local se levanta por separado desde `local_tts_api/` (su propio compose, en la máquina GPU).
 
-## 4. Configuración de ComfyUI
-Para que la integración funcione, ComfyUI debe estar en modo API.
-1. Abre tu workflow en la interfaz de ComfyUI.
-2. Habilita "Dev mode" en los ajustes.
-3. Haz click en "Save (API Format)" para obtener el JSON.
-4. Guarda ese JSON en la carpeta `/workflows` del proyecto.
-5. El sistema detectará automáticamente el nuevo workflow en el desplegable del frontend.
+## 4. ComfyUI: workflows, checkpoints y LoRAs
+- **Workflows**: en ComfyUI, Dev mode → "Save (API Format)" → guardar el JSON en `/workflows`. El nodo positivo/negativo debe tener `_meta.title` = `positive`/`negative` para que el backend lo parchee. Aparecen solos en el desplegable del frontend.
+- **Checkpoints**: en `ComfyUI/models/checkpoints/SDXL/`. Por defecto se usa **RealVisXL V5.0** (SFW). Los workflows referencian p. ej. `SDXL/RealVisXL_V5.0_fp16.safetensors`.
+- **LoRAs**: en `ComfyUI/models/loras/` (subcarpetas permitidas; ComfyUI las lista con `\` en Windows). Se **registran** en la pestaña 🎛️ LoRAs (con sus trigger words) y se **asignan** a un canal. El backend los inyecta en runtime sobre cualquier workflow SDXL (no hay que editar el JSON).
 
-## 5. Sincronización entre Laptop y Servidor
-Utiliza los scripts en `/scripts`:
-- `./scripts/sync_push.sh`: Sube caché, base de datos y credenciales al servidor.
-- `./scripts/sync_pull.sh`: Baja la base de datos y caché del servidor al portátil.
-*Nota: Estos scripts NO sincronizan el código (usar Git para eso).*
+## 5. Frontend (build estático)
+El contenedor `frontend` hace `vite build && vite preview` (no dev/HMR). Tras cambiar código de frontend, **reconstruye**: `docker restart videos_automaticos-frontend-1` (o `docker compose up -d --build frontend`). Los cambios de **datos** (nuevo workflow/LoRA en BD) solo requieren recargar el navegador.
+
+## 6. Backup de configuración de canales
+La config que hace que cada canal genere bien vive en BD (estilos, negativos, asignación de LoRAs) y en `cache/` (style-guides) — **no en git**. Respáldala:
+```bash
+# snapshot -> backend/config/channels_config.json (commiteable)
+docker exec videos_automaticos-api-1 python scripts/manage_channels.py export
+# previsualizar restore
+docker exec videos_automaticos-api-1 python scripts/manage_channels.py import --dry-run
+# restaurar (BD + style-guides)
+docker exec videos_automaticos-api-1 python scripts/manage_channels.py import
+```
+Incluye canales + registro de LoRAs + asignaciones (portable por filename). No toca secretos (OAuth). Recomendado: exportar y commitear tras cada cambio de config de canal.
+
+## 7. Notificaciones Telegram (opcional)
+Añade `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` al `.env`, recrea la api, y recibirás aviso al terminar/fallar imágenes y render. El `chat_id` se obtiene escribiendo al bot y consultando `getUpdates`.
+
+## 8. Sincronización portátil↔servidor
+`scripts/sync_push.sh` / `sync_pull.sh` mueven caché/BD/credenciales (NO el código — eso por Git). ⚠️ Transferir preservando UTF-8 (nombres de carpeta con tildes); una transferencia que reinterprete a CP437/Latin-1 corrompe los nombres.
