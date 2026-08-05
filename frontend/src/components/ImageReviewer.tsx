@@ -23,6 +23,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [thumbnailHook, setThumbnailHook] = useState('');
   const [thumbnailVisualPrompt, setThumbnailVisualPrompt] = useState('');
+  const [thumbnailPosition, setThumbnailPosition] = useState<'top' | 'center' | 'bottom'>('top');
   const [thumbnailRegenerating, setThumbnailRegenerating] = useState(false);
   const [leonardoModels, setLeonardoModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState('7b592283-e8a7-4c5a-9ba6-d18c31f258b9'); // Default to Lucid Origin
@@ -408,7 +409,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleGenerateThumbnailImage = async () => {
     setThumbnailRegenerating(true);
     try {
-      const res = await api.generateThumbnail(videoId, thumbnailHook, thumbnailVisualPrompt, selectedModel, generationMode);
+      const res = await api.generateThumbnail(videoId, thumbnailHook, thumbnailVisualPrompt, selectedModel, generationMode, thumbnailPosition);
       if (res.ok) {
         setThumbnailUrl(res.url);
       }
@@ -423,7 +424,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleUpdateThumbnailText = async () => {
     setThumbnailRegenerating(true);
     try {
-      const res = await api.updateThumbnailText(videoId, thumbnailHook);
+      const res = await api.updateThumbnailText(videoId, thumbnailHook, thumbnailPosition);
       if (res.ok) {
         setThumbnailUrl(res.url);
       }
@@ -1277,6 +1278,25 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                 }}
               />
               
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Posición del texto:</span>
+                {(['top', 'center', 'bottom'] as const).map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setThumbnailPosition(p)}
+                    style={{
+                      padding: '6px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                      fontSize: '0.8rem', fontWeight: 600, color: 'white',
+                      background: thumbnailPosition === p ? '#2563eb' : '#374151',
+                    }}
+                  >
+                    {p === 'top' ? '⬆ Arriba' : p === 'center' ? '↕ Centro' : '⬇ Abajo'}
+                  </button>
+                ))}
+                <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>(luego pulsa "Actualizar Texto")</span>
+              </div>
+
               <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                 <button
                   onClick={handleGenerateThumbnailImage}

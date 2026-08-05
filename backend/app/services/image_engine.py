@@ -727,7 +727,7 @@ class ImageEngine:
             time.sleep(3)
         raise TimeoutError("Leonardo V2 timeout")
 
-    async def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY", channel_name: Optional[str] = None, workflow_name: Optional[str] = None) -> None:
+    async def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY", channel_name: Optional[str] = None, workflow_name: Optional[str] = None, text_position: str = "top") -> None:
         """Generates a professional thumbnail. Blends visual prompt with text instructions. 
         """
 
@@ -839,13 +839,13 @@ class ImageEngine:
         shutil.copy2(out_path, clean_path)
 
         # Apply text overlay using Python
-        self._apply_thumbnail_text_overlay(out_path, hook, channel_name=channel_name)
+        self._apply_thumbnail_text_overlay(out_path, hook, channel_name=channel_name, position=text_position)
 
-    def apply_text_to_thumbnail(self, base_dir: str, hook: str, channel_name: Optional[str] = None) -> str:
-        """Re-applies text overlay to an existing clean thumbnail."""
+    def apply_text_to_thumbnail(self, base_dir: str, hook: str, channel_name: Optional[str] = None, position: str = "top") -> str:
+        """Re-applies text overlay to an existing clean thumbnail (re-paint)."""
         out_path = Path(base_dir) / "output" / "thumbnail.png"
         clean_path = Path(base_dir) / "output" / "thumbnail-clean.png"
-        
+
         if not clean_path.exists():
             if out_path.exists():
                 # If clean doesn't exist, we use the current one as base (not ideal but works as fallback)
@@ -853,17 +853,18 @@ class ImageEngine:
                 shutil.copy2(out_path, clean_path)
             else:
                 raise FileNotFoundError("No se encontró una miniatura base para aplicar el texto.")
-        
+
         # Always start from the clean version
         import shutil
         shutil.copy2(clean_path, out_path)
-        
+
         # Apply text
-        self._apply_thumbnail_text_overlay(out_path, hook, channel_name=channel_name)
+        self._apply_thumbnail_text_overlay(out_path, hook, channel_name=channel_name, position=position)
         return f"cache/{os.path.relpath(out_path, 'cache')}"
 
-    def _apply_thumbnail_text_overlay(self, image_path: Path, text: str, channel_name: Optional[str] = None):
-        """Applies text overlay following the channel style guide."""
+    def _apply_thumbnail_text_overlay(self, image_path: Path, text: str, channel_name: Optional[str] = None, position: str = "top"):
+        """Applies the text overlay. `position` (top|center|bottom) controls where
+        the text block is anchored; a dark gradient scrim is painted behind it."""
         if not image_path.exists():
             return
 
@@ -1106,24 +1107,42 @@ class ImageEngine:
             # text and pushes the subject to the right/lower area, so the text must
             # go at the TOP — anchoring it at the bottom was landing it on top of the
             # subject. (- bbox[1] compensates the textbbox top offset.)
-            stack_top = int(height * 0.05)
-            y_line1 = stack_top - bbox1[1]
-            if line2:
-                y_line2 = stack_top + h1 + gap - bbox2[1]
-            else:
-                y_line2 = 0
+            # Anchor the text block at top / center / bottom. A dark gradient scrim
+            # is painted behind it so it reads regardless of what's underneath
+            # (SDXL often ignores the "keep an area empty" composition hint).
+            h_stack = h1 + ((gap + h2) if line2 else 0)
+            pos = (position or "top").lower()
+            if pos == "bottom":
+                stack_y = int(height * 0.94) - h_stack
+                scrim_dir, scrim_anchor = "bottom", "bottom"
+            elif pos == "center":
+                stack_y = (height - h_stack) // 2
+                scrim_dir, scrim_anchor = "center", "center"
+            else:  # top
+                stack_y = int(height * 0.05)
+                scrim_dir, scrim_anchor = "top", "top"
+            y_line1 = stack_y - bbox1[1]
+            y_line2 = (stack_y + h1 + gap - bbox2[1]) if line2 else 0
 
-            # Dark gradient scrim behind the top text. SDXL often ignores the
-            # "keep the top third empty" composition hint, so the subject's head
-            # can land under the text. A scrim (opaque black at top → transparent)
-            # keeps the text readable and looks intentional instead of "covering".
-            scrim_h = int(height * 0.42)
+            if scrim_anchor == "center":
+                scrim_h = min(height, h_stack + int(height * 0.22))
+                scrim_y = max(0, stack_y - int(height * 0.11))
+            else:
+                scrim_h = int(height * 0.42)
+                scrim_y = 0 if scrim_anchor == "top" else height - scrim_h
             _alpha = Image.new("L", (1, scrim_h))
             for _yy in range(scrim_h):
-                _alpha.putpixel((0, _yy), int(205 * (1 - _yy / scrim_h)))
+                _t = _yy / max(1, scrim_h - 1)
+                if scrim_dir == "top":
+                    _v = 205 * (1 - _t)
+                elif scrim_dir == "bottom":
+                    _v = 205 * _t
+                else:  # center: peak in the middle
+                    _v = 205 * (1 - abs(2 * _t - 1))
+                _alpha.putpixel((0, _yy), int(_v))
             _scrim = Image.new("RGBA", (width, scrim_h), (0, 0, 0, 255))
             _scrim.putalpha(_alpha.resize((width, scrim_h)))
-            img.alpha_composite(_scrim, (0, 0))
+            img.alpha_composite(_scrim, (0, scrim_y))
             draw = ImageDraw.Draw(img)  # rebind after compositing
 
             if line1:

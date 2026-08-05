@@ -2294,13 +2294,14 @@ async def generate_thumbnail_api(
         provider=video.llm_provider
     )
     await engine.generate_thumbnail(
-        current_hook, current_visual, thumbnail_path, 
-        size=f"{video.width}x{video.height}", 
+        current_hook, current_visual, thumbnail_path,
+        size=f"{video.width}x{video.height}",
         model_id=model_id,
         negative_prompt=neg,
         mode=gen_mode,
         channel_name=video.channel.name,
-        workflow_name=data.get("workflow_name")
+        workflow_name=data.get("workflow_name"),
+        text_position=(req.position or "top"),
     )
     
     # Save updates
@@ -2332,8 +2333,11 @@ async def update_thumbnail_text(
         images_json.write_text(json.dumps(data, indent=2))
 
     engine = ImageEngine()
-    url_rel = engine.apply_text_to_thumbnail(video.base_dir, hook, channel_name=video.channel.name)
-    
+    url_rel = engine.apply_text_to_thumbnail(
+        video.base_dir, hook, channel_name=video.channel.name,
+        position=(req.position or "top"),
+    )
+
     return {"ok": True, "url": f"/{url_rel}?t={int(datetime.now().timestamp())}"}
 
 @router.post("/{video_id}/seo")

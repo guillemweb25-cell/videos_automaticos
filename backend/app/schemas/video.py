@@ -80,6 +80,7 @@ class ThumbnailGenerationRequest(BaseModel):
     visual_prompt: Optional[str] = None
     model_id: Optional[str] = None
     generation_mode: Optional[str] = "QUALITY"
+    position: Optional[str] = "top"  # top | center | bottom — dónde va el texto
 
 class ConvertToVideoRequest(BaseModel):
     paragraph_id: int
