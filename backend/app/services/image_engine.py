@@ -1101,14 +1101,30 @@ class ImageEngine:
 
             gap = int(size_2 * 0.25)  # breathing room between lines
 
-            # Anchor the bottom of the whole stack at ~94% of image height.
-            stack_bottom = int(height * 0.94)
+            # Anchor the TOP of the stack at ~5% of image height. The visual prompt
+            # (generate_thumbnail_visual_prompt) reserves the upper third for the
+            # text and pushes the subject to the right/lower area, so the text must
+            # go at the TOP — anchoring it at the bottom was landing it on top of the
+            # subject. (- bbox[1] compensates the textbbox top offset.)
+            stack_top = int(height * 0.05)
+            y_line1 = stack_top - bbox1[1]
             if line2:
-                y_line2 = stack_bottom - h2 - bbox2[1]  # compensate for textbbox top offset
-                y_line1 = y_line2 - gap - h1 - bbox1[1]
+                y_line2 = stack_top + h1 + gap - bbox2[1]
             else:
                 y_line2 = 0
-                y_line1 = stack_bottom - h1 - bbox1[1]
+
+            # Dark gradient scrim behind the top text. SDXL often ignores the
+            # "keep the top third empty" composition hint, so the subject's head
+            # can land under the text. A scrim (opaque black at top → transparent)
+            # keeps the text readable and looks intentional instead of "covering".
+            scrim_h = int(height * 0.42)
+            _alpha = Image.new("L", (1, scrim_h))
+            for _yy in range(scrim_h):
+                _alpha.putpixel((0, _yy), int(205 * (1 - _yy / scrim_h)))
+            _scrim = Image.new("RGBA", (width, scrim_h), (0, 0, 0, 255))
+            _scrim.putalpha(_alpha.resize((width, scrim_h)))
+            img.alpha_composite(_scrim, (0, 0))
+            draw = ImageDraw.Draw(img)  # rebind after compositing
 
             if line1:
                 # Title: bright yellow at top, golden mid-bottom — keep it clearly yellow

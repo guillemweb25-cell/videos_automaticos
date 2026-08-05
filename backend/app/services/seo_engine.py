@@ -184,25 +184,25 @@ class SEOEngine:
         is_jesus = channel_name and ("jesus" in channel_name.lower() or "jesús" in channel_name.lower())
 
         if is_jesus:
-            niche_desc = "Christian/Spiritual channel. The hook must be DIVINE, SOLEMN, and PROFOUND."
-            format_desc = (
-                "The hook MUST be in 3 parts separated by '...'. "
-                "Part 1: A category or label (e.g. 'EL MISTERIO', 'LA REVELACIÓN'). "
-                "Part 2: The main shocking title (e.g. 'EL APOCALIPSIS', 'JUAN VIO ESTO'). "
-                "Part 3: A small curiosity or result (e.g. 'nadie te lo contó', 'mira el final'). "
-                "Example (Spanish): 'LA REVELACIÓN...EL APOCALIPSIS...mira el final'. "
-                "Translate the FORMAT (3 parts separated by '...') to the script language."
-            )
+            niche_desc = "Christian/Spiritual channel. The hook tone must be DIVINE, SOLEMN and PROFOUND."
         else:
-            niche_desc = "Mystery and Horror channel. The hook must be SHOCKING, AGGRESSIVE, and IRRESISTIBLE."
-            format_desc = (
-                "The hook must be 2-5 words long, in ALL CAPS (use the script's native uppercase form; "
-                "Korean / Japanese / Chinese have no separate caps — use them as-is, big and bold). "
-                "Use '...' to separate the hook into two parts for a two-line layout. "
-                "Example (Spanish): 'ESTABA... ALLÍ', 'NO MIRES... ATRÁS'. "
-                "Example (Korean): '그는 사라졌다... 영원히', '보지 마라... 뒤를'. "
-                "Translate the FORMAT (2 parts, '...' separator) to the script language."
-            )
+            niche_desc = "Mystery / curiosity channel. The hook tone must be SHOCKING, AGGRESSIVE and IRRESISTIBLE."
+
+        # Unified format for ALL channels: VERY short, punchy, at most ONE '...'.
+        # (The old 3-part format produced cramped, wordy thumbnails that read as
+        # three full sentences on top of the image.)
+        format_desc = (
+            "FORMAT (mandatory): the hook must be VERY SHORT — 2 to 4 words TOTAL, "
+            "in ALL CAPS (use the script's native uppercase; Korean/Japanese/Chinese "
+            "have no separate caps, use them as-is, big and bold). "
+            "Optionally use a SINGLE '...' to split it into two short parts for a "
+            "two-line layout. NEVER use more than one '...'. NEVER write full sentences "
+            "or questions — just a punchy phrase. "
+            "Examples (Spanish): 'TU ÁNGEL... TE VIGILA', 'NO MIRES... ATRÁS', "
+            "'EL SECRETO PROHIBIDO', 'LA LUNA... OCULTA EL SOL'. "
+            "Examples (Korean): '그는 사라졌다... 영원히', '보지 마라... 뒤를'. "
+            "Translate the FORMAT to the script language."
+        )
 
         system_msg = (
             f"You are an expert YouTube CLICKBAIT strategist for a {niche_desc}. "
