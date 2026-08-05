@@ -2,8 +2,8 @@
   "3": {
     "inputs": {
       "seed": 0,
-      "steps": 32,
-      "cfg": 6,
+      "steps": 30,
+      "cfg": 5.0,
       "sampler_name": "dpmpp_2m",
       "scheduler": "karras",
       "denoise": 1,
@@ -31,7 +31,7 @@
   },
   "4": {
     "inputs": {
-      "ckpt_name": "SDXL/juggernautXL_ragnarokBy.safetensors"
+      "ckpt_name": "SDXL/RealVisXL_V5.0_fp16.safetensors"
     },
     "class_type": "CheckpointLoaderSimple",
     "_meta": {
