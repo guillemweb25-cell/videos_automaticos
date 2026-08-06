@@ -2498,6 +2498,65 @@ def get_render_progress(video_id: int, db: Session = Depends(get_db)):
     }
 
 
+def _ensure_seo_metadata(video, db):
+    """Best-effort: fill YouTube title/description/tags from the script when empty,
+    so the upload screen is pre-filled after render. Never raises — SEO is a
+    nice-to-have, not part of render success."""
+    try:
+        base_dir = Path(video.base_dir)
+        plan_path = base_dir / "plan.json"
+        if not plan_path.exists():
+            return
+        plan = json.loads(plan_path.read_text())
+        script = "\n".join(item.get("spoken", "") for item in plan)
+        if not script.strip():
+            return
+        settings = get_user_settings_for_video(video, db)
+        provider = video.llm_provider or "openai"
+        api_key = None
+        if settings:
+            api_key = settings.grok_api_key if provider == "grok" else settings.openai_api_key
+        if not api_key:
+            print(f"[seo] sin API key ({provider}); salto auto-SEO del vídeo {video.id}", flush=True)
+            return
+        seo = SEOEngine(api_key=api_key, provider=provider)
+
+        seo_dir = base_dir / "seo"
+        seo_dir.mkdir(parents=True, exist_ok=True)
+        seo_path = seo_dir / "metadata.json"
+        data = json.loads(seo_path.read_text()) if seo_path.exists() else {}
+        changed = False
+
+        if not (video.youtube_title or "").strip():
+            try:
+                video.youtube_title = seo.generate_video_title(script[:4000])
+                data["title"] = video.youtube_title
+                changed = True
+            except Exception as e:
+                print(f"[seo] título falló: {e}", flush=True)
+        if not (video.youtube_description or "").strip():
+            try:
+                video.youtube_description = seo.generate_description(script[:4000])
+                data["description"] = video.youtube_description
+                changed = True
+            except Exception as e:
+                print(f"[seo] descripción falló: {e}", flush=True)
+        if not (video.youtube_tags or "").strip():
+            try:
+                video.youtube_tags = seo.generate_video_questions_tags(script[:4000])
+                data["tags"] = video.youtube_tags
+                changed = True
+            except Exception as e:
+                print(f"[seo] etiquetas fallaron: {e}", flush=True)
+
+        if changed:
+            db.commit()
+            seo_path.write_text(json.dumps(data, indent=4))
+            print(f"[seo] metadata auto-generada para vídeo {video.id}", flush=True)
+    except Exception as e:
+        print(f"[seo] auto-SEO omitido para vídeo {getattr(video, 'id', None)}: {e}", flush=True)
+
+
 def _render_video_blocking(video, db, subtitles: bool, overlay: str | None):
     """Original synchronous render logic, callable from background tasks."""
     try:
@@ -2667,6 +2726,11 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None):
 
         video.status = "ready"
         db.commit()
+
+        # Auto-generate SEO (title/description/tags) from the script if still empty,
+        # so it's already filled in by the time the render-finished notification
+        # arrives. Best-effort: never breaks a successful render.
+        _ensure_seo_metadata(video, db)
 
         send_telegram(
             f"🎬 Render terminado — vídeo #{video.id}\n{video.title or ''}\nMP4 listo para subir."
