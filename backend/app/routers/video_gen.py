@@ -533,11 +533,50 @@ async def generate_audio(
         finally:
             db_bg.close()
 
-    # Run the sync TTS work in a thread so the event loop keeps serving /audio-progress
+    # Run the sync TTS work in a thread so the event loop keeps serving /audio-progress.
+    # When it finishes successfully, auto-chain image generation so the user never has
+    # to press "Auto-imágenes" manually — some videos used to get stuck in audio_ready.
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _do_audio_sync, video_id, voice, provider)
+    fut = loop.run_in_executor(None, _do_audio_sync, video_id, voice, provider)
+
+    def _after_audio(f):
+        try:
+            f.result()  # surface a crashed audio task (status already set to failed inside)
+        except Exception:
+            return
+        asyncio.ensure_future(_auto_start_images_after_audio(video_id))
+
+    fut.add_done_callback(_after_audio)
 
     return {"ok": True, "background": True, "status": "generating_audio"}
+
+
+async def _auto_start_images_after_audio(video_id: int):
+    """Auto-chain: once audio finishes, launch image generation with the channel's
+    defaults (same logic as the 'Auto-imágenes' button) so the pipeline continues
+    without a manual click. No-op if the audio failed or the user already advanced it."""
+    from app.database import SessionLocal
+    db2 = SessionLocal()
+    try:
+        v = db2.query(Video).filter(Video.id == video_id).first()
+        if not v or v.status != "audio_ready":
+            return
+        channel = db2.query(Channel).filter(Channel.id == v.channel_id).first()
+        default_style = (channel.default_style if channel else None) or "stock_photo"
+        default_workflow = channel.default_workflow if channel else None
+        req = ImageGenerationRequest(
+            style_name=v.style or default_style,
+            max_images_per_paragraph=v.max_images_per_paragraph if v.max_images_per_paragraph is not None else 0,
+            model_id="gpt-image-1.5",
+            generation_mode="COMFYUI",
+            workflow_name=default_workflow,
+        )
+        print(f"[audio->images] auto-launching image generation for video {video_id}", flush=True)
+        await generate_images(video_id, req, db2)
+    except Exception as e:
+        print(f"[audio->images] auto-chain failed for {video_id}: {e}", flush=True)
+    finally:
+        db2.close()
 
 
 def _infer_tts_provider(voice: str) -> str:
