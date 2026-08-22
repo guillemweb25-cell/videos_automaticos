@@ -64,8 +64,8 @@ async def generate_audio(
         # Wrapped defensively so an unsupported kwarg on this TTS build can never
         # break synthesis — it just falls back to plain generation.
         gen_kwargs = dict(
-            temperature=0.65,
-            repetition_penalty=10.0,
+            temperature=0.7,
+            repetition_penalty=5.0,
             length_penalty=1.0,
             top_k=50,
             top_p=0.85,

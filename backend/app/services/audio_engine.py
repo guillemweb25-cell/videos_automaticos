@@ -288,12 +288,22 @@ class AudioEngine:
 
     @staticmethod
     def _concat_chunks(paths: List[Path], out_path: Path, gap_ms: int) -> None:
-        final = AudioSegment.silent(duration=0)
+        segs = []
         for p in paths:
             fmt = p.suffix.lstrip(".")
-            seg = AudioSegment.from_file(p, format=fmt if fmt else "mp3")
-            final += seg
-            if gap_ms > 0:
-                final += AudioSegment.silent(duration=gap_ms)
+            segs.append(AudioSegment.from_file(p, format=fmt if fmt else "mp3"))
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        if not segs:
+            AudioSegment.silent(duration=100).export(out_path, format="mp3")
+            return
+        final = segs[0]
+        for seg in segs[1:]:
+            if gap_ms > 0:
+                final = final + AudioSegment.silent(duration=gap_ms) + seg
+            else:
+                # Small crossfade smooths the join between chunks and masks XTTS's
+                # end-of-clip noise burst (a common source of the "glitch" at
+                # sentence boundaries). Clamp so it never exceeds either segment.
+                cf = min(35, len(final), len(seg))
+                final = final.append(seg, crossfade=cf)
         final.export(out_path, format="mp3")
