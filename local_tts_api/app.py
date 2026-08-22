@@ -63,16 +63,19 @@ async def generate_audio(
         # repetition_penalty and lower temperature make XTTS-v2 far more stable.
         # Wrapped defensively so an unsupported kwarg on this TTS build can never
         # break synthesis — it just falls back to plain generation.
-        # NOTE: enable_text_splitting is intentionally NOT set (defaults False):
-        # tts_to_file already splits sentences at the synthesizer level, and the
-        # model-level splitter re-tokenised sentence boundaries in a way that made
-        # XTTS occasionally read the period aloud ("punto") in Spanish.
+        # split_sentences=False: the backend already splits the text into sensible
+        # chunks (and merges tiny ones), so we tell XTTS NOT to re-split. Its
+        # internal sentence splitter isolated SHORT sentences, and on a short
+        # fragment XTTS reads the period aloud ("punto") in Spanish. Synthesizing
+        # each chunk in one piece removes that. (Chunks are kept <=210 chars by the
+        # backend so a single generation stays within XTTS's comfortable range.)
         gen_kwargs = dict(
             temperature=0.7,
             repetition_penalty=5.0,
             length_penalty=1.0,
             top_k=50,
             top_p=0.85,
+            split_sentences=False,
         )
         try:
             tts.tts_to_file(

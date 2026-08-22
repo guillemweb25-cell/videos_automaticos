@@ -161,9 +161,10 @@ class AudioEngine:
         url = getattr(settings, "LOCAL_TTS_URL", "http://192.168.1.46:8022")
         endpoint = f"{url}/generate"
 
-        # We split text if it's too long, but XTTSv2 usually handles sentences well.
-        # It's safer to split to avoid VRAM OOM on the local GPU
-        parts = AudioEngine._split_text(text, 250)
+        # Split into chunks that XTTS synthesizes in ONE piece (split_sentences is
+        # False on the server), so keep each well within XTTS's comfortable single-
+        # generation range (~210 chars). _split_text also merges tiny fragments.
+        parts = AudioEngine._split_text(text, 210)
         tmp_dir = out_path.parent / "__tts_tmp_xtts__"
         tmp_dir.mkdir(parents=True, exist_ok=True)
 
