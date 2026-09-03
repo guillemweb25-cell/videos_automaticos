@@ -12,6 +12,7 @@ export default function CharacterGenerator() {
   const [description, setDescription] = useState('');
   const [style, setStyle] = useState('anime');
   const [numPoses, setNumPoses] = useState(4);
+  const [neutralBg, setNeutralBg] = useState(true);
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -40,7 +41,7 @@ export default function CharacterGenerator() {
     setError(''); setStatus('Enviando…'); setBusy(true); setElapsed(0); setSaved(false);
     resultImgs.forEach((i) => URL.revokeObjectURL(i.url)); setResultImgs([]);
     try {
-      const r = await api.charGenerate({ description: description.trim(), style, num_poses: numPoses });
+      const r = await api.charGenerate({ description: description.trim(), style, num_poses: numPoses, neutral_bg: neutralBg });
       metaRef.current = { description_en: r.description_en, seed: r.seed };
       setStatus(`Generando ${r.expected} imágenes… (base + poses)`);
       timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
@@ -127,6 +128,11 @@ export default function CharacterGenerator() {
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} disabled={busy}
           placeholder="una guerrera joven de pelo azul y ojos verdes, armadura ligera, expresión decidida"
           style={{ width: '100%', marginTop: 4, padding: 10, borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }} />
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, color: '#cbd5e1', fontSize: '0.85rem', cursor: 'pointer' }}>
+          <input type="checkbox" checked={neutralBg} onChange={(e) => setNeutralBg(e.target.checked)} disabled={busy} />
+          Fondo neutro (blanco/simple) — recomendado para dataset de LoRA
+        </label>
 
         <div style={{ marginTop: 14, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn btn-primary" onClick={generate} disabled={busy || !description.trim()}>

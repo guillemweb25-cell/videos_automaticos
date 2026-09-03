@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import LtxVideoGenerator from './LtxVideoGenerator';
 import CharacterGenerator from './CharacterGenerator';
+import CharacterImages from './CharacterImages';
 
-/** Apartado "Vídeo LTX" con pestañas: generación de vídeo y de personajes. */
+type Tab = 'video' | 'chars' | 'images';
+
+/** Apartado "Vídeo LTX" con pestañas: vídeo, personajes e imágenes. */
 export default function LtxStudio() {
-  const [tab, setTab] = useState<'video' | 'chars'>('video');
+  const [tab, setTab] = useState<Tab>('video');
 
-  const tabBtn = (key: 'video' | 'chars', label: string) => (
+  const tabBtn = (key: Tab, label: string) => (
     <button
       onClick={() => setTab(key)}
       style={{
@@ -20,11 +23,12 @@ export default function LtxStudio() {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
         {tabBtn('video', '🎬 Vídeo')}
         {tabBtn('chars', '🧑‍🎨 Personajes')}
+        {tabBtn('images', '🖼️ Imágenes')}
       </div>
-      {tab === 'video' ? <LtxVideoGenerator /> : <CharacterGenerator />}
+      {tab === 'video' ? <LtxVideoGenerator /> : tab === 'chars' ? <CharacterGenerator /> : <CharacterImages />}
     </div>
   );
 }

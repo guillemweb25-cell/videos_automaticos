@@ -407,7 +407,7 @@ class ApiClient {
   }
 
   // --- Generador de personajes consistentes (SDXL + IPAdapter) ---
-  async charGenerate(payload: { description: string; style: string; num_poses: number; seed?: number | null }): Promise<CharGenerateResponse> {
+  async charGenerate(payload: { description: string; style: string; num_poses: number; seed?: number | null; neutral_bg?: boolean }): Promise<CharGenerateResponse> {
     const res = await fetch(`${this.baseUrl}/characters/generate`, {
       method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(payload),
     });
@@ -439,6 +439,18 @@ class ApiClient {
     const res = await fetch(`${this.baseUrl}/characters/image?filename=${encodeURIComponent(filename)}`, { headers: this.getHeaders(true) });
     if (!res.ok) throw new Error('Error al obtener imagen');
     return window.URL.createObjectURL(await res.blob());
+  }
+  async charScene(payload: { character_id: string; prompt: string; num_images: number; width?: number; height?: number; seed?: number | null; pose?: string | null }): Promise<{ ok: boolean; prompt_id: string; expected: number; prompt_en: string; seed: number }> {
+    const res = await fetch(`${this.baseUrl}/characters/scene`, {
+      method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(payload),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al generar'); }
+    return res.json();
+  }
+  async charPoses(): Promise<{ key: string; label: string }[]> {
+    const res = await fetch(`${this.baseUrl}/characters/poses`, { headers: this.getHeaders(true) });
+    if (!res.ok) return [];
+    return (await res.json()).poses || [];
   }
 
   async getYouTubeAuthUrl(id: number, redirectUri: string): Promise<{ auth_url: string }> {

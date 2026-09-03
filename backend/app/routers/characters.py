@@ -19,12 +19,62 @@ from pydantic import BaseModel
 
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.routers.video_ltx import _to_english_prompt  # reutiliza la traducción ES->EN
 
 router = APIRouter(prefix="/characters", tags=["characters"])
 
+
+def _translate_character(text: str, neutral_bg: bool) -> str:
+    """Traduce la descripción del personaje a inglés. Con fondo neutro, instruye
+    al LLM para describir SOLO al personaje (sin escena/fondo/luz), que es lo que
+    metía fondos indeseados en el dataset."""
+    key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        return text
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=key, base_url=os.getenv("OPENAI_BASE_URL") or None)
+        extra = (" Describe ONLY the character (body, face, hair, eyes, clothing, accessories, "
+                 "expression). Do NOT mention any background, scene, setting, environment, "
+                 "location or lighting." if neutral_bg else "")
+        r = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": (
+                    "Translate this character description into fluent English for an image "
+                    "model. Keep the subject and appearance EXACTLY. Output ONLY the English "
+                    "description on one line, no quotes, no explanation." + extra
+                )},
+                {"role": "user", "content": text},
+            ],
+            temperature=0.4,
+        )
+        return (r.choices[0].message.content or "").strip() or text
+    except Exception:
+        return text
+
 COMFY_URL = os.getenv("COMFY_URL", "http://192.168.1.46:8188").rstrip("/")
 STORE_DIR = Path("/app/cache/characters")
+POSE_LIB = Path("/app/pose_library")           # esqueletos OpenPose de la librería
+OPENPOSE_CN = "SDXL\\t2i-adapter-openpose-sdxl-1.0.safetensors"
+POSE_LABELS = {"frontal": "Frontal", "tres_cuartos": "3/4", "sentado": "Sentado", "accion": "Acción"}
+
+
+def _list_poses() -> list:
+    if not POSE_LIB.exists():
+        return []
+    return [{"key": p.stem, "label": POSE_LABELS.get(p.stem, p.stem)}
+            for p in sorted(POSE_LIB.glob("*.png"))]
+
+
+def _upload_pose(key: str) -> Optional[str]:
+    """Sube el esqueleto de la librería a la carpeta input de ComfyUI."""
+    p = POSE_LIB / f"{key}.png"
+    if not p.exists():
+        return None
+    up = requests.post(f"{COMFY_URL}/upload/image",
+                       files={"image": (f"pose_{key}.png", p.read_bytes(), "image/png")},
+                       data={"overwrite": "true", "type": "input"}, timeout=30)
+    return up.json().get("name") if up.ok else None
 
 # Rutas con barra normal (sin minas de escape \n); se convierten a la barra de
 # Windows que ComfyUI espera al construir el grafo.
@@ -74,22 +124,25 @@ def _save(uid: int, items: list) -> None:
 
 
 def _build_graph(uid: int, desc_en: str, ckpt: str, style_suffix: str, seed: int,
-                 num_poses: int, w: int = 832, h: int = 1216) -> dict:
+                 num_poses: int, neutral_bg: bool = True, w: int = 832, h: int = 1216) -> dict:
     desc = f"{desc_en}, {style_suffix}"
     ckpt = ckpt.replace("/", "\\")  # ComfyUI (Windows) lista los checkpoints con backslash
+    # Fondo neutro: fondo blanco/plano + negativos anti-escenario (dataset limpio).
+    bg = ", (plain white background:1.4), (simple background:1.3), studio backdrop, isolated character" if neutral_bg else ""
+    neg = NEG + (", detailed background, scenery, landscape, buildings, cityscape, cluttered background, environment, indoors, outdoors" if neutral_bg else "")
     g = {
         "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
-        "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": NEG, "clip": ["ckpt", 1]}},
+        "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": ["ckpt", 1]}},
         "ipload": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}},
         "base_lat": {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}},
-        "base_pos": {"class_type": "CLIPTextEncode", "inputs": {"text": f"{desc}, front view portrait, looking at viewer, simple background", "clip": ["ckpt", 1]}},
+        "base_pos": {"class_type": "CLIPTextEncode", "inputs": {"text": f"{desc}, front view portrait, looking at viewer{bg}", "clip": ["ckpt", 1]}},
         "base_k": {"class_type": "KSampler", "inputs": {"seed": seed, "steps": 26, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": ["ckpt", 0], "positive": ["base_pos", 0], "negative": ["neg", 0], "latent_image": ["base_lat", 0]}},
         "base_dec": {"class_type": "VAEDecode", "inputs": {"samples": ["base_k", 0], "vae": ["ckpt", 2]}},
         "base_save": {"class_type": "SaveImage", "inputs": {"filename_prefix": f"char_u{uid}_base", "images": ["base_dec", 0]}},
     }
     for i, (_key, suffix) in enumerate(POSES[:num_poses]):
         g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": ["ipload", 0], "ipadapter": ["ipload", 1], "image": ["base_dec", 0], "weight": IP_WEIGHT, "weight_type": IP_WEIGHT_TYPE, "combine_embeds": "concat", "start_at": 0.0, "end_at": 0.9, "embeds_scaling": "V only"}}
-        g[f"pos_{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": f"{desc}, {suffix}", "clip": ["ckpt", 1]}}
+        g[f"pos_{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": f"{desc}, {suffix}{bg}", "clip": ["ckpt", 1]}}
         g[f"lat_{i}"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
         g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + 1 + i, "steps": 26, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": [f"ip_{i}", 0], "positive": [f"pos_{i}", 0], "negative": ["neg", 0], "latent_image": [f"lat_{i}", 0]}}
         g[f"dec_{i}"] = {"class_type": "VAEDecode", "inputs": {"samples": [f"k_{i}", 0], "vae": ["ckpt", 2]}}
@@ -102,6 +155,7 @@ class CharGenerateRequest(BaseModel):
     style: str = "anime"
     num_poses: int = 4
     seed: Optional[int] = None
+    neutral_bg: bool = True
 
 
 @router.post("/generate")
@@ -110,12 +164,12 @@ def char_generate(req: CharGenerateRequest, current_user: User = Depends(get_cur
         raise HTTPException(status_code=400, detail="Falta la descripción del personaje")
     ckpt = STYLES.get(req.style, STYLES["anime"])
     style_suffix = STYLE_SUFFIX.get(req.style, STYLE_SUFFIX["anime"])
-    desc_en = _to_english_prompt(req.description.strip())
+    desc_en = _translate_character(req.description.strip(), req.neutral_bg)
     import random
     seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
     num = max(1, min(len(POSES), int(req.num_poses)))
 
-    wf = _build_graph(current_user.id, desc_en, ckpt, style_suffix, seed, num)
+    wf = _build_graph(current_user.id, desc_en, ckpt, style_suffix, seed, num, req.neutral_bg)
     try:
         r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": wf}, timeout=30)
     except Exception as e:
@@ -143,14 +197,13 @@ def char_status(prompt_id: str, current_user: User = Depends(get_current_user)):
     st = entry.get("status", {}).get("status_str")
     if st == "error":
         return {"status": "error"}
-    # recoger imágenes en orden: base primero, luego poses
+    # recoger TODAS las imágenes de salida, ordenadas por clave de nodo
+    # (base_save < save_0 < save_1… ; img_0 < img_1… ) — vale para set y escena.
     imgs = []
     outs = entry.get("outputs", {})
-    for key in ["base_save"] + [f"save_{i}" for i in range(len(POSES))]:
-        node = outs.get(key)
-        if node:
-            for im in node.get("images", []):
-                imgs.append(im.get("filename"))
+    for key in sorted(outs.keys()):
+        for im in outs[key].get("images", []):
+            imgs.append(im.get("filename"))
     if imgs:
         return {"status": "done", "images": imgs}
     return {"status": "running"}
@@ -193,6 +246,100 @@ def char_delete(entry_id: str, current_user: User = Depends(get_current_user)):
     items = [x for x in _load(current_user.id) if x.get("id") != entry_id]
     _save(current_user.id, items)
     return {"ok": True}
+
+
+def _upload_ref(char_id: str, filename: str) -> str:
+    """Descarga la imagen de referencia del output de ComfyUI y la sube a su
+    carpeta input (para poder usarla con LoadImage/IPAdapter)."""
+    r = requests.get(f"{COMFY_URL}/view", params={"filename": filename, "type": "output", "subfolder": ""}, timeout=30)
+    if not r.ok:
+        raise HTTPException(status_code=404, detail="Referencia no encontrada")
+    name = f"charref_{char_id}.png"
+    up = requests.post(f"{COMFY_URL}/upload/image",
+                       files={"image": (name, r.content, "image/png")},
+                       data={"overwrite": "true", "type": "input"}, timeout=30)
+    if not up.ok:
+        raise HTTPException(status_code=502, detail="No se pudo subir la referencia a ComfyUI")
+    return up.json().get("name", name)
+
+
+def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
+                       style_suffix: str, seed: int, num: int, w: int, h: int,
+                       pose_name: Optional[str] = None) -> dict:
+    ckpt = ckpt.replace("/", "\\")
+    # Con pose, el esqueleto es de cuerpo entero -> forzamos ese encuadre.
+    desc = f"{'full body shot, ' if pose_name else ''}{prompt_en}, {style_suffix}"
+    g = {
+        "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
+        "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": NEG, "clip": ["ckpt", 1]}},
+        "ref": {"class_type": "LoadImage", "inputs": {"image": ref_name}},
+        "ipload": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}},
+    }
+    if pose_name:
+        g["cnload"] = {"class_type": "ControlNetLoader", "inputs": {"control_net_name": OPENPOSE_CN}}
+        g["pose"] = {"class_type": "LoadImage", "inputs": {"image": pose_name}}
+    for i in range(num):
+        g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": ["ipload", 0], "ipadapter": ["ipload", 1], "image": ["ref", 0], "weight": IP_WEIGHT, "weight_type": IP_WEIGHT_TYPE, "combine_embeds": "concat", "start_at": 0.0, "end_at": 0.9, "embeds_scaling": "V only"}}
+        g[f"pos_{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": desc, "clip": ["ckpt", 1]}}
+        pos_src, neg_src = [f"pos_{i}", 0], ["neg", 0]
+        if pose_name:
+            g[f"cn_{i}"] = {"class_type": "ControlNetApplyAdvanced", "inputs": {
+                "positive": [f"pos_{i}", 0], "negative": ["neg", 0], "control_net": ["cnload", 0],
+                "image": ["pose", 0], "strength": 1.2, "start_percent": 0.0, "end_percent": 1.0}}
+            pos_src, neg_src = [f"cn_{i}", 0], [f"cn_{i}", 1]
+        g[f"lat_{i}"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
+        g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + i, "steps": 28, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": [f"ip_{i}", 0], "positive": pos_src, "negative": neg_src, "latent_image": [f"lat_{i}", 0]}}
+        g[f"dec_{i}"] = {"class_type": "VAEDecode", "inputs": {"samples": [f"k_{i}", 0], "vae": ["ckpt", 2]}}
+        g[f"img_{i}"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"scene_u{uid}", "images": [f"dec_{i}", 0]}}
+    return g
+
+
+class SceneRequest(BaseModel):
+    character_id: str
+    prompt: str
+    num_images: int = 2
+    width: int = 832
+    height: int = 1216
+    seed: Optional[int] = None
+    pose: Optional[str] = None   # clave de la librería de poses (o None = libre)
+
+
+@router.get("/poses")
+def char_poses(current_user: User = Depends(get_current_user)):
+    """Poses disponibles en la librería (esqueletos OpenPose)."""
+    return {"ok": True, "poses": _list_poses()}
+
+
+@router.post("/scene")
+def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)):
+    """Genera imágenes nuevas de un personaje guardado (misma cara vía IPAdapter)
+    en la escena/pose del prompt."""
+    if not (req.prompt or "").strip():
+        raise HTTPException(status_code=400, detail="Falta el prompt de la escena")
+    char = next((c for c in _load(current_user.id) if c.get("id") == req.character_id), None)
+    if not char or not char.get("images"):
+        raise HTTPException(status_code=404, detail="Personaje no encontrado")
+
+    ckpt = STYLES.get(char.get("style", "anime"), STYLES["anime"])
+    style_suffix = STYLE_SUFFIX.get(char.get("style", "anime"), STYLE_SUFFIX["anime"])
+    from app.routers.video_ltx import _to_english_prompt
+    prompt_en = _to_english_prompt(req.prompt.strip())
+    import random
+    seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
+    num = max(1, min(4, int(req.num_images)))
+    w = max(512, (int(req.width) // 8) * 8)
+    h = max(512, (int(req.height) // 8) * 8)
+
+    ref_name = _upload_ref(req.character_id, char["images"][0])
+    pose_name = _upload_pose(req.pose) if req.pose else None
+    wf = _build_scene_graph(current_user.id, ref_name, prompt_en, ckpt, style_suffix, seed, num, w, h, pose_name)
+    try:
+        r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": wf}, timeout=30)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo contactar con ComfyUI: {e}")
+    if not r.ok:
+        raise HTTPException(status_code=400, detail=f"ComfyUI rechazó el grafo: {r.text[:500]}")
+    return {"ok": True, "prompt_id": r.json().get("prompt_id"), "expected": num, "prompt_en": prompt_en, "seed": seed}
 
 
 @router.get("/image")
