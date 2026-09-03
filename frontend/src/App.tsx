@@ -6,6 +6,8 @@ import { Payments } from './components/Payments'
 import { AdminDashboard } from './components/AdminDashboard'
 import OrphansManager from './components/OrphansManager'
 import { LoraManager } from './components/LoraManager'
+import RepostManager from './components/RepostManager'
+import LtxStudio from './components/LtxStudio'
 
 function App() {
   const [user, setUser] = useState<UserResponse | null>(null)
@@ -37,6 +39,7 @@ function App() {
   const [showAdmin, setShowAdmin] = useState(false)
   const [showOrphans, setShowOrphans] = useState(false)
   const [showLoras, setShowLoras] = useState(false)
+  const [showLtx, setShowLtx] = useState(false)
 
   // Channel Form State
   const [channelName, setChannelName] = useState('')
@@ -109,6 +112,7 @@ function App() {
     setShowOrphans(false)
     setSelectedChannel(null)
     setShowLoras(false)
+    setShowLtx(false)
     setSidebarOpen(false)
   }
 
@@ -119,6 +123,7 @@ function App() {
     setShowOrphans(false)
     setSelectedChannel(null)
     setShowLoras(false)
+    setShowLtx(false)
     setSidebarOpen(false)
   }
 
@@ -129,6 +134,7 @@ function App() {
     setShowAdmin(false)
     setSelectedChannel(null)
     setShowLoras(false)
+    setShowLtx(false)
     setSidebarOpen(false)
   }
 
@@ -139,6 +145,7 @@ function App() {
     setShowAdmin(false)
     setShowOrphans(false)
     setShowLoras(false)
+    setShowLtx(false)
     if (channel) {
       localStorage.setItem('selectedChannelId', channel.id.toString())
     } else {
@@ -149,6 +156,18 @@ function App() {
 
   const handleShowLoras = () => {
     setShowLoras(true)
+    setShowSettings(false)
+    setShowPayments(false)
+    setShowAdmin(false)
+    setShowOrphans(false)
+    setShowLtx(false)
+    setSelectedChannel(null)
+    setSidebarOpen(false)
+  }
+
+  const handleShowLtx = () => {
+    setShowLtx(true)
+    setShowLoras(false)
     setShowSettings(false)
     setShowPayments(false)
     setShowAdmin(false)
@@ -164,6 +183,7 @@ function App() {
     setShowOrphans(false)
     setSelectedChannel(null)
     setShowLoras(false)
+    setShowLtx(false)
     setSidebarOpen(false)
   }
 
@@ -349,6 +369,15 @@ function App() {
             <span>LoRAs</span>
           </div>
 
+          <div
+            className={`channel-link ${showLtx ? 'active' : ''}`}
+            onClick={handleShowLtx}
+            style={{ marginTop: '4px' }}
+          >
+            <div className="channel-icon" style={{ background: '#0e7490' }}>🎬</div>
+            <span>Vídeo LTX</span>
+          </div>
+
           {user.is_admin && (
             <div 
               className={`channel-link ${showAdmin ? 'active' : ''}`}
@@ -405,7 +434,7 @@ function App() {
             </button>
           )}
           <div style={{ fontWeight: 600 }}>
-            {showLoras ? 'LoRAs' : showSettings ? 'Ajustes' : showPayments ? 'Créditos y Pagos' : showAdmin ? 'Panel de Administración' : showOrphans ? 'Limpieza de vídeos' : selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
+            {showLtx ? 'Vídeo LTX' : showLoras ? 'LoRAs' : showSettings ? 'Ajustes' : showPayments ? 'Créditos y Pagos' : showAdmin ? 'Panel de Administración' : showOrphans ? 'Limpieza de vídeos' : selectedChannel ? `Dashboard: ${selectedChannel.name}` : 'Selecciona un canal'}
           </div>
           {selectedChannel && (
             <button className="btn-delete" onClick={() => handleDeleteChannel(selectedChannel.id)}>
@@ -415,7 +444,9 @@ function App() {
         </header>
         
         <div className="content-area">
-          {showLoras ? (
+          {showLtx ? (
+            <LtxStudio />
+          ) : showLoras ? (
             <LoraManager />
           ) : showSettings ? (
             <Settings />
@@ -428,14 +459,18 @@ function App() {
           ) : showOrphans ? (
             <OrphansManager />
           ) : selectedChannel ? (
-            <ChannelDashboard
-              channel={selectedChannel}
-              onBack={() => setSelectedChannel(null)}
-              onChannelUpdated={(updated) => {
-                setSelectedChannel(updated);
-                setChannels(prev => prev.map(c => c.id === updated.id ? updated : c));
-              }}
-            />
+            selectedChannel.default_style === 'repost' ? (
+              <RepostManager channel={selectedChannel} />
+            ) : (
+              <ChannelDashboard
+                channel={selectedChannel}
+                onBack={() => setSelectedChannel(null)}
+                onChannelUpdated={(updated) => {
+                  setSelectedChannel(updated);
+                  setChannels(prev => prev.map(c => c.id === updated.id ? updated : c));
+                }}
+              />
+            )
           ) : (
             <div className="empty-state">
               <div style={{ fontSize: '4rem', marginBottom: '24px' }}>📺</div>

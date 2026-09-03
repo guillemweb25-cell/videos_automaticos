@@ -171,6 +171,101 @@ class YouTubeDLService:
             raise Exception(f"Error de yt-dlp: {e.stderr}")
 
     @staticmethod
+    def download_video(url: str, channel_name: str) -> dict:
+        """Descarga el VÍDEO completo (mejor calidad, muxado a MP4) de un
+        enlace de YouTube y devuelve la ruta + metadatos listos para reubir
+        (título, descripción, etiquetas). Pensado para el flujo "mirror":
+        bajar de YouTube y subir a mano a otra plataforma (Bilibili).
+
+        Usa la API de Python de yt-dlp (no subprocess) para poder recuperar de
+        forma fiable la ruta final del fichero muxado y los metadatos.
+        """
+        output_dir = DOWNLOAD_BASE / channel_name
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        opts = {
+            # bv*+ba = mejor vídeo + mejor audio (se muxan); /b = fallback a un
+            # único stream ya combinado si no hay separados.
+            "format": "bv*+ba/b",
+            "merge_output_format": "mp4",
+            # %(title).150B recorta el título a 150 bytes para no petar rutas
+            # largas en Windows; incluimos el id para evitar colisiones.
+            "outtmpl": str(output_dir / "%(title).150B [%(id)s].%(ext)s"),
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "restrictfilenames": False,
+            # YouTube devuelve 403 en el stream con el cliente web por defecto;
+            # los clientes de móvil/apple entregan URLs de descarga válidas.
+            # yt-dlp prueba estos en orden y usa el primero con formatos válidos.
+            "extractor_args": {"youtube": {"player_client": ["android", "ios", "web_safari"]}},
+        }
+
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+
+        # Resolver la ruta final del fichero (tras el mux a mp4).
+        file_path = None
+        reqs = info.get("requested_downloads") or []
+        if reqs:
+            file_path = reqs[0].get("filepath") or reqs[0].get("_filename")
+        if not file_path:
+            # Fallback: el .mp4 más reciente de la carpeta del canal.
+            mp4s = list(output_dir.glob("*.mp4"))
+            if mp4s:
+                file_path = str(max(mp4s, key=os.path.getctime))
+        if not file_path or not os.path.exists(file_path):
+            raise Exception("No se encontró el vídeo descargado tras el mux.")
+
+        return {
+            "file_path": file_path,
+            "id": info.get("id"),
+            "title": info.get("title") or "",
+            "description": info.get("description") or "",
+            "tags": info.get("tags") or [],
+            "categories": info.get("categories") or [],
+            "duration": info.get("duration"),
+            "thumbnail": info.get("thumbnail"),
+            "original_url": info.get("webpage_url") or url,
+        }
+
+    @staticmethod
+    def video_info(url: str) -> dict:
+        """Extrae metadatos de un vídeo de YouTube SIN descargarlo (rápido):
+        título, descripción, etiquetas, miniatura y duración. Para la ficha
+        previa antes de decidir descargar el MP4."""
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "skip_download": True,
+            "extractor_args": {"youtube": {"player_client": ["android", "ios", "web_safari"]}},
+        }
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        # Elegir la mejor miniatura disponible (mayor resolución al final de la
+        # lista); fallback al campo 'thumbnail' que ya elige yt-dlp.
+        thumb = info.get("thumbnail")
+        thumbs = info.get("thumbnails") or []
+        if thumbs:
+            best = thumbs[-1].get("url")
+            if best:
+                thumb = best
+
+        return {
+            "id": info.get("id"),
+            "title": info.get("title") or "",
+            "description": info.get("description") or "",
+            "tags": info.get("tags") or [],
+            "categories": info.get("categories") or [],
+            "duration": info.get("duration"),
+            "view_count": info.get("view_count"),
+            "thumbnail": thumb,
+            "original_url": info.get("webpage_url") or url,
+        }
+
+    @staticmethod
     def list_downloads(channel_name: str):
         output_dir = DOWNLOAD_BASE / channel_name
         if not output_dir.exists():

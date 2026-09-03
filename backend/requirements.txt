@@ -12,7 +12,7 @@ cryptography>=44.0.0
 nest_asyncio
 google-auth-oauthlib>=1.2.0
 google-api-python-client>=2.155.0
-yt-dlp>=2024.11.18
+yt-dlp>=2026.08.19
 requests>=2.32.0
 pydub>=0.25.1
 mutagen>=1.47.0

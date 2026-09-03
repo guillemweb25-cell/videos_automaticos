@@ -369,6 +369,57 @@ STYLES: Dict[str, StyleSpec] = {
             "clothed, no nudity, nothing scary or gory."
         ),
     },
+    "historia_informatica": {
+        "display_name": "Historia de la Informática (archivo vintage)",
+        "image_style_prompt": (
+            "authentic vintage archival documentary photograph on the history of computing and "
+            "technology, OFTEN FEATURING THE PEOPLE behind the machines: engineers, programmers, "
+            "scientists, students and office workers actively operating, building, presenting or "
+            "reacting to the technology, candid documentary moments of people at work, plus the "
+            "period-accurate hardware itself (beige and cream CRT monitors, chunky mechanical "
+            "keyboards, reel-to-reel tape machines, punch cards, mainframes, early personal "
+            "computers, circuit boards, vintage labs and offices), 1950s-1990s aesthetic, people "
+            "wearing period-accurate clothing (lab coats, shirts and ties, retro office wear, "
+            "vintage dresses); WHEN RELEVANT show vintage monitor screens displaying period "
+            "software with readable on-screen interface: early word processors and text editors "
+            "with blocky monospace text (the classic blue WordPerfect or WordStar DOS screen, amber "
+            "or green monochrome terminals), spreadsheets and early graphical interfaces; include "
+            "some period-accurate COLOR computers and CGA/EGA/VGA color monitors so not every scene "
+            "is sepia beige; warm faded color film look with gentle sepia undertones applied to the "
+            "PHOTOGRAPH while glowing screens keep their own native colors (WordPerfect blue, amber, "
+            "green, early color graphics), soft natural indoor lighting, subtle 16mm film grain, "
+            "slight vignette and gentle low contrast like an old photograph or restored archival "
+            "footage, nostalgic technical atmosphere, realistic textures on skin, beige plastic, "
+            "brushed metal, paper and glass; photorealistic; on-screen interface text is welcome, "
+            "but no overlay caption text or watermark"
+        ),
+        "negative_prompt": (
+            "modern computer, flat LCD monitor, LED screen, smartphone, tablet, modern laptop, "
+            "RGB gaming lights, glossy modern plastic, futuristic, sci-fi, cyberpunk, neon, "
+            "holographic UI, clean minimalist studio, heavy HDR, "
+            "ultra-sharp clinical render, 3d render, CGI, anime, cartoon, illustration, drawing, "
+            "painting, comic, sketch, overlay caption, subtitle, watermark, signature, logo, "
+            "frame, border, deformed hands, extra fingers, mutated hands, bad anatomy, low quality, "
+            "blurry, jpeg artifacts, (nudity:1.8), (naked:1.8), (nsfw:1.8), (bare chest:1.7), "
+            "(bare breasts:1.8), (cleavage:1.6)"
+        ),
+        "post_note": (
+            "HISTORY OF COMPUTING documentary channel. Every image is an AUTHENTIC-LOOKING VINTAGE "
+            "ARCHIVAL PHOTOGRAPH or restored film still — NOT a modern render. Depict the SPECIFIC "
+            "machine, person, place or event the narration mentions, with period-accurate hardware "
+            "and clothing for the exact decade (1940s mainframe rooms with vacuum tubes and "
+            "operators, 1960s-70s reel-to-reel and terminals with engineers, late-70s/80s beige "
+            "personal computers and CRT offices full of workers, 90s workstations). "
+            "BALANCE PEOPLE AND MACHINES (aim ~50/50): the history of computing is a HUMAN story, "
+            "so roughly half the images should show PEOPLE using, building, presenting or reacting "
+            "to the technology (engineers, programmers, scientists, students, office workers, "
+            "pioneers) — when you show a machine, whenever it fits, include someone operating it "
+            "rather than an isolated object on a desk. The other half can be hardware, components, "
+            "labs and offices. Everyone fully clothed in period-accurate attire. Keep the faded "
+            "film grain, warm/sepia grade and soft light as a consistent wrapper. Avoid anything "
+            "modern, glossy, neon or futuristic."
+        ),
+    },
 }
 
 ALIASES = {
@@ -408,12 +459,18 @@ ALIASES = {
     "violeta": "lallamavioleta",
     "saintgermain": "lallamavioleta",
     "saint_germain": "lallamavioleta",
-    "zenesp": "zencrayon",
-    "zennesp": "zencrayon",
-    "zen": "zencrayon",
+    "zenesp": "historia_informatica",
+    "zennesp": "historia_informatica",
+    "zen": "historia_informatica",
     "zendoodle": "zencrayon",
     "crayon": "zencrayon",
     "zen_crayon": "zencrayon",
+    "historia_informatica": "historia_informatica",
+    "historiainformatica": "historia_informatica",
+    "historia": "historia_informatica",
+    "informatica": "historia_informatica",
+    "computing": "historia_informatica",
+    "techhistory": "historia_informatica",
 }
 
 

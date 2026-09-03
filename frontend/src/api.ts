@@ -62,12 +62,102 @@ export interface ChannelResponse {
   id: number;
   name: string;
   handle?: string;
+  youtube_handle?: string | null;
   creds_dir?: string;
   image_style_prompt?: string;
   negative_prompt?: string;
   default_style?: string | null;
   default_workflow?: string | null;
   loras?: number[] | null;
+}
+
+export interface LtxGenerateRequest {
+  prompt: string;
+  negative?: string;
+  width: number;
+  height: number;
+  length: number;
+  fps: number;
+  seed?: number | null;
+}
+
+export interface LtxGenerateResponse {
+  ok: boolean;
+  prompt_id: string;
+  width: number;
+  height: number;
+  length: number;
+  fps: number;
+  seed: number;
+  prompt_used?: string;
+}
+
+export interface CharGenerateResponse {
+  ok: boolean;
+  prompt_id: string;
+  expected: number;
+  description_en: string;
+  style: string;
+  seed: number;
+}
+
+export interface CharacterItem {
+  id: string;
+  name: string;
+  description: string;
+  description_en?: string;
+  style: string;
+  seed?: number | null;
+  images: string[];
+  created_at: number;
+}
+
+export interface LtxHistoryItem {
+  id: string;
+  prompt: string;
+  prompt_used?: string;
+  filename: string;
+  subfolder?: string;
+  width: number;
+  height: number;
+  length: number;
+  fps: number;
+  seed?: number | null;
+  created_at: number;
+}
+
+export interface LtxStatus {
+  status: 'running' | 'pending' | 'done' | 'error' | 'unknown';
+  filename?: string;
+  subfolder?: string;
+  error?: string;
+}
+
+export interface RepostInfo {
+  id: string;
+  title: string;
+  description?: string;
+  tags?: string[];
+  categories?: string[];
+  duration?: number | null;
+  view_count?: number | null;
+  thumbnail?: string | null;
+  thumbnail_proxy?: string | null;
+  original_url?: string;
+}
+
+export interface RepostVideo {
+  ok?: boolean;
+  title: string;
+  description?: string;
+  tags?: string[];
+  categories?: string[];
+  duration?: number | null;
+  original_url?: string;
+  filename: string;
+  size_bytes?: number | null;
+  rel_path: string;
+  download_url: string;
 }
 
 export interface Lora {
@@ -208,6 +298,147 @@ class ApiClient {
     });
     if (!response.ok) throw new Error("Failed to fetch YouTube info");
     return response.json();
+  }
+
+  // --- Repost / mirror (descargar de YouTube -> subir a mano a Bilibili) ---
+  async repostDownload(channelId: number, url: string): Promise<RepostVideo> {
+    const res = await fetch(`${this.baseUrl}/repost/${channelId}/download`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.detail || 'Error al descargar el vídeo');
+    }
+    return res.json();
+  }
+
+  async repostList(channelId: number): Promise<{ ok: boolean; count: number; files: RepostVideo[] }> {
+    const res = await fetch(`${this.baseUrl}/repost/${channelId}/downloads`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al listar descargas');
+    return res.json();
+  }
+
+  async repostInfo(channelId: number, url: string): Promise<RepostInfo> {
+    const res = await fetch(`${this.baseUrl}/repost/${channelId}/info?url=${encodeURIComponent(url)}`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.detail || 'Error al leer el vídeo');
+    }
+    return res.json();
+  }
+
+  // Guarda un blob obtenido con auth como fichero en el navegador.
+  private async _saveBlob(path: string, filename: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}${path}`, { headers: this.getHeaders(true) });
+    if (!res.ok) throw new Error('Error al descargar el fichero');
+    const blob = await res.blob();
+    const objUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(objUrl);
+  }
+
+  // Descarga el MP4 al navegador (fetch con auth -> blob -> guardar).
+  repostSaveFile(channelId: number, relPath: string, filename: string): Promise<void> {
+    return this._saveBlob(`/repost/${channelId}/file?rel=${encodeURIComponent(relPath)}`, filename);
+  }
+
+  // Descarga la miniatura al navegador (proxy con auth).
+  repostSaveThumbnail(channelId: number, thumbUrl: string, filename: string): Promise<void> {
+    return this._saveBlob(`/repost/${channelId}/thumbnail?url=${encodeURIComponent(thumbUrl)}`, filename);
+  }
+
+  // --- LTX 2.5: generación de vídeo vertical ---
+  async ltxGenerate(payload: LtxGenerateRequest): Promise<LtxGenerateResponse> {
+    const res = await fetch(`${this.baseUrl}/ltx/generate`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.detail || 'Error al lanzar la generación');
+    }
+    return res.json();
+  }
+
+  async ltxStatus(promptId: string): Promise<LtxStatus> {
+    const res = await fetch(`${this.baseUrl}/ltx/status/${promptId}`, { headers: this.getHeaders(true) });
+    if (!res.ok) throw new Error('Error al consultar el estado');
+    return res.json();
+  }
+
+  // Trae el MP4 (proxy con auth) como blob URL para previsualizar/descargar.
+  async ltxVideoObjectUrl(filename: string, subfolder = ''): Promise<string> {
+    const res = await fetch(`${this.baseUrl}/ltx/video?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}`, {
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Error al obtener el vídeo');
+    return window.URL.createObjectURL(await res.blob());
+  }
+
+  async ltxSave(entry: Omit<LtxHistoryItem, 'id' | 'created_at'>): Promise<{ ok: boolean; entry: LtxHistoryItem }> {
+    const res = await fetch(`${this.baseUrl}/ltx/save`, {
+      method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(entry),
+    });
+    if (!res.ok) throw new Error('Error al guardar en el historial');
+    return res.json();
+  }
+
+  async ltxHistory(): Promise<LtxHistoryItem[]> {
+    const res = await fetch(`${this.baseUrl}/ltx/history`, { headers: this.getHeaders(true) });
+    if (!res.ok) throw new Error('Error al cargar el historial');
+    return (await res.json()).items || [];
+  }
+
+  async ltxHistoryDelete(entryId: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/ltx/history/${entryId}`, { method: 'DELETE', headers: this.getHeaders(true) });
+    if (!res.ok) throw new Error('Error al borrar');
+  }
+
+  // --- Generador de personajes consistentes (SDXL + IPAdapter) ---
+  async charGenerate(payload: { description: string; style: string; num_poses: number; seed?: number | null }): Promise<CharGenerateResponse> {
+    const res = await fetch(`${this.baseUrl}/characters/generate`, {
+      method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(payload),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al generar'); }
+    return res.json();
+  }
+  async charStatus(promptId: string): Promise<{ status: string; images?: string[] }> {
+    const res = await fetch(`${this.baseUrl}/characters/status/${promptId}`, { headers: this.getHeaders(true) });
+    if (!res.ok) throw new Error('Error de estado');
+    return res.json();
+  }
+  async charSave(entry: Omit<CharacterItem, 'id' | 'created_at'>): Promise<{ ok: boolean; entry: CharacterItem }> {
+    const res = await fetch(`${this.baseUrl}/characters/save`, {
+      method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(entry),
+    });
+    if (!res.ok) throw new Error('Error al guardar');
+    return res.json();
+  }
+  async charList(): Promise<CharacterItem[]> {
+    const res = await fetch(`${this.baseUrl}/characters/list`, { headers: this.getHeaders(true) });
+    if (!res.ok) throw new Error('Error al listar');
+    return (await res.json()).items || [];
+  }
+  async charDelete(entryId: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/characters/${entryId}`, { method: 'DELETE', headers: this.getHeaders(true) });
+    if (!res.ok) throw new Error('Error al borrar');
+  }
+  async charImageObjectUrl(filename: string): Promise<string> {
+    const res = await fetch(`${this.baseUrl}/characters/image?filename=${encodeURIComponent(filename)}`, { headers: this.getHeaders(true) });
+    if (!res.ok) throw new Error('Error al obtener imagen');
+    return window.URL.createObjectURL(await res.blob());
   }
 
   async getYouTubeAuthUrl(id: number, redirectUri: string): Promise<{ auth_url: string }> {

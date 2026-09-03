@@ -1,0 +1,20 @@
+{
+  "model":  {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": "LTX-2.5-Distilled-Q3_K_M.gguf"}, "_meta": {"title": "model"}},
+  "clip":   {"class_type": "CLIPLoader", "inputs": {"clip_name": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors", "type": "ltxv", "device": "default"}, "_meta": {"title": "clip"}},
+  "vae_v":  {"class_type": "VAELoader", "inputs": {"vae_name": "ltx-2.5-video-vae-bf16.safetensors"}, "_meta": {"title": "vae_video"}},
+  "vae_a":  {"class_type": "VAELoader", "inputs": {"vae_name": "ltx-2.5-audio-vae-bf16.safetensors"}, "_meta": {"title": "vae_audio"}},
+  "pos":    {"class_type": "CLIPTextEncode", "inputs": {"text": "PLACEHOLDER_POSITIVE", "clip": ["clip", 0]}, "_meta": {"title": "positive"}},
+  "neg":    {"class_type": "CLIPTextEncode", "inputs": {"text": "worst quality, blurry, jittery, distorted, low quality, static", "clip": ["clip", 0]}, "_meta": {"title": "negative"}},
+  "cond":   {"class_type": "LTXVConditioning", "inputs": {"positive": ["pos", 0], "negative": ["neg", 0], "frame_rate": 25}, "_meta": {"title": "conditioning"}},
+  "vlat":   {"class_type": "EmptyLTXVLatentVideo", "inputs": {"width": 512, "height": 768, "length": 121, "batch_size": 1}, "_meta": {"title": "video_latent"}},
+  "alat":   {"class_type": "LTXVEmptyLatentAudio", "inputs": {"frames_number": 121, "frame_rate": 25, "batch_size": 1, "audio_vae": ["vae_a", 0]}, "_meta": {"title": "audio_latent"}},
+  "avlat":  {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["vlat", 0], "audio_latent": ["alat", 0]}, "_meta": {"title": "av_latent"}},
+  "guider": {"class_type": "CFGGuider", "inputs": {"model": ["model", 0], "positive": ["cond", 0], "negative": ["cond", 1], "cfg": 1.0}, "_meta": {"title": "guider"}},
+  "samp":   {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}, "_meta": {"title": "sampler"}},
+  "sig":    {"class_type": "ManualSigmas", "inputs": {"sigmas": "1., 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"}, "_meta": {"title": "sigmas"}},
+  "noise":  {"class_type": "RandomNoise", "inputs": {"noise_seed": 42}, "_meta": {"title": "noise"}},
+  "sca":    {"class_type": "SamplerCustomAdvanced", "inputs": {"noise": ["noise", 0], "guider": ["guider", 0], "sampler": ["samp", 0], "sigmas": ["sig", 0], "latent_image": ["avlat", 0]}, "_meta": {"title": "sampler_custom"}},
+  "sep":    {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["sca", 0]}, "_meta": {"title": "separate_av"}},
+  "dec":    {"class_type": "LTXVSpatioTemporalTiledVAEDecode", "inputs": {"vae": ["vae_v", 0], "latents": ["sep", 0], "spatial_tiles": 4, "spatial_overlap": 4, "temporal_tile_length": 16, "temporal_overlap": 4, "last_frame_fix": false, "working_device": "auto", "working_dtype": "auto"}, "_meta": {"title": "decode"}},
+  "out":    {"class_type": "VHS_VideoCombine", "inputs": {"images": ["dec", 0], "frame_rate": 25, "loop_count": 0, "filename_prefix": "LTXvertical", "format": "video/h264-mp4", "pingpong": false, "save_output": true}, "_meta": {"title": "video_out"}}
+}
