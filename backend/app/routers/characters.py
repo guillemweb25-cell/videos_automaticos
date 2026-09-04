@@ -485,6 +485,7 @@ def _build_regen_graph(uid: int, ref_name: str, desc_en: str, ckpt: str,
 
 class RegenRequest(BaseModel):
     seed: Optional[int] = None
+    gender: Optional[str] = None   # hombre | mujer (para elegir los esqueletos)
 
 
 @router.post("/{char_id}/regenerate-poses")
@@ -496,7 +497,15 @@ def char_regen(char_id: str, req: RegenRequest, current_user: User = Depends(get
         raise HTTPException(status_code=404, detail="Personaje no encontrado")
     ckpt = STYLES.get(char.get("style", "anime"), STYLES["anime"])
     style_suffix = STYLE_SUFFIX.get(char.get("style", "anime"), STYLE_SUFFIX["anime"])
-    gender = char.get("gender", "mujer")
+    gender = req.gender if req.gender in ("hombre", "mujer") else char.get("gender", "mujer")
+    # persiste el género elegido en el personaje
+    if char.get("gender") != gender:
+        items = _load(current_user.id)
+        for c in items:
+            if c.get("id") == char_id:
+                c["gender"] = gender
+                break
+        _save(current_user.id, items)
     desc_en = char.get("description_en") or _translate_character(char.get("description", ""), True)
     import random
     seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)

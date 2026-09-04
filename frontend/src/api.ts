@@ -444,9 +444,9 @@ class ApiClient {
     const res = await fetch(`${this.baseUrl}/characters/${entryId}`, { method: 'DELETE', headers: this.getHeaders(true) });
     if (!res.ok) throw new Error('Error al borrar');
   }
-  async charRegen(charId: string, seed?: number | null): Promise<{ ok: boolean; prompt_id: string; expected: number }> {
+  async charRegen(charId: string, gender?: string, seed?: number | null): Promise<{ ok: boolean; prompt_id: string; expected: number }> {
     const res = await fetch(`${this.baseUrl}/characters/${charId}/regenerate-poses`, {
-      method: 'POST', headers: this.getHeaders(true), body: JSON.stringify({ seed: seed ?? null }),
+      method: 'POST', headers: this.getHeaders(true), body: JSON.stringify({ seed: seed ?? null, gender: gender ?? null }),
     });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al regenerar'); }
     return res.json();

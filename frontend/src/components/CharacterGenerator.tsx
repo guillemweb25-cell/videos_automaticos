@@ -27,6 +27,7 @@ export default function CharacterGenerator() {
   const [openImgs, setOpenImgs] = useState<Record<string, { filename: string; url: string }[]>>({});
   const [loadingChar, setLoadingChar] = useState<string | null>(null);
   const [regenId, setRegenId] = useState<string | null>(null);
+  const [genderSel, setGenderSel] = useState<Record<string, string>>({});
 
   const pollRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -99,10 +100,11 @@ export default function CharacterGenerator() {
   };
   const regenChar = async (c: CharacterItem) => {
     if (regenId) return;
-    if (!confirm(`Regenerar "${c.name}" con las poses nuevas (frontal, 3/4, perfil, retrato)? Reemplazará sus imágenes.`)) return;
+    const g = genderSel[c.id] || c.gender || 'mujer';
+    if (!confirm(`Regenerar "${c.name}" como ${g === 'hombre' ? 'HOMBRE' : 'MUJER'} con las poses nuevas? Reemplazará sus imágenes.`)) return;
     setRegenId(c.id);
     try {
-      const r = await api.charRegen(c.id);
+      const r = await api.charRegen(c.id, g);
       // sondear hasta que termine (7 imágenes con ControlNet pueden tardar ~12 min)
       let images: string[] | null = null;
       for (let i = 0; i < 260; i++) {
@@ -220,10 +222,15 @@ export default function CharacterGenerator() {
                     <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{c.name} <span style={{ color: '#64748b', fontWeight: 400, fontSize: '0.8rem' }}>· {c.style} · {c.images.length} img</span></div>
                     <div style={{ color: '#64748b', fontSize: '0.78rem', maxWidth: 560, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.description}</div>
                   </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem' }} onClick={() => viewChar(c)} disabled={loadingChar === c.id}>
                       {loadingChar === c.id ? '⏳' : openImgs[c.id] ? 'Ocultar' : '🖼️ Ver'}
                     </button>
+                    <select value={genderSel[c.id] ?? (c.gender || 'mujer')} onChange={(e) => setGenderSel((p) => ({ ...p, [c.id]: e.target.value }))} disabled={!!regenId}
+                      title="Género para las poses" style={{ padding: '5px 6px', fontSize: '0.75rem', borderRadius: 6, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}>
+                      <option value="mujer">👩 Mujer</option>
+                      <option value="hombre">👨 Hombre</option>
+                    </select>
                     <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem' }} onClick={() => regenChar(c)} disabled={!!regenId} title="Regenerar con las poses nuevas">
                       {regenId === c.id ? '⏳ Regenerando…' : '🔄 Regenerar poses'}
                     </button>
