@@ -13,6 +13,8 @@ export default function CharacterGenerator() {
   const [style, setStyle] = useState('anime');
   const [numPoses, setNumPoses] = useState(4);
   const [neutralBg, setNeutralBg] = useState(true);
+  const [gender, setGender] = useState('mujer');
+  const [poseControl, setPoseControl] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -24,6 +26,7 @@ export default function CharacterGenerator() {
   const [chars, setChars] = useState<CharacterItem[]>([]);
   const [openImgs, setOpenImgs] = useState<Record<string, { filename: string; url: string }[]>>({});
   const [loadingChar, setLoadingChar] = useState<string | null>(null);
+  const [regenId, setRegenId] = useState<string | null>(null);
 
   const pollRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -41,7 +44,7 @@ export default function CharacterGenerator() {
     setError(''); setStatus('Enviando…'); setBusy(true); setElapsed(0); setSaved(false);
     resultImgs.forEach((i) => URL.revokeObjectURL(i.url)); setResultImgs([]);
     try {
-      const r = await api.charGenerate({ description: description.trim(), style, num_poses: numPoses, neutral_bg: neutralBg });
+      const r = await api.charGenerate({ description: description.trim(), style, num_poses: numPoses, neutral_bg: neutralBg, gender, pose_control: poseControl });
       metaRef.current = { description_en: r.description_en, seed: r.seed };
       setStatus(`Generando ${r.expected} imágenes… (base + poses)`);
       timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
@@ -67,7 +70,7 @@ export default function CharacterGenerator() {
     try {
       await api.charSave({
         name: name.trim() || 'Personaje', description: description.trim(),
-        description_en: metaRef.current?.description_en || '', style,
+        description_en: metaRef.current?.description_en || '', style, gender,
         seed: metaRef.current?.seed ?? null, images: resultImgs.map((i) => i.filename),
       });
       setSaved(true); loadChars();
@@ -91,6 +94,28 @@ export default function CharacterGenerator() {
     if (!confirm(`¿Borrar "${c.name}" del listado? (los ficheros en disco no se borran)`)) return;
     try { await api.charDelete(c.id); loadChars(); } catch { alert('Error'); }
   };
+  const regenChar = async (c: CharacterItem) => {
+    if (regenId) return;
+    if (!confirm(`Regenerar "${c.name}" con las poses nuevas (frontal, 3/4, perfil, retrato)? Reemplazará sus imágenes.`)) return;
+    setRegenId(c.id);
+    try {
+      const r = await api.charRegen(c.id);
+      // sondear hasta que termine
+      let images: string[] | null = null;
+      for (let i = 0; i < 90; i++) {
+        await new Promise((res) => setTimeout(res, 4000));
+        const s = await api.charStatus(r.prompt_id);
+        if (s.status === 'done' && s.images?.length) { images = s.images; break; }
+        if (s.status === 'error') throw new Error('Error en la generación');
+      }
+      if (!images) throw new Error('Tiempo de espera agotado');
+      await api.charUpdateImages(c.id, images);
+      // limpiar caché de imágenes abiertas de ese personaje
+      setOpenImgs((prev) => { const n = { ...prev }; delete n[c.id]; return n; });
+      loadChars();
+    } catch (e: any) { alert(e.message || 'Error al regenerar'); }
+    finally { setRegenId(null); }
+  };
   const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   return (
@@ -108,11 +133,19 @@ export default function CharacterGenerator() {
             <input value={name} onChange={(e) => setName(e.target.value)} disabled={busy} placeholder="Aiko, la guerrera"
               style={{ width: '100%', marginTop: 4, padding: 9, borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }} />
           </div>
-          <div style={{ flex: '1 1 160px' }}>
+          <div style={{ flex: '1 1 150px' }}>
             <label style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Estilo</label>
             <select value={style} onChange={(e) => setStyle(e.target.value)} disabled={busy}
               style={{ width: '100%', marginTop: 4, padding: 9, borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}>
               {STYLES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: '0 1 130px' }}>
+            <label style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Género</label>
+            <select value={gender} onChange={(e) => setGender(e.target.value)} disabled={busy}
+              style={{ width: '100%', marginTop: 4, padding: 9, borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}>
+              <option value="mujer">👩 Mujer</option>
+              <option value="hombre">👨 Hombre</option>
             </select>
           </div>
           <div style={{ flex: '0 1 140px' }}>
@@ -132,6 +165,10 @@ export default function CharacterGenerator() {
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, color: '#cbd5e1', fontSize: '0.85rem', cursor: 'pointer' }}>
           <input type="checkbox" checked={neutralBg} onChange={(e) => setNeutralBg(e.target.checked)} disabled={busy} />
           Fondo neutro (blanco/simple) — recomendado para dataset de LoRA
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, color: '#cbd5e1', fontSize: '0.85rem', cursor: 'pointer' }}>
+          <input type="checkbox" checked={poseControl} onChange={(e) => setPoseControl(e.target.checked)} disabled={busy} />
+          Poses controladas (ControlNet OpenPose, {gender}) — mismas poses exactas
         </label>
 
         <div style={{ marginTop: 14, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -182,6 +219,9 @@ export default function CharacterGenerator() {
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem' }} onClick={() => viewChar(c)} disabled={loadingChar === c.id}>
                       {loadingChar === c.id ? '⏳' : openImgs[c.id] ? 'Ocultar' : '🖼️ Ver'}
+                    </button>
+                    <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem' }} onClick={() => regenChar(c)} disabled={!!regenId} title="Regenerar con las poses nuevas">
+                      {regenId === c.id ? '⏳ Regenerando…' : '🔄 Regenerar poses'}
                     </button>
                     <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem' }} onClick={() => delChar(c)}>🗑️</button>
                   </div>

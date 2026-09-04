@@ -54,25 +54,44 @@ def _translate_character(text: str, neutral_bg: bool) -> str:
 
 COMFY_URL = os.getenv("COMFY_URL", "http://192.168.1.46:8188").rstrip("/")
 STORE_DIR = Path("/app/cache/characters")
-POSE_LIB = Path("/app/pose_library")           # esqueletos OpenPose de la librería
-OPENPOSE_CN = "SDXL\\t2i-adapter-openpose-sdxl-1.0.safetensors"
-POSE_LABELS = {"frontal": "Frontal", "tres_cuartos": "3/4", "sentado": "Sentado", "accion": "Acción"}
+POSE_LIB = Path("/app/pose_library")           # esqueletos OpenPose por género
+# ControlNet OpenPose SDXL "fuerte" (xinsir); fallback al T2I-Adapter si falta.
+OPENPOSE_CN = "SDXL\\controlnet-openpose-sdxl-xinsir.safetensors"
+POSE_LABELS = {
+    "frontal": "Frontal", "tres_cuartos": "3/4", "perfil": "Perfil",
+    "brazos_cruzados": "Brazos cruzados", "caminando": "Caminando",
+    "sentado": "Sentado", "saludando": "Saludando", "retrato": "Retrato (primer plano)",
+}
+# Poses con esqueleto OpenPose (cuerpo). "retrato" es especial: primer plano SIN
+# ControlNet (solo IPAdapter-face), para máxima fidelidad de cara.
+SKELETON_KEYS = ["frontal", "tres_cuartos", "perfil", "brazos_cruzados", "caminando", "sentado", "saludando"]
+# Poses fijas del "character sheet" (set/regenerar): base frontal + cuerpo + retrato.
+SHEET_SKELETONS = ["frontal", "tres_cuartos", "perfil", "brazos_cruzados", "caminando", "saludando"]
+RETRATO_SUFFIX = "(close-up portrait:1.3), face, head and shoulders, looking at viewer, upper body"
 
 
-def _list_poses() -> list:
-    if not POSE_LIB.exists():
-        return []
-    return [{"key": p.stem, "label": POSE_LABELS.get(p.stem, p.stem)}
-            for p in sorted(POSE_LIB.glob("*.png"))]
+def _gender_dir(gender: str) -> Path:
+    return POSE_LIB / (gender if gender in ("hombre", "mujer") else "mujer")
 
 
-def _upload_pose(key: str) -> Optional[str]:
-    """Sube el esqueleto de la librería a la carpeta input de ComfyUI."""
-    p = POSE_LIB / f"{key}.png"
+def _list_poses(gender: str = "mujer") -> list:
+    d = _gender_dir(gender)
+    out = []
+    if d.exists():
+        for k in SKELETON_KEYS:
+            if (d / f"{k}.png").exists():
+                out.append({"key": k, "label": POSE_LABELS[k]})
+    out.append({"key": "retrato", "label": POSE_LABELS["retrato"]})  # siempre disponible
+    return out
+
+
+def _upload_pose(gender: str, key: str) -> Optional[str]:
+    """Sube el esqueleto (del género indicado) a la carpeta input de ComfyUI."""
+    p = _gender_dir(gender) / f"{key}.png"
     if not p.exists():
         return None
     up = requests.post(f"{COMFY_URL}/upload/image",
-                       files={"image": (f"pose_{key}.png", p.read_bytes(), "image/png")},
+                       files={"image": (f"pose_{gender}_{key}.png", p.read_bytes(), "image/png")},
                        data={"overwrite": "true", "type": "input"}, timeout=30)
     return up.json().get("name") if up.ok else None
 
@@ -123,28 +142,70 @@ def _save(uid: int, items: list) -> None:
     _store_path(uid).write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _cn_apply(g: dict, key: str, pos_node: str, pose_input: str) -> tuple:
+    """Añade un ControlNetApplyAdvanced (OpenPose) y devuelve las fuentes pos/neg."""
+    g[f"pose_{key}"] = {"class_type": "LoadImage", "inputs": {"image": pose_input}}
+    g[f"cn_{key}"] = {"class_type": "ControlNetApplyAdvanced", "inputs": {
+        "positive": [pos_node, 0], "negative": ["neg", 0], "control_net": ["cnload", 0],
+        "image": [f"pose_{key}", 0], "strength": 0.9, "start_percent": 0.0, "end_percent": 0.9}}
+    return [f"cn_{key}", 0], [f"cn_{key}", 1]
+
+
 def _build_graph(uid: int, desc_en: str, ckpt: str, style_suffix: str, seed: int,
-                 num_poses: int, neutral_bg: bool = True, w: int = 832, h: int = 1216) -> dict:
+                 num_poses: int, neutral_bg: bool = True, pose_names: Optional[dict] = None,
+                 w: int = 832, h: int = 1216) -> dict:
+    """Set de personaje. Si `pose_names` (dict {key: input_name}) está presente,
+    usa ControlNet OpenPose para forzar las poses de la librería; si no, poses por
+    texto (IPAdapter para la cara en ambos casos)."""
     desc = f"{desc_en}, {style_suffix}"
-    ckpt = ckpt.replace("/", "\\")  # ComfyUI (Windows) lista los checkpoints con backslash
-    # Fondo neutro: fondo blanco/plano + negativos anti-escenario (dataset limpio).
+    ckpt = ckpt.replace("/", "\\")
+    controlled = bool(pose_names)
     bg = ", (plain white background:1.4), (simple background:1.3), studio backdrop, isolated character" if neutral_bg else ""
     neg = NEG + (", detailed background, scenery, landscape, buildings, cityscape, cluttered background, environment, indoors, outdoors" if neutral_bg else "")
+    # Con control de pose, ControlNet fija la pose, así que usamos IPAdapter PLUS
+    # (arrastra TODA la referencia: cara + atuendo -> ropa consistente entre poses).
+    # Sin control, PLUS FACE deja libertad de pose por texto.
+    ip_preset = "PLUS (high strength)" if controlled else "PLUS FACE (portraits)"
     g = {
         "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
         "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": ["ckpt", 1]}},
-        "ipload": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}},
-        "base_lat": {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}},
-        "base_pos": {"class_type": "CLIPTextEncode", "inputs": {"text": f"{desc}, front view portrait, looking at viewer{bg}", "clip": ["ckpt", 1]}},
-        "base_k": {"class_type": "KSampler", "inputs": {"seed": seed, "steps": 26, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": ["ckpt", 0], "positive": ["base_pos", 0], "negative": ["neg", 0], "latent_image": ["base_lat", 0]}},
-        "base_dec": {"class_type": "VAEDecode", "inputs": {"samples": ["base_k", 0], "vae": ["ckpt", 2]}},
-        "base_save": {"class_type": "SaveImage", "inputs": {"filename_prefix": f"char_u{uid}_base", "images": ["base_dec", 0]}},
+        "ipload": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": ip_preset}},
     }
-    for i, (_key, suffix) in enumerate(POSES[:num_poses]):
-        g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": ["ipload", 0], "ipadapter": ["ipload", 1], "image": ["base_dec", 0], "weight": IP_WEIGHT, "weight_type": IP_WEIGHT_TYPE, "combine_embeds": "concat", "start_at": 0.0, "end_at": 0.9, "embeds_scaling": "V only"}}
+    if controlled:
+        g["cnload"] = {"class_type": "ControlNetLoader", "inputs": {"control_net_name": OPENPOSE_CN}}
+        # loader FACE para el retrato (primer plano = máxima fidelidad de cara)
+        g["ipload_face"] = {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}}
+
+    # ---- BASE (referencia; con control = pose frontal de librería) ----
+    base_text = f"{'full body shot, ' if controlled else ''}{desc}, front view, looking at viewer{bg}"
+    g["base_lat"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
+    g["base_pos"] = {"class_type": "CLIPTextEncode", "inputs": {"text": base_text, "clip": ["ckpt", 1]}}
+    bpos, bneg = ["base_pos", 0], ["neg", 0]
+    if controlled and pose_names.get("frontal"):
+        bpos, bneg = _cn_apply(g, "base", "base_pos", pose_names["frontal"])
+    g["base_k"] = {"class_type": "KSampler", "inputs": {"seed": seed, "steps": 26, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": ["ckpt", 0], "positive": bpos, "negative": bneg, "latent_image": ["base_lat", 0]}}
+    g["base_dec"] = {"class_type": "VAEDecode", "inputs": {"samples": ["base_k", 0], "vae": ["ckpt", 2]}}
+    g["base_save"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"char_u{uid}_base", "images": ["base_dec", 0]}}
+
+    # ---- POSES ----
+    if controlled:
+        # todas las poses del sheet (menos frontal=base) con esqueleto + retrato primer plano
+        pose_items = [(k, "full body shot") for k in SHEET_SKELETONS[1:] if pose_names.get(k)]
+        pose_items.append(("retrato", RETRATO_SUFFIX))
+    else:
+        pose_items = [(None, suffix) for (_k, suffix) in POSES[:num_poses]]
+
+    for i, (pkey, suffix) in enumerate(pose_items):
+        is_body = controlled and pkey != "retrato"
+        ipl = "ipload_face" if (controlled and pkey == "retrato") else "ipload"
+        ipw = 0.8 if is_body else IP_WEIGHT   # PLUS a 0.8 fija mejor el atuendo (ControlNet ya fija la pose)
+        g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": [ipl, 0], "ipadapter": [ipl, 1], "image": ["base_dec", 0], "weight": ipw, "weight_type": IP_WEIGHT_TYPE, "combine_embeds": "concat", "start_at": 0.0, "end_at": 0.9, "embeds_scaling": "V only"}}
         g[f"pos_{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": f"{desc}, {suffix}{bg}", "clip": ["ckpt", 1]}}
+        psrc, nsrc = [f"pos_{i}", 0], ["neg", 0]
+        if controlled and pkey and pose_names.get(pkey):
+            psrc, nsrc = _cn_apply(g, str(i), f"pos_{i}", pose_names[pkey])
         g[f"lat_{i}"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
-        g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + 1 + i, "steps": 26, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": [f"ip_{i}", 0], "positive": [f"pos_{i}", 0], "negative": ["neg", 0], "latent_image": [f"lat_{i}", 0]}}
+        g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + 1 + i, "steps": 26, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": [f"ip_{i}", 0], "positive": psrc, "negative": nsrc, "latent_image": [f"lat_{i}", 0]}}
         g[f"dec_{i}"] = {"class_type": "VAEDecode", "inputs": {"samples": [f"k_{i}", 0], "vae": ["ckpt", 2]}}
         g[f"save_{i}"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"char_u{uid}_pose{i}", "images": [f"dec_{i}", 0]}}
     return g
@@ -156,6 +217,8 @@ class CharGenerateRequest(BaseModel):
     num_poses: int = 4
     seed: Optional[int] = None
     neutral_bg: bool = True
+    gender: str = "mujer"          # hombre | mujer (para las poses OpenPose)
+    pose_control: bool = False     # forzar poses de la librería con ControlNet
 
 
 @router.post("/generate")
@@ -167,9 +230,20 @@ def char_generate(req: CharGenerateRequest, current_user: User = Depends(get_cur
     desc_en = _translate_character(req.description.strip(), req.neutral_bg)
     import random
     seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
-    num = max(1, min(len(POSES), int(req.num_poses)))
 
-    wf = _build_graph(current_user.id, desc_en, ckpt, style_suffix, seed, num, req.neutral_bg)
+    pose_names = None
+    if req.pose_control:
+        pose_names = {}
+        for k in SHEET_SKELETONS:
+            name = _upload_pose(req.gender, k)
+            if name:
+                pose_names[k] = name
+        if not pose_names:
+            pose_names = None  # sin librería para ese género -> texto
+    # con control el set es fijo (3/4 + retrato, base frontal); sin control hasta 4
+    num = max(1, min(3 if pose_names else len(POSES), int(req.num_poses)))
+
+    wf = _build_graph(current_user.id, desc_en, ckpt, style_suffix, seed, num, req.neutral_bg, pose_names)
     try:
         r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": wf}, timeout=30)
     except Exception as e:
@@ -177,7 +251,8 @@ def char_generate(req: CharGenerateRequest, current_user: User = Depends(get_cur
     if not r.ok:
         raise HTTPException(status_code=400, detail=f"ComfyUI rechazó el grafo: {r.text[:500]}")
     return {"ok": True, "prompt_id": r.json().get("prompt_id"), "expected": num + 1,
-            "description_en": desc_en, "style": req.style, "seed": seed}
+            "description_en": desc_en, "style": req.style, "seed": seed,
+            "gender": req.gender, "pose_control": bool(pose_names)}
 
 
 @router.get("/status/{prompt_id}")
@@ -216,6 +291,7 @@ class CharSaveRequest(BaseModel):
     style: str = "anime"
     seed: Optional[int] = None
     images: List[str] = []
+    gender: str = "mujer"
 
 
 @router.post("/save")
@@ -229,6 +305,7 @@ def char_save(req: CharSaveRequest, current_user: User = Depends(get_current_use
         "style": req.style,
         "seed": req.seed,
         "images": req.images,
+        "gender": req.gender,
         "created_at": int(time.time()),
     }
     items.insert(0, entry)
@@ -279,13 +356,14 @@ def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
         g["cnload"] = {"class_type": "ControlNetLoader", "inputs": {"control_net_name": OPENPOSE_CN}}
         g["pose"] = {"class_type": "LoadImage", "inputs": {"image": pose_name}}
     for i in range(num):
-        g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": ["ipload", 0], "ipadapter": ["ipload", 1], "image": ["ref", 0], "weight": IP_WEIGHT, "weight_type": IP_WEIGHT_TYPE, "combine_embeds": "concat", "start_at": 0.0, "end_at": 0.9, "embeds_scaling": "V only"}}
+        # Peso alto + linear para bloquear identidad en escenas (era el fallo de coherencia).
+        g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": ["ipload", 0], "ipadapter": ["ipload", 1], "image": ["ref", 0], "weight": 0.85, "weight_type": "linear", "combine_embeds": "concat", "start_at": 0.0, "end_at": 1.0, "embeds_scaling": "V only"}}
         g[f"pos_{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": desc, "clip": ["ckpt", 1]}}
         pos_src, neg_src = [f"pos_{i}", 0], ["neg", 0]
         if pose_name:
             g[f"cn_{i}"] = {"class_type": "ControlNetApplyAdvanced", "inputs": {
                 "positive": [f"pos_{i}", 0], "negative": ["neg", 0], "control_net": ["cnload", 0],
-                "image": ["pose", 0], "strength": 1.2, "start_percent": 0.0, "end_percent": 1.0}}
+                "image": ["pose", 0], "strength": 0.9, "start_percent": 0.0, "end_percent": 0.9}}
             pos_src, neg_src = [f"cn_{i}", 0], [f"cn_{i}", 1]
         g[f"lat_{i}"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
         g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + i, "steps": 28, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": [f"ip_{i}", 0], "positive": pos_src, "negative": neg_src, "latent_image": [f"lat_{i}", 0]}}
@@ -305,9 +383,9 @@ class SceneRequest(BaseModel):
 
 
 @router.get("/poses")
-def char_poses(current_user: User = Depends(get_current_user)):
-    """Poses disponibles en la librería (esqueletos OpenPose)."""
-    return {"ok": True, "poses": _list_poses()}
+def char_poses(gender: str = "mujer", current_user: User = Depends(get_current_user)):
+    """Poses disponibles en la librería (esqueletos OpenPose) para el género dado."""
+    return {"ok": True, "poses": _list_poses(gender)}
 
 
 @router.post("/scene")
@@ -330,8 +408,19 @@ def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)
     w = max(512, (int(req.width) // 8) * 8)
     h = max(512, (int(req.height) // 8) * 8)
 
+    # Antepone la IDENTIDAD del personaje (cara/pelo/rasgos) al prompt de escena,
+    # para que el modelo sepa QUIÉN es y no genere una persona genérica. El atuendo
+    # de la escena (más específico) suele mandar sobre el de la descripción.
+    char_desc = (char.get("description_en") or char.get("description") or "").strip()
     ref_name = _upload_ref(req.character_id, char["images"][0])
-    pose_name = _upload_pose(req.pose) if req.pose else None
+    pose_name = None
+    if req.pose == "retrato":
+        prompt_en = f"{RETRATO_SUFFIX}, {char_desc}, {prompt_en}"   # primer plano, sin ControlNet
+    else:
+        if char_desc:
+            prompt_en = f"{char_desc}, {prompt_en}"
+        if req.pose:
+            pose_name = _upload_pose(char.get("gender", "mujer"), req.pose)
     wf = _build_scene_graph(current_user.id, ref_name, prompt_en, ckpt, style_suffix, seed, num, w, h, pose_name)
     try:
         r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": wf}, timeout=30)
@@ -340,6 +429,95 @@ def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)
     if not r.ok:
         raise HTTPException(status_code=400, detail=f"ComfyUI rechazó el grafo: {r.text[:500]}")
     return {"ok": True, "prompt_id": r.json().get("prompt_id"), "expected": num, "prompt_en": prompt_en, "seed": seed}
+
+
+def _build_regen_graph(uid: int, ref_name: str, desc_en: str, ckpt: str,
+                       style_suffix: str, seed: int, pose_names: dict, w: int = 832, h: int = 1216) -> dict:
+    """Regenera el character sheet (frontal, 3/4, perfil + retrato) desde la
+    imagen de referencia de un personaje guardado (misma cara y atuendo)."""
+    desc = f"{desc_en}, {style_suffix}"
+    ckpt = ckpt.replace("/", "\\")
+    bg = ", (plain white background:1.4), (simple background:1.3), studio backdrop, isolated character"
+    neg = NEG + ", detailed background, scenery, landscape, buildings, cityscape, environment"
+    g = {
+        "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
+        "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": ["ckpt", 1]}},
+        "ref": {"class_type": "LoadImage", "inputs": {"image": ref_name}},
+        "ipload": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS (high strength)"}},
+        "ipload_face": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}},
+        "cnload": {"class_type": "ControlNetLoader", "inputs": {"control_net_name": OPENPOSE_CN}},
+    }
+    items = [(k, "full body shot") for k in SHEET_SKELETONS if pose_names.get(k)]
+    items.append(("retrato", RETRATO_SUFFIX))
+    for i, (pkey, suffix) in enumerate(items):
+        ipl = "ipload_face" if pkey == "retrato" else "ipload"
+        ipw = IP_WEIGHT if pkey == "retrato" else 0.8   # PLUS a 0.8 fija mejor el atuendo
+        g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": [ipl, 0], "ipadapter": [ipl, 1], "image": ["ref", 0], "weight": ipw, "weight_type": IP_WEIGHT_TYPE, "combine_embeds": "concat", "start_at": 0.0, "end_at": 0.9, "embeds_scaling": "V only"}}
+        g[f"pos_{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": f"{desc}, {suffix}{bg}", "clip": ["ckpt", 1]}}
+        psrc, nsrc = [f"pos_{i}", 0], ["neg", 0]
+        if pkey != "retrato" and pose_names.get(pkey):
+            g[f"pose_{i}"] = {"class_type": "LoadImage", "inputs": {"image": pose_names[pkey]}}
+            g[f"cn_{i}"] = {"class_type": "ControlNetApplyAdvanced", "inputs": {"positive": [f"pos_{i}", 0], "negative": ["neg", 0], "control_net": ["cnload", 0], "image": [f"pose_{i}", 0], "strength": 0.9, "start_percent": 0.0, "end_percent": 0.9}}
+            psrc, nsrc = [f"cn_{i}", 0], [f"cn_{i}", 1]
+        g[f"lat_{i}"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
+        g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + i, "steps": 26, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": [f"ip_{i}", 0], "positive": psrc, "negative": nsrc, "latent_image": [f"lat_{i}", 0]}}
+        g[f"dec_{i}"] = {"class_type": "VAEDecode", "inputs": {"samples": [f"k_{i}", 0], "vae": ["ckpt", 2]}}
+        g[f"img_{i}"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"regen_u{uid}", "images": [f"dec_{i}", 0]}}
+    return g
+
+
+class RegenRequest(BaseModel):
+    seed: Optional[int] = None
+
+
+@router.post("/{char_id}/regenerate-poses")
+def char_regen(char_id: str, req: RegenRequest, current_user: User = Depends(get_current_user)):
+    """Regenera las imágenes de un personaje guardado con el juego de poses nuevo
+    (frontal, 3/4, perfil, retrato), manteniendo cara y atuendo."""
+    char = next((c for c in _load(current_user.id) if c.get("id") == char_id), None)
+    if not char or not char.get("images"):
+        raise HTTPException(status_code=404, detail="Personaje no encontrado")
+    ckpt = STYLES.get(char.get("style", "anime"), STYLES["anime"])
+    style_suffix = STYLE_SUFFIX.get(char.get("style", "anime"), STYLE_SUFFIX["anime"])
+    gender = char.get("gender", "mujer")
+    desc_en = char.get("description_en") or _translate_character(char.get("description", ""), True)
+    import random
+    seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
+
+    ref_name = _upload_ref(char_id, char["images"][0])
+    pose_names = {}
+    for k in SHEET_SKELETONS:
+        n = _upload_pose(gender, k)
+        if n:
+            pose_names[k] = n
+    wf = _build_regen_graph(current_user.id, ref_name, desc_en, ckpt, style_suffix, seed, pose_names)
+    try:
+        r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": wf}, timeout=30)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo contactar con ComfyUI: {e}")
+    if not r.ok:
+        raise HTTPException(status_code=400, detail=f"ComfyUI rechazó el grafo: {r.text[:500]}")
+    return {"ok": True, "prompt_id": r.json().get("prompt_id"), "expected": len(pose_names) + 1}
+
+
+class UpdateImagesRequest(BaseModel):
+    images: List[str]
+
+
+@router.post("/{char_id}/update-images")
+def char_update_images(char_id: str, req: UpdateImagesRequest, current_user: User = Depends(get_current_user)):
+    """Reemplaza las imágenes de un personaje (tras regenerar poses)."""
+    items = _load(current_user.id)
+    found = False
+    for c in items:
+        if c.get("id") == char_id:
+            c["images"] = req.images
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Personaje no encontrado")
+    _save(current_user.id, items)
+    return {"ok": True}
 
 
 @router.get("/image")

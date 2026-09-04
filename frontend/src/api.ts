@@ -107,6 +107,7 @@ export interface CharacterItem {
   description: string;
   description_en?: string;
   style: string;
+  gender?: string;
   seed?: number | null;
   images: string[];
   created_at: number;
@@ -407,7 +408,7 @@ class ApiClient {
   }
 
   // --- Generador de personajes consistentes (SDXL + IPAdapter) ---
-  async charGenerate(payload: { description: string; style: string; num_poses: number; seed?: number | null; neutral_bg?: boolean }): Promise<CharGenerateResponse> {
+  async charGenerate(payload: { description: string; style: string; num_poses: number; seed?: number | null; neutral_bg?: boolean; gender?: string; pose_control?: boolean }): Promise<CharGenerateResponse> {
     const res = await fetch(`${this.baseUrl}/characters/generate`, {
       method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(payload),
     });
@@ -435,6 +436,19 @@ class ApiClient {
     const res = await fetch(`${this.baseUrl}/characters/${entryId}`, { method: 'DELETE', headers: this.getHeaders(true) });
     if (!res.ok) throw new Error('Error al borrar');
   }
+  async charRegen(charId: string, seed?: number | null): Promise<{ ok: boolean; prompt_id: string; expected: number }> {
+    const res = await fetch(`${this.baseUrl}/characters/${charId}/regenerate-poses`, {
+      method: 'POST', headers: this.getHeaders(true), body: JSON.stringify({ seed: seed ?? null }),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al regenerar'); }
+    return res.json();
+  }
+  async charUpdateImages(charId: string, images: string[]): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/characters/${charId}/update-images`, {
+      method: 'POST', headers: this.getHeaders(true), body: JSON.stringify({ images }),
+    });
+    if (!res.ok) throw new Error('Error al actualizar imágenes');
+  }
   async charImageObjectUrl(filename: string): Promise<string> {
     const res = await fetch(`${this.baseUrl}/characters/image?filename=${encodeURIComponent(filename)}`, { headers: this.getHeaders(true) });
     if (!res.ok) throw new Error('Error al obtener imagen');
@@ -447,8 +461,8 @@ class ApiClient {
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al generar'); }
     return res.json();
   }
-  async charPoses(): Promise<{ key: string; label: string }[]> {
-    const res = await fetch(`${this.baseUrl}/characters/poses`, { headers: this.getHeaders(true) });
+  async charPoses(gender = 'mujer'): Promise<{ key: string; label: string }[]> {
+    const res = await fetch(`${this.baseUrl}/characters/poses?gender=${encodeURIComponent(gender)}`, { headers: this.getHeaders(true) });
     if (!res.ok) return [];
     return (await res.json()).poses || [];
   }

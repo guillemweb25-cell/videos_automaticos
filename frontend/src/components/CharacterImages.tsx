@@ -33,12 +33,18 @@ export default function CharacterImages() {
   useEffect(() => {
     (async () => {
       try { const c = await api.charList(); setChars(c); if (c[0]) setCharId(c[0].id); } catch { /* */ }
-      try { setPoses(await api.charPoses()); } catch { /* */ }
     })();
     return () => stop();
   }, []);
 
   const selChar = chars.find((c) => c.id === charId);
+
+  // Carga las poses del género del personaje seleccionado
+  useEffect(() => {
+    (async () => {
+      try { setPoses(await api.charPoses(selChar?.gender || 'mujer')); setPose(''); } catch { /* */ }
+    })();
+  }, [charId, selChar?.gender]);
 
   const generate = async () => {
     if (!charId || !prompt.trim() || busy) return;
