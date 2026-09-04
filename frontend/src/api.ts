@@ -373,6 +373,14 @@ class ApiClient {
     return res.json();
   }
 
+  async ltxI2V(payload: { image_filename: string; prompt?: string; width?: number; height?: number; length?: number; fps?: number; seed?: number | null }): Promise<{ ok: boolean; prompt_id: string }> {
+    const res = await fetch(`${this.baseUrl}/ltx/i2v`, {
+      method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(payload),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al animar'); }
+    return res.json();
+  }
+
   async ltxStatus(promptId: string): Promise<LtxStatus> {
     const res = await fetch(`${this.baseUrl}/ltx/status/${promptId}`, { headers: this.getHeaders(true) });
     if (!res.ok) throw new Error('Error al consultar el estado');

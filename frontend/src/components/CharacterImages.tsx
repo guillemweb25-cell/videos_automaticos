@@ -24,8 +24,18 @@ export default function CharacterImages() {
   const [promptEn, setPromptEn] = useState('');
   const [imgs, setImgs] = useState<{ filename: string; url: string }[]>([]);
 
+  // Animar (I2V)
+  const [animFor, setAnimFor] = useState<string | null>(null);
+  const [animPrompt, setAnimPrompt] = useState('');
+  const [animBusy, setAnimBusy] = useState(false);
+  const [animStatus, setAnimStatus] = useState('');
+  const [animElapsed, setAnimElapsed] = useState(0);
+  const [animVideo, setAnimVideo] = useState<string | null>(null);
+
   const pollRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
+  const aPollRef = useRef<number | null>(null);
+  const aTimerRef = useRef<number | null>(null);
   const stop = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -76,6 +86,37 @@ export default function CharacterImages() {
     document.body.appendChild(a); a.click(); a.remove();
   };
   const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  const stopAnim = () => {
+    if (aPollRef.current) { clearInterval(aPollRef.current); aPollRef.current = null; }
+    if (aTimerRef.current) { clearInterval(aTimerRef.current); aTimerRef.current = null; }
+  };
+  const openAnim = (filename: string) => {
+    if (animVideo) URL.revokeObjectURL(animVideo);
+    setAnimFor(filename); setAnimPrompt(''); setAnimVideo(null); setAnimStatus(''); setAnimBusy(false); setAnimElapsed(0);
+  };
+  const closeAnim = () => { stopAnim(); if (animVideo) URL.revokeObjectURL(animVideo); setAnimFor(null); setAnimVideo(null); setAnimBusy(false); setAnimStatus(''); };
+  const animate = async () => {
+    if (!animFor || animBusy) return;
+    setAnimBusy(true); setAnimStatus('Enviando…'); setAnimElapsed(0);
+    if (animVideo) { URL.revokeObjectURL(animVideo); setAnimVideo(null); }
+    const r0 = RATIOS[ratio];
+    try {
+      const r = await api.ltxI2V({ image_filename: animFor, prompt: animPrompt.trim(), width: r0.w, height: r0.h, length: 97 });
+      setAnimStatus('Generando vídeo… (puede tardar varios minutos)');
+      aTimerRef.current = window.setInterval(() => setAnimElapsed((e) => e + 1), 1000);
+      aPollRef.current = window.setInterval(async () => {
+        try {
+          const s = await api.ltxStatus(r.prompt_id);
+          if (s.status === 'done' && s.filename) {
+            stopAnim(); setAnimStatus('Descargando…');
+            const url = await api.ltxVideoObjectUrl(s.filename, s.subfolder || '');
+            setAnimVideo(url); setAnimStatus(''); setAnimBusy(false);
+          } else if (s.status === 'error') { stopAnim(); setAnimStatus('Error en la generación'); setAnimBusy(false); }
+        } catch { /* reintenta */ }
+      }, 4000);
+    } catch (e: any) { setAnimStatus(e.message || 'Error'); setAnimBusy(false); }
+  };
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
@@ -150,9 +191,45 @@ export default function CharacterImages() {
             {imgs.map((im) => (
               <div key={im.filename} style={{ background: '#000', borderRadius: 8, overflow: 'hidden' }}>
                 <img src={im.url} style={{ width: '100%', display: 'block' }} />
-                <button className="btn btn-secondary" style={{ width: '100%', padding: '5px', fontSize: '0.75rem', borderRadius: 0 }} onClick={() => dl(im.url, im.filename)}>⬇️ Descargar</button>
+                <div style={{ display: 'flex' }}>
+                  <button className="btn btn-secondary" style={{ flex: 1, padding: '5px', fontSize: '0.72rem', borderRadius: 0 }} onClick={() => dl(im.url, im.filename)}>⬇️</button>
+                  <button className="btn btn-primary" style={{ flex: 2, padding: '5px', fontSize: '0.72rem', borderRadius: 0 }} onClick={() => openAnim(im.filename)}>🎬 Animar</button>
+                </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {animFor && (
+        <div onClick={closeAnim} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#1e293b', borderRadius: 12, padding: 20, maxWidth: 460, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}>🎬 Animar imagen (vídeo)</h3>
+              <button className="btn-link" onClick={closeAnim}>✕</button>
+            </div>
+            <p style={{ color: '#94a3b8', fontSize: '0.82rem', marginTop: 6 }}>
+              Convierte esta imagen en un clip vertical manteniendo su apariencia. Describe el
+              movimiento (en español).
+            </p>
+            <textarea value={animPrompt} onChange={(e) => setAnimPrompt(e.target.value)} rows={2} disabled={animBusy}
+              placeholder="gira la cabeza despacio, ligera brisa moviendo la ropa, cámara lenta"
+              style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }} />
+            <div style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={animate} disabled={animBusy}>
+                {animBusy ? '⏳ Generando…' : '🎬 Generar vídeo'}
+              </button>
+              {animStatus && <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{animStatus} {animElapsed > 0 && `(${mmss(animElapsed)})`}</span>}
+            </div>
+            {animBusy && <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: 6 }}>Los primeros clips tardan varios minutos.</div>}
+            {animVideo && (
+              <div style={{ marginTop: 14, textAlign: 'center' }}>
+                <video src={animVideo} controls autoPlay loop style={{ maxWidth: 300, width: '100%', borderRadius: 10, background: '#000' }} />
+                <div style={{ marginTop: 10 }}>
+                  <button className="btn btn-primary" onClick={() => { const a = document.createElement('a'); a.href = animVideo!; a.download = 'ltx_i2v.mp4'; document.body.appendChild(a); a.click(); a.remove(); }}>⬇️ Descargar MP4</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -36,7 +36,10 @@ export default function CharacterGenerator() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   };
-  const loadChars = async () => { try { setChars(await api.charList()); } catch { /* */ } };
+  const loadChars = async () => {
+    try { setChars(await api.charList()); } catch { /* */ }
+    setOpenImgs((prev) => { Object.values(prev).flat().forEach((i) => { try { URL.revokeObjectURL(i.url); } catch { /* */ } }); return {}; });
+  };
   useEffect(() => { loadChars(); return () => stop(); }, []);
 
   const generate = async () => {
@@ -100,15 +103,16 @@ export default function CharacterGenerator() {
     setRegenId(c.id);
     try {
       const r = await api.charRegen(c.id);
-      // sondear hasta que termine
+      // sondear hasta que termine (7 imágenes con ControlNet pueden tardar ~12 min)
       let images: string[] | null = null;
-      for (let i = 0; i < 90; i++) {
+      for (let i = 0; i < 260; i++) {
         await new Promise((res) => setTimeout(res, 4000));
-        const s = await api.charStatus(r.prompt_id);
+        let s;
+        try { s = await api.charStatus(r.prompt_id); } catch { continue; }
         if (s.status === 'done' && s.images?.length) { images = s.images; break; }
         if (s.status === 'error') throw new Error('Error en la generación');
       }
-      if (!images) throw new Error('Tiempo de espera agotado');
+      if (!images) throw new Error('Tiempo de espera agotado (sigue generándose; pulsa Refrescar en unos minutos)');
       await api.charUpdateImages(c.id, images);
       // limpiar caché de imágenes abiertas de ese personaje
       setOpenImgs((prev) => { const n = { ...prev }; delete n[c.id]; return n; });

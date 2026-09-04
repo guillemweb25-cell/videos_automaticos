@@ -9,6 +9,7 @@ import os
 import json
 import time
 import uuid
+import threading
 from pathlib import Path
 from typing import Optional, List
 
@@ -142,6 +143,29 @@ def _save(uid: int, items: list) -> None:
     _store_path(uid).write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _poll_and_update_char(uid: int, char_id: str, prompt_id: str, expected: int) -> None:
+    """En un hilo de fondo: espera a que ComfyUI termine el render y reemplaza las
+    imágenes del personaje. Robusto ante cierre del navegador."""
+    for _ in range(400):  # ~20 min
+        time.sleep(3)
+        try:
+            hist = requests.get(f"{COMFY_URL}/history/{prompt_id}", timeout=15).json()
+        except Exception:
+            continue
+        if prompt_id not in hist:
+            continue
+        outs = hist[prompt_id].get("outputs", {})
+        imgs = [im.get("filename") for k in sorted(outs.keys()) for im in outs[k].get("images", [])]
+        if imgs and len(imgs) >= expected:
+            items = _load(uid)
+            for c in items:
+                if c.get("id") == char_id:
+                    c["images"] = imgs
+                    break
+            _save(uid, items)
+        return  # terminó (con o sin imágenes)
+
+
 def _cn_apply(g: dict, key: str, pos_node: str, pose_input: str) -> tuple:
     """Añade un ControlNetApplyAdvanced (OpenPose) y devuelve las fuentes pos/neg."""
     g[f"pose_{key}"] = {"class_type": "LoadImage", "inputs": {"image": pose_input}}
@@ -162,19 +186,15 @@ def _build_graph(uid: int, desc_en: str, ckpt: str, style_suffix: str, seed: int
     controlled = bool(pose_names)
     bg = ", (plain white background:1.4), (simple background:1.3), studio backdrop, isolated character" if neutral_bg else ""
     neg = NEG + (", detailed background, scenery, landscape, buildings, cityscape, cluttered background, environment, indoors, outdoors" if neutral_bg else "")
-    # Con control de pose, ControlNet fija la pose, así que usamos IPAdapter PLUS
-    # (arrastra TODA la referencia: cara + atuendo -> ropa consistente entre poses).
-    # Sin control, PLUS FACE deja libertad de pose por texto.
-    ip_preset = "PLUS (high strength)" if controlled else "PLUS FACE (portraits)"
+    # PLUS FACE (especializado en cara) para bloquear la IDENTIDAD. El atuendo
+    # viene de la descripción en el texto; la pose, del ControlNet.
     g = {
         "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
         "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": ["ckpt", 1]}},
-        "ipload": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": ip_preset}},
+        "ipload": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}},
     }
     if controlled:
         g["cnload"] = {"class_type": "ControlNetLoader", "inputs": {"control_net_name": OPENPOSE_CN}}
-        # loader FACE para el retrato (primer plano = máxima fidelidad de cara)
-        g["ipload_face"] = {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}}
 
     # ---- BASE (referencia; con control = pose frontal de librería) ----
     base_text = f"{'full body shot, ' if controlled else ''}{desc}, front view, looking at viewer{bg}"
@@ -196,10 +216,9 @@ def _build_graph(uid: int, desc_en: str, ckpt: str, style_suffix: str, seed: int
         pose_items = [(None, suffix) for (_k, suffix) in POSES[:num_poses]]
 
     for i, (pkey, suffix) in enumerate(pose_items):
-        is_body = controlled and pkey != "retrato"
-        ipl = "ipload_face" if (controlled and pkey == "retrato") else "ipload"
-        ipw = 0.8 if is_body else IP_WEIGHT   # PLUS a 0.8 fija mejor el atuendo (ControlNet ya fija la pose)
-        g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": [ipl, 0], "ipadapter": [ipl, 1], "image": ["base_dec", 0], "weight": ipw, "weight_type": IP_WEIGHT_TYPE, "combine_embeds": "concat", "start_at": 0.0, "end_at": 0.9, "embeds_scaling": "V only"}}
+        # PLUS FACE fuerte en cuerpo (identidad), algo menor en retrato (ya es primer plano)
+        ipw = 0.85 if (controlled and pkey != "retrato") else IP_WEIGHT
+        g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": ["ipload", 0], "ipadapter": ["ipload", 1], "image": ["base_dec", 0], "weight": ipw, "weight_type": "linear", "combine_embeds": "concat", "start_at": 0.0, "end_at": 1.0, "embeds_scaling": "V only"}}
         g[f"pos_{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": f"{desc}, {suffix}{bg}", "clip": ["ckpt", 1]}}
         psrc, nsrc = [f"pos_{i}", 0], ["neg", 0]
         if controlled and pkey and pose_names.get(pkey):
@@ -443,16 +462,14 @@ def _build_regen_graph(uid: int, ref_name: str, desc_en: str, ckpt: str,
         "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
         "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": ["ckpt", 1]}},
         "ref": {"class_type": "LoadImage", "inputs": {"image": ref_name}},
-        "ipload": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS (high strength)"}},
-        "ipload_face": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}},
+        "ipload": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}},
         "cnload": {"class_type": "ControlNetLoader", "inputs": {"control_net_name": OPENPOSE_CN}},
     }
     items = [(k, "full body shot") for k in SHEET_SKELETONS if pose_names.get(k)]
     items.append(("retrato", RETRATO_SUFFIX))
     for i, (pkey, suffix) in enumerate(items):
-        ipl = "ipload_face" if pkey == "retrato" else "ipload"
-        ipw = IP_WEIGHT if pkey == "retrato" else 0.8   # PLUS a 0.8 fija mejor el atuendo
-        g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": [ipl, 0], "ipadapter": [ipl, 1], "image": ["ref", 0], "weight": ipw, "weight_type": IP_WEIGHT_TYPE, "combine_embeds": "concat", "start_at": 0.0, "end_at": 0.9, "embeds_scaling": "V only"}}
+        ipw = IP_WEIGHT if pkey == "retrato" else 0.85   # PLUS FACE fuerte = identidad
+        g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": ["ipload", 0], "ipadapter": ["ipload", 1], "image": ["ref", 0], "weight": ipw, "weight_type": "linear", "combine_embeds": "concat", "start_at": 0.0, "end_at": 1.0, "embeds_scaling": "V only"}}
         g[f"pos_{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": f"{desc}, {suffix}{bg}", "clip": ["ckpt", 1]}}
         psrc, nsrc = [f"pos_{i}", 0], ["neg", 0]
         if pkey != "retrato" and pose_names.get(pkey):
@@ -497,7 +514,12 @@ def char_regen(char_id: str, req: RegenRequest, current_user: User = Depends(get
         raise HTTPException(status_code=502, detail=f"No se pudo contactar con ComfyUI: {e}")
     if not r.ok:
         raise HTTPException(status_code=400, detail=f"ComfyUI rechazó el grafo: {r.text[:500]}")
-    return {"ok": True, "prompt_id": r.json().get("prompt_id"), "expected": len(pose_names) + 1}
+    pid = r.json().get("prompt_id")
+    expected = len(pose_names) + 1
+    # Poll de fondo: actualiza las imágenes del personaje cuando ComfyUI termine,
+    # aunque el navegador cierre o se rinda el sondeo del frontend.
+    threading.Thread(target=_poll_and_update_char, args=(current_user.id, char_id, pid, expected), daemon=True).start()
+    return {"ok": True, "prompt_id": pid, "expected": expected}
 
 
 class UpdateImagesRequest(BaseModel):

@@ -23,7 +23,24 @@ router = APIRouter(prefix="/ltx", tags=["ltx-video"])
 
 COMFY_URL = os.getenv("COMFY_URL", "http://192.168.1.46:8188").rstrip("/")
 TEMPLATE = Path("/app/workflows/LTX25-T2V-Vertical.json")
+TEMPLATE_I2V = Path("/app/workflows/LTX25-I2V-Vertical.json")
 HISTORY_DIR = Path("/app/cache/ltx_history")
+
+
+def _upload_output_image(filename: str) -> str:
+    """Trae una imagen del output de ComfyUI (personaje/escena) y la sube a input
+    para poder usarla como imagen de partida en I2V."""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Nombre no permitido")
+    r = requests.get(f"{COMFY_URL}/view", params={"filename": filename, "type": "output", "subfolder": ""}, timeout=30)
+    if not r.ok:
+        raise HTTPException(status_code=404, detail="Imagen de partida no encontrada")
+    up = requests.post(f"{COMFY_URL}/upload/image",
+                       files={"image": (filename, r.content, "image/png")},
+                       data={"overwrite": "true", "type": "input"}, timeout=30)
+    if not up.ok:
+        raise HTTPException(status_code=502, detail="No se pudo subir la imagen a ComfyUI")
+    return up.json().get("name", filename)
 
 
 def _hist_path(user_id: int) -> Path:
@@ -128,6 +145,57 @@ def ltx_generate(req: LtxGenerateRequest, current_user: User = Depends(get_curre
     pid = r.json().get("prompt_id")
     return {"ok": True, "prompt_id": pid, "width": w, "height": h, "length": length,
             "fps": fps, "seed": seed, "prompt_used": prompt_used}
+
+
+class LtxI2VRequest(BaseModel):
+    image_filename: str        # PNG en el output de ComfyUI (personaje/escena)
+    prompt: str = ""           # movimiento/acción (opcional)
+    width: int = 512
+    height: int = 768
+    length: int = 97
+    fps: int = 25
+    seed: Optional[int] = None
+    auto_translate: bool = True
+
+
+@router.post("/i2v")
+def ltx_i2v(req: LtxI2VRequest, current_user: User = Depends(get_current_user)):
+    """Anima una imagen (image-to-video) manteniendo su apariencia. La imagen es
+    un PNG generado en la app (personaje/escena)."""
+    if not (req.image_filename or "").strip():
+        raise HTTPException(status_code=400, detail="Falta la imagen de partida")
+    if not TEMPLATE_I2V.exists():
+        raise HTTPException(status_code=500, detail="Plantilla I2V no encontrada")
+
+    wf = json.loads(TEMPLATE_I2V.read_text(encoding="utf-8"))
+    w, h = _snap32(req.width), _snap32(req.height)
+    length = _snap_len(req.length)
+    fps = max(8, min(30, int(req.fps)))
+    import random
+    seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
+
+    motion = (req.prompt or "").strip() or "subtle natural motion, gentle movement, cinematic"
+    prompt = _to_english_prompt(motion) if req.auto_translate else motion
+    img_name = _upload_output_image(req.image_filename.strip())
+
+    wf["pos"]["inputs"]["text"] = prompt
+    wf["loadimg"]["inputs"]["image"] = img_name
+    wf["resize"]["inputs"].update({"width": w, "height": h})
+    wf["vlat"]["inputs"].update({"width": w, "height": h, "length": length})
+    wf["alat"]["inputs"].update({"frames_number": length, "frame_rate": fps})
+    wf["cond"]["inputs"]["frame_rate"] = fps
+    wf["out"]["inputs"]["frame_rate"] = fps
+    wf["noise"]["inputs"]["noise_seed"] = seed
+    wf["out"]["inputs"]["filename_prefix"] = f"ltxi2v_u{current_user.id}"
+
+    try:
+        r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": wf}, timeout=30)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo contactar con ComfyUI: {e}")
+    if not r.ok:
+        raise HTTPException(status_code=400, detail=f"ComfyUI rechazó el grafo: {r.text[:500]}")
+    return {"ok": True, "prompt_id": r.json().get("prompt_id"), "width": w, "height": h,
+            "length": length, "fps": fps, "seed": seed, "prompt_used": prompt}
 
 
 @router.get("/status/{prompt_id}")
