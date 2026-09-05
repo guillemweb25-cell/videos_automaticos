@@ -16,6 +16,7 @@ export default function CharacterImages() {
   const [ratio, setRatio] = useState(0);
   const [poses, setPoses] = useState<{ key: string; label: string }[]>([]);
   const [pose, setPose] = useState('');
+  const [phone, setPhone] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -71,7 +72,7 @@ export default function CharacterImages() {
     imgs.forEach((i) => URL.revokeObjectURL(i.url)); setImgs([]);
     const r0 = RATIOS[ratio];
     try {
-      const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null });
+      const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null, phone });
       setPromptEn(r.prompt_en || '');
       setStatus(`Generando ${r.expected} imagen(es)…`);
       loadHistory();   // muestra la entrada pendiente en el historial
@@ -197,6 +198,11 @@ export default function CharacterImages() {
             <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} disabled={busy}
               placeholder="de pie en una azotea de noche con la ciudad iluminada de fondo, plano general cinematográfico"
               style={{ width: '100%', marginTop: 4, padding: 10, borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }} />
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, color: '#cbd5e1', fontSize: '0.85rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={phone} onChange={(e) => setPhone(e.target.checked)} disabled={busy} />
+              📱 Foto de móvil (look amateur/casual, menos "IA")
+            </label>
 
             <div style={{ marginTop: 14, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <button className="btn btn-primary" onClick={generate} disabled={busy || !prompt.trim()}>

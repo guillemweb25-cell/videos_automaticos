@@ -135,6 +135,13 @@ NEG = ("lowres, bad anatomy, worst quality, blurry, extra fingers, deformed, mul
 # No se usa en anime/cartoon para no romper esos estilos.
 REALISM_NEG = ("plastic skin, airbrushed, waxy skin, over-smooth skin, cgi, 3d render, "
                "render, doll, oversaturated, cartoon, anime, illustration")
+# Look "foto de móvil" (amateur/casual): sustituye al sufijo cinematográfico.
+PHONE_SUFFIX = ("amateur smartphone photo, casual snapshot, instagram photo, slightly grainy, "
+                "direct on-camera flash, imperfect framing, unposed candid, everyday moment, "
+                "low quality phone camera photo, realistic")
+PHONE_NEG = ("professional photography, dslr, studio lighting, cinematic, editorial, film still, "
+             "bokeh, 50mm, sharp focus, high fashion, magazine cover, perfectly lit, retouched, "
+             "plastic skin, airbrushed, cgi, 3d render, doll")
 
 
 def _store_path(uid: int) -> Path:
@@ -450,7 +457,7 @@ def _upload_ref(char_id: str, filename: str) -> str:
 def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
                        style_suffix: str, seed: int, num: int, w: int, h: int,
                        pose_name: Optional[str] = None, use_ipadapter: bool = True,
-                       extra_neg: str = "") -> dict:
+                       extra_neg: str = "", cfg: float = 6.0) -> dict:
     """Grafo de escena. Con `use_ipadapter` (personaje SIN LoRA) la identidad viene
     del IPAdapter PLUS FACE de la imagen de referencia. Con LoRA se pasa
     use_ipadapter=False: la identidad la lleva la LoRA (aplicada aparte con
@@ -485,7 +492,7 @@ def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
                 "image": ["pose", 0], "strength": 0.9, "start_percent": 0.0, "end_percent": 0.9}}
             pos_src, neg_src = [f"cn_{i}", 0], [f"cn_{i}", 1]
         g[f"lat_{i}"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
-        g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + i, "steps": 28, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": model_src, "positive": pos_src, "negative": neg_src, "latent_image": [f"lat_{i}", 0]}}
+        g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + i, "steps": 30, "cfg": cfg, "sampler_name": "dpmpp_2m", "scheduler": "karras", "denoise": 1, "model": model_src, "positive": pos_src, "negative": neg_src, "latent_image": [f"lat_{i}", 0]}}
         g[f"dec_{i}"] = {"class_type": "VAEDecode", "inputs": {"samples": [f"k_{i}", 0], "vae": ["ckpt", 2]}}
         g[f"img_{i}"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"scene_u{uid}", "images": [f"dec_{i}", 0]}}
     return g
@@ -499,6 +506,7 @@ class SceneRequest(BaseModel):
     height: int = 1216
     seed: Optional[int] = None
     pose: Optional[str] = None   # clave de la librería de poses (o None = libre)
+    phone: bool = False          # look "foto de móvil" (amateur/casual)
 
 
 @router.get("/poses")
@@ -544,9 +552,16 @@ def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)
     lora_fn, lora_trigger, lora_sm = _char_lora(char)
     if lora_fn and lora_trigger:
         prompt_en = f"{lora_trigger}, {prompt_en}"
-    extra_neg = REALISM_NEG if char.get("style", "realista") == "realista" else ""
+    is_real = char.get("style", "realista") == "realista"
+    if req.phone:
+        style_suffix = PHONE_SUFFIX            # look amateur de móvil
+        extra_neg = PHONE_NEG
+        cfg = 4.5
+    else:
+        extra_neg = REALISM_NEG if is_real else ""
+        cfg = 6.0
     wf = _build_scene_graph(current_user.id, ref_name, prompt_en, ckpt, style_suffix, seed, num, w, h,
-                            pose_name, use_ipadapter=not bool(lora_fn), extra_neg=extra_neg)
+                            pose_name, use_ipadapter=not bool(lora_fn), extra_neg=extra_neg, cfg=cfg)
     if lora_fn:
         _apply_lora(wf, lora_fn, lora_sm)
     try:
