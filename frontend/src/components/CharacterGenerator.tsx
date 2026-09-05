@@ -34,6 +34,7 @@ export default function CharacterGenerator() {
   const [loraSaving, setLoraSaving] = useState<string | null>(null);
   const [trainJobs, setTrainJobs] = useState<Record<string, LoraJob>>({});
   const trainJobsRef = useRef<Record<string, LoraJob>>({});
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const pollRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -248,7 +249,7 @@ export default function CharacterGenerator() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginTop: 14 }}>
             {resultImgs.map((im, i) => (
               <div key={im.filename} style={{ background: '#000', borderRadius: 8, overflow: 'hidden' }}>
-                <img src={im.url} style={{ width: '100%', display: 'block' }} />
+                <img src={im.url} onClick={() => setLightbox(im.url)} style={{ width: '100%', display: 'block', cursor: 'zoom-in' }} />
                 <button className="btn btn-secondary" style={{ width: '100%', padding: '4px', fontSize: '0.72rem', borderRadius: 0 }}
                   onClick={() => dl(im.url, im.filename)}>{i === 0 ? '⬇️ base' : `⬇️ pose ${i}`}</button>
               </div>
@@ -338,7 +339,7 @@ export default function CharacterGenerator() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8, marginTop: 10 }}>
                     {openImgs[c.id].map((im, i) => (
                       <div key={im.filename} style={{ background: '#000', borderRadius: 6, overflow: 'hidden' }}>
-                        <img src={im.url} style={{ width: '100%', display: 'block' }} />
+                        <img src={im.url} onClick={() => setLightbox(im.url)} style={{ width: '100%', display: 'block', cursor: 'zoom-in' }} />
                         <button className="btn btn-secondary" style={{ width: '100%', padding: '3px', fontSize: '0.68rem', borderRadius: 0 }} onClick={() => dl(im.url, im.filename)}>⬇️ {i === 0 ? 'base' : i}</button>
                       </div>
                     ))}
@@ -349,6 +350,12 @@ export default function CharacterGenerator() {
           </div>
         )}
       </div>
+
+      {lightbox && (
+        <div onClick={() => setLightbox(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, cursor: 'zoom-out', padding: 12 }}>
+          <img src={lightbox} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }} />
+        </div>
+      )}
     </div>
   );
 }

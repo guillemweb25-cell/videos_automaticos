@@ -18,6 +18,7 @@ export default function CharacterImages() {
   const [pose, setPose] = useState('');
   const [phone, setPhone] = useState(false);
   const [hq, setHq] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -227,7 +228,7 @@ export default function CharacterImages() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginTop: 12 }}>
             {imgs.map((im) => (
               <div key={im.filename} style={{ background: '#000', borderRadius: 8, overflow: 'hidden' }}>
-                <img src={im.url} style={{ width: '100%', display: 'block' }} />
+                <img src={im.url} onClick={() => setLightbox(im.url)} style={{ width: '100%', display: 'block', cursor: 'zoom-in' }} />
                 <div style={{ display: 'flex' }}>
                   <button className="btn btn-secondary" style={{ flex: 1, padding: '5px', fontSize: '0.72rem', borderRadius: 0 }} onClick={() => dl(im.url, im.filename)}>⬇️</button>
                   <button className="btn btn-primary" style={{ flex: 2, padding: '5px', fontSize: '0.72rem', borderRadius: 0 }} onClick={() => openAnim(im.filename)}>🎬 Animar</button>
@@ -265,7 +266,7 @@ export default function CharacterImages() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginTop: 10 }}>
                     {openHist[e.id].map((im) => (
                       <div key={im.filename} style={{ background: '#000', borderRadius: 6, overflow: 'hidden' }}>
-                        <img src={im.url} style={{ width: '100%', display: 'block' }} />
+                        <img src={im.url} onClick={() => setLightbox(im.url)} style={{ width: '100%', display: 'block', cursor: 'zoom-in' }} />
                         <div style={{ display: 'flex' }}>
                           <button className="btn btn-secondary" style={{ flex: 1, padding: '4px', fontSize: '0.68rem', borderRadius: 0 }} onClick={() => dl(im.url, im.filename)}>⬇️</button>
                           <button className="btn btn-primary" style={{ flex: 2, padding: '4px', fontSize: '0.68rem', borderRadius: 0 }} onClick={() => openAnim(im.filename)}>🎬 Animar</button>
@@ -310,6 +311,12 @@ export default function CharacterImages() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {lightbox && (
+        <div onClick={() => setLightbox(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, cursor: 'zoom-out', padding: 12 }}>
+          <img src={lightbox} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }} />
         </div>
       )}
     </div>
