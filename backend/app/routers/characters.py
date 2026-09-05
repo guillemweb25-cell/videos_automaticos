@@ -445,22 +445,32 @@ def _upload_ref(char_id: str, filename: str) -> str:
 
 def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
                        style_suffix: str, seed: int, num: int, w: int, h: int,
-                       pose_name: Optional[str] = None) -> dict:
+                       pose_name: Optional[str] = None, use_ipadapter: bool = True) -> dict:
+    """Grafo de escena. Con `use_ipadapter` (personaje SIN LoRA) la identidad viene
+    del IPAdapter PLUS FACE de la imagen de referencia. Con LoRA se pasa
+    use_ipadapter=False: la identidad la lleva la LoRA (aplicada aparte con
+    _apply_lora) y así el FONDO del prompt no queda arrastrado por el fondo neutro
+    de la referencia."""
     ckpt = ckpt.replace("/", "\\")
     # Con pose, el esqueleto es de cuerpo entero -> forzamos ese encuadre.
     desc = f"{'full body shot, ' if pose_name else ''}{prompt_en}, {style_suffix}"
     g = {
         "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
         "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": NEG, "clip": ["ckpt", 1]}},
-        "ref": {"class_type": "LoadImage", "inputs": {"image": ref_name}},
-        "ipload": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}},
     }
+    if use_ipadapter:
+        g["ref"] = {"class_type": "LoadImage", "inputs": {"image": ref_name}}
+        g["ipload"] = {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}}
     if pose_name:
         g["cnload"] = {"class_type": "ControlNetLoader", "inputs": {"control_net_name": OPENPOSE_CN}}
         g["pose"] = {"class_type": "LoadImage", "inputs": {"image": pose_name}}
     for i in range(num):
-        # Peso alto + linear para bloquear identidad en escenas (era el fallo de coherencia).
-        g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": ["ipload", 0], "ipadapter": ["ipload", 1], "image": ["ref", 0], "weight": 0.85, "weight_type": "linear", "combine_embeds": "concat", "start_at": 0.0, "end_at": 1.0, "embeds_scaling": "V only"}}
+        if use_ipadapter:
+            # Peso alto + linear para bloquear identidad en escenas (personaje sin LoRA).
+            g[f"ip_{i}"] = {"class_type": "IPAdapterAdvanced", "inputs": {"model": ["ipload", 0], "ipadapter": ["ipload", 1], "image": ["ref", 0], "weight": 0.85, "weight_type": "linear", "combine_embeds": "concat", "start_at": 0.0, "end_at": 1.0, "embeds_scaling": "V only"}}
+            model_src = [f"ip_{i}", 0]
+        else:
+            model_src = ["ckpt", 0]   # _apply_lora lo reencamina al LoraLoader
         g[f"pos_{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": desc, "clip": ["ckpt", 1]}}
         pos_src, neg_src = [f"pos_{i}", 0], ["neg", 0]
         if pose_name:
@@ -469,7 +479,7 @@ def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
                 "image": ["pose", 0], "strength": 0.9, "start_percent": 0.0, "end_percent": 0.9}}
             pos_src, neg_src = [f"cn_{i}", 0], [f"cn_{i}", 1]
         g[f"lat_{i}"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
-        g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + i, "steps": 28, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": [f"ip_{i}", 0], "positive": pos_src, "negative": neg_src, "latent_image": [f"lat_{i}", 0]}}
+        g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + i, "steps": 28, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": model_src, "positive": pos_src, "negative": neg_src, "latent_image": [f"lat_{i}", 0]}}
         g[f"dec_{i}"] = {"class_type": "VAEDecode", "inputs": {"samples": [f"k_{i}", 0], "vae": ["ckpt", 2]}}
         g[f"img_{i}"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"scene_u{uid}", "images": [f"dec_{i}", 0]}}
     return g
@@ -528,7 +538,8 @@ def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)
     lora_fn, lora_trigger, lora_sm = _char_lora(char)
     if lora_fn and lora_trigger:
         prompt_en = f"{lora_trigger}, {prompt_en}"
-    wf = _build_scene_graph(current_user.id, ref_name, prompt_en, ckpt, style_suffix, seed, num, w, h, pose_name)
+    wf = _build_scene_graph(current_user.id, ref_name, prompt_en, ckpt, style_suffix, seed, num, w, h,
+                            pose_name, use_ipadapter=not bool(lora_fn))
     if lora_fn:
         _apply_lora(wf, lora_fn, lora_sm)
     try:
