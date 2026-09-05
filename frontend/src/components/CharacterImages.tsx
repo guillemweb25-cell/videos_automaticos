@@ -17,6 +17,7 @@ export default function CharacterImages() {
   const [poses, setPoses] = useState<{ key: string; label: string }[]>([]);
   const [pose, setPose] = useState('');
   const [phone, setPhone] = useState(false);
+  const [hq, setHq] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -72,7 +73,7 @@ export default function CharacterImages() {
     imgs.forEach((i) => URL.revokeObjectURL(i.url)); setImgs([]);
     const r0 = RATIOS[ratio];
     try {
-      const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null, phone });
+      const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null, phone, hq });
       setPromptEn(r.prompt_en || '');
       setStatus(`Generando ${r.expected} imagen(es)…`);
       loadHistory();   // muestra la entrada pendiente en el historial
@@ -202,6 +203,10 @@ export default function CharacterImages() {
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, color: '#cbd5e1', fontSize: '0.85rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={phone} onChange={(e) => setPhone(e.target.checked)} disabled={busy} />
               📱 Foto de móvil (look amateur/casual, menos "IA")
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, color: '#cbd5e1', fontSize: '0.85rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={hq} onChange={(e) => setHq(e.target.checked)} disabled={busy} />
+              ✨ Alta calidad (mejora la cara + upscale 2x, más lento)
             </label>
 
             <div style={{ marginTop: 14, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>

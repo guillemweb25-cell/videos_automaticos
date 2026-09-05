@@ -457,7 +457,7 @@ def _upload_ref(char_id: str, filename: str) -> str:
 def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
                        style_suffix: str, seed: int, num: int, w: int, h: int,
                        pose_name: Optional[str] = None, use_ipadapter: bool = True,
-                       extra_neg: str = "", cfg: float = 6.0) -> dict:
+                       extra_neg: str = "", cfg: float = 6.0, hq: bool = False) -> dict:
     """Grafo de escena. Con `use_ipadapter` (personaje SIN LoRA) la identidad viene
     del IPAdapter PLUS FACE de la imagen de referencia. Con LoRA se pasa
     use_ipadapter=False: la identidad la lleva la LoRA (aplicada aparte con
@@ -477,6 +477,11 @@ def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
     if pose_name:
         g["cnload"] = {"class_type": "ControlNetLoader", "inputs": {"control_net_name": OPENPOSE_CN}}
         g["pose"] = {"class_type": "LoadImage", "inputs": {"image": pose_name}}
+    if hq:
+        # Alta calidad: detector de cara (ADetailer) + upscaler (compartidos).
+        g["hq_det"] = {"class_type": "UltralyticsDetectorProvider", "inputs": {"model_name": "bbox/face_yolov8m.pt"}}
+        g["hq_sam"] = {"class_type": "SAMLoader", "inputs": {"model_name": "sam_vit_b_01ec64.pth", "device_mode": "AUTO"}}
+        g["hq_up"] = {"class_type": "UpscaleModelLoader", "inputs": {"model_name": "RealESRGAN_x2.pth"}}
     for i in range(num):
         if use_ipadapter:
             # Peso alto + linear para bloquear identidad en escenas (personaje sin LoRA).
@@ -494,7 +499,24 @@ def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
         g[f"lat_{i}"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
         g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + i, "steps": 30, "cfg": cfg, "sampler_name": "dpmpp_2m", "scheduler": "karras", "denoise": 1, "model": model_src, "positive": pos_src, "negative": neg_src, "latent_image": [f"lat_{i}", 0]}}
         g[f"dec_{i}"] = {"class_type": "VAEDecode", "inputs": {"samples": [f"k_{i}", 0], "vae": ["ckpt", 2]}}
-        g[f"img_{i}"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"scene_u{uid}", "images": [f"dec_{i}", 0]}}
+        final = [f"dec_{i}", 0]
+        if hq:
+            # FaceDetailer: reinpainta la cara (ojos/piel nítidos) sobre el mismo modelo.
+            g[f"fd_{i}"] = {"class_type": "FaceDetailer", "inputs": {
+                "image": [f"dec_{i}", 0], "model": model_src, "clip": ["ckpt", 1], "vae": ["ckpt", 2],
+                "guide_size": 512, "guide_size_for": True, "max_size": 1024,
+                "seed": seed + 100 + i, "steps": 20, "cfg": 5.0, "sampler_name": "dpmpp_2m", "scheduler": "karras",
+                "positive": [f"pos_{i}", 0], "negative": ["neg", 0], "denoise": 0.4,
+                "feather": 5, "noise_mask": True, "force_inpaint": True,
+                "bbox_threshold": 0.5, "bbox_dilation": 10, "bbox_crop_factor": 3.0,
+                "sam_detection_hint": "center-1", "sam_dilation": 0, "sam_threshold": 0.93,
+                "sam_bbox_expansion": 0, "sam_mask_hint_threshold": 0.7, "sam_mask_hint_use_negative": "False",
+                "drop_size": 10, "bbox_detector": ["hq_det", 0], "wildcard": "", "cycle": 1,
+                "sam_model_opt": ["hq_sam", 0]}}
+            # Upscale 2x con RealESRGAN.
+            g[f"up_{i}"] = {"class_type": "ImageUpscaleWithModel", "inputs": {"upscale_model": ["hq_up", 0], "image": [f"fd_{i}", 0]}}
+            final = [f"up_{i}", 0]
+        g[f"img_{i}"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"scene_u{uid}", "images": final}}
     return g
 
 
@@ -507,6 +529,7 @@ class SceneRequest(BaseModel):
     seed: Optional[int] = None
     pose: Optional[str] = None   # clave de la librería de poses (o None = libre)
     phone: bool = False          # look "foto de móvil" (amateur/casual)
+    hq: bool = False             # alta calidad: FaceDetailer (cara) + upscale 2x
 
 
 @router.get("/poses")
@@ -561,7 +584,7 @@ def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)
         extra_neg = REALISM_NEG if is_real else ""
         cfg = 6.0
     wf = _build_scene_graph(current_user.id, ref_name, prompt_en, ckpt, style_suffix, seed, num, w, h,
-                            pose_name, use_ipadapter=not bool(lora_fn), extra_neg=extra_neg, cfg=cfg)
+                            pose_name, use_ipadapter=not bool(lora_fn), extra_neg=extra_neg, cfg=cfg, hq=req.hq)
     if lora_fn:
         _apply_lora(wf, lora_fn, lora_sm)
     try:
