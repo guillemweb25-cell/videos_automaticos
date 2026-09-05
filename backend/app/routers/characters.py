@@ -196,6 +196,29 @@ def _char_lora(char: dict) -> tuple:
     return fn or None, (char.get("lora_trigger") or "").strip(), float(char.get("lora_strength") or 0.9)
 
 
+def _face_detailer(g: dict, tag: str, image_src, model_src, pos_src, neg_src, seed: int):
+    """Añade un FaceDetailer (ADetailer) que reinpainta la cara (nítida, sin perder
+    identidad) sobre `image_src`. Los loaders (detector+SAM) se añaden una sola vez.
+    Devuelve la ref de la imagen refinada. Mejora mucho las caras pequeñas de los
+    planos de cuerpo entero del sheet."""
+    if "hq_det" not in g:
+        g["hq_det"] = {"class_type": "UltralyticsDetectorProvider", "inputs": {"model_name": "bbox/face_yolov8m.pt"}}
+    if "hq_sam" not in g:
+        g["hq_sam"] = {"class_type": "SAMLoader", "inputs": {"model_name": "sam_vit_b_01ec64.pth", "device_mode": "AUTO"}}
+    g[f"fd_{tag}"] = {"class_type": "FaceDetailer", "inputs": {
+        "image": image_src, "model": model_src, "clip": ["ckpt", 1], "vae": ["ckpt", 2],
+        "guide_size": 512, "guide_size_for": True, "max_size": 1024,
+        "seed": seed, "steps": 20, "cfg": 5.0, "sampler_name": "dpmpp_2m", "scheduler": "karras",
+        "positive": pos_src, "negative": neg_src, "denoise": 0.4,
+        "feather": 5, "noise_mask": True, "force_inpaint": True,
+        "bbox_threshold": 0.5, "bbox_dilation": 10, "bbox_crop_factor": 3.0,
+        "sam_detection_hint": "center-1", "sam_dilation": 0, "sam_threshold": 0.93,
+        "sam_bbox_expansion": 0, "sam_mask_hint_threshold": 0.7, "sam_mask_hint_use_negative": "False",
+        "drop_size": 10, "bbox_detector": ["hq_det", 0], "wildcard": "", "cycle": 1,
+        "sam_model_opt": ["hq_sam", 0]}}
+    return [f"fd_{tag}", 0]
+
+
 def _scene_store_path(uid: int) -> Path:
     STORE_DIR.mkdir(parents=True, exist_ok=True)
     return STORE_DIR / f"scenes_user_{uid}.json"
@@ -300,7 +323,8 @@ def _build_graph(uid: int, desc_en: str, ckpt: str, style_suffix: str, seed: int
         bpos, bneg = _cn_apply(g, "base", "base_pos", pose_names["frontal"])
     g["base_k"] = {"class_type": "KSampler", "inputs": {"seed": seed, "steps": 26, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": ["ckpt", 0], "positive": bpos, "negative": bneg, "latent_image": ["base_lat", 0]}}
     g["base_dec"] = {"class_type": "VAEDecode", "inputs": {"samples": ["base_k", 0], "vae": ["ckpt", 2]}}
-    g["base_save"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"char_u{uid}_base", "images": ["base_dec", 0]}}
+    base_src = _face_detailer(g, "base", ["base_dec", 0], ["ckpt", 0], ["base_pos", 0], ["neg", 0], seed + 50)
+    g["base_save"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"char_u{uid}_base", "images": base_src}}
 
     # ---- POSES ----
     if controlled:
@@ -321,7 +345,8 @@ def _build_graph(uid: int, desc_en: str, ckpt: str, style_suffix: str, seed: int
         g[f"lat_{i}"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
         g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + 1 + i, "steps": 26, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": [f"ip_{i}", 0], "positive": psrc, "negative": nsrc, "latent_image": [f"lat_{i}", 0]}}
         g[f"dec_{i}"] = {"class_type": "VAEDecode", "inputs": {"samples": [f"k_{i}", 0], "vae": ["ckpt", 2]}}
-        g[f"save_{i}"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"char_u{uid}_pose{i}", "images": [f"dec_{i}", 0]}}
+        pose_src = _face_detailer(g, str(i), [f"dec_{i}", 0], [f"ip_{i}", 0], [f"pos_{i}", 0], ["neg", 0], seed + 60 + i)
+        g[f"save_{i}"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"char_u{uid}_pose{i}", "images": pose_src}}
     return g
 
 
@@ -638,7 +663,8 @@ def _build_regen_graph(uid: int, ref_name: str, desc_en: str, ckpt: str,
         g[f"lat_{i}"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
         g[f"k_{i}"] = {"class_type": "KSampler", "inputs": {"seed": seed + i, "steps": 26, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1, "model": [f"ip_{i}", 0], "positive": psrc, "negative": nsrc, "latent_image": [f"lat_{i}", 0]}}
         g[f"dec_{i}"] = {"class_type": "VAEDecode", "inputs": {"samples": [f"k_{i}", 0], "vae": ["ckpt", 2]}}
-        g[f"img_{i}"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"regen_u{uid}", "images": [f"dec_{i}", 0]}}
+        regen_src = _face_detailer(g, str(i), [f"dec_{i}", 0], [f"ip_{i}", 0], [f"pos_{i}", 0], ["neg", 0], seed + 60 + i)
+        g[f"img_{i}"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"regen_u{uid}", "images": regen_src}}
     return g
 
 
