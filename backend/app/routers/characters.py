@@ -110,7 +110,7 @@ STYLES = {
 }
 STYLE_SUFFIX = {
     "anime": "anime style, cel shaded, masterpiece, best quality",
-    "realista": "photorealistic, natural skin, sharp focus, 8k",
+    "realista": "photorealistic, natural skin texture, soft natural lighting, subtle film grain, shot on 50mm lens",
     "cartoon": "3d cartoon style, pixar style, colorful",
 }
 # (clave, sufijo en inglés) — la base es el retrato frontal limpio.
@@ -131,6 +131,10 @@ NEG = ("lowres, bad anatomy, worst quality, blurry, extra fingers, deformed, mul
        "(extra legs:1.3), (extra limbs:1.3), missing legs, malformed legs, deformed legs, "
        "fused legs, twisted legs, (floating limbs:1.2), disconnected limbs, mutated limbs, "
        "poorly drawn feet, deformed feet, bad proportions, unnatural pose")
+# Negativo extra SOLO para estilo realista (evita el look "plástico" de LoRA).
+# No se usa en anime/cartoon para no romper esos estilos.
+REALISM_NEG = ("plastic skin, airbrushed, waxy skin, over-smooth skin, cgi, 3d render, "
+               "render, doll, oversaturated, cartoon, anime, illustration")
 
 
 def _store_path(uid: int) -> Path:
@@ -445,7 +449,8 @@ def _upload_ref(char_id: str, filename: str) -> str:
 
 def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
                        style_suffix: str, seed: int, num: int, w: int, h: int,
-                       pose_name: Optional[str] = None, use_ipadapter: bool = True) -> dict:
+                       pose_name: Optional[str] = None, use_ipadapter: bool = True,
+                       extra_neg: str = "") -> dict:
     """Grafo de escena. Con `use_ipadapter` (personaje SIN LoRA) la identidad viene
     del IPAdapter PLUS FACE de la imagen de referencia. Con LoRA se pasa
     use_ipadapter=False: la identidad la lleva la LoRA (aplicada aparte con
@@ -454,9 +459,10 @@ def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
     ckpt = ckpt.replace("/", "\\")
     # Con pose, el esqueleto es de cuerpo entero -> forzamos ese encuadre.
     desc = f"{'full body shot, ' if pose_name else ''}{prompt_en}, {style_suffix}"
+    neg_text = f"{NEG}, {extra_neg}" if extra_neg else NEG
     g = {
         "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
-        "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": NEG, "clip": ["ckpt", 1]}},
+        "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": neg_text, "clip": ["ckpt", 1]}},
     }
     if use_ipadapter:
         g["ref"] = {"class_type": "LoadImage", "inputs": {"image": ref_name}}
@@ -538,8 +544,9 @@ def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)
     lora_fn, lora_trigger, lora_sm = _char_lora(char)
     if lora_fn and lora_trigger:
         prompt_en = f"{lora_trigger}, {prompt_en}"
+    extra_neg = REALISM_NEG if char.get("style", "realista") == "realista" else ""
     wf = _build_scene_graph(current_user.id, ref_name, prompt_en, ckpt, style_suffix, seed, num, w, h,
-                            pose_name, use_ipadapter=not bool(lora_fn))
+                            pose_name, use_ipadapter=not bool(lora_fn), extra_neg=extra_neg)
     if lora_fn:
         _apply_lora(wf, lora_fn, lora_sm)
     try:
@@ -853,7 +860,7 @@ def _finalize_lora(uid: int, char_id: str, lora_fn: str, trigger: str) -> None:
         if c.get("id") == char_id:
             c["lora_filename"] = lora_fn
             c["lora_trigger"] = trigger
-            c["lora_strength"] = 0.9
+            c["lora_strength"] = 0.7   # equilibrio identidad/realismo (0.9 salia "plastico")
             name = c.get("name", "")
             break
     _save(uid, items)
@@ -862,7 +869,7 @@ def _finalize_lora(uid: int, char_id: str, lora_fn: str, trigger: str) -> None:
         exists = db.query(Lora).filter(Lora.user_id == uid, Lora.filename == lora_fn).first()
         if not exists:
             db.add(Lora(label=name or lora_fn, filename=lora_fn, trigger_words=trigger,
-                        model_strength=0.9, clip_strength=1.0,
+                        model_strength=0.7, clip_strength=1.0,
                         notes="LoRA de personaje entrenada desde la app (kohya)", user_id=uid))
             db.commit()
     except Exception:
