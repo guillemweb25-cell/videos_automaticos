@@ -39,7 +39,7 @@ export default function CharacterGenerator() {
 
   const pollRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
-  const metaRef = useRef<{ description_en: string; seed: number } | null>(null);
+  const metaRef = useRef<{ description_en: string; seed: number; entry_id?: string } | null>(null);
 
   const stop = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -101,9 +101,10 @@ export default function CharacterGenerator() {
     setError(''); setStatus('Enviando…'); setBusy(true); setElapsed(0); setSaved(false);
     resultImgs.forEach((i) => URL.revokeObjectURL(i.url)); setResultImgs([]);
     try {
-      const r = await api.charGenerate({ description: description.trim(), style, num_poses: numPoses, neutral_bg: neutralBg, gender, pose_control: poseControl });
-      metaRef.current = { description_en: r.description_en, seed: r.seed };
-      setStatus(`Generando ${r.expected} imágenes… (base + poses)`);
+      const r = await api.charGenerate({ description: description.trim(), style, num_poses: numPoses, neutral_bg: neutralBg, gender, pose_control: poseControl, name: name.trim() });
+      metaRef.current = { description_en: r.description_en, seed: r.seed, entry_id: r.entry_id };
+      setStatus(`Generando ${r.expected} imágenes… (se guarda solo al terminar)`);
+      loadChars();   // el personaje ya existe (auto-guardado); aparece en la lista
       timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
       pollRef.current = window.setInterval(() => poll(r.prompt_id), 4000);
     } catch (e: any) { setError(e.message); setBusy(false); setStatus(''); }
@@ -129,6 +130,7 @@ export default function CharacterGenerator() {
         name: name.trim() || 'Personaje', description: description.trim(),
         description_en: metaRef.current?.description_en || '', style, gender,
         seed: metaRef.current?.seed ?? null, images: resultImgs.map((i) => i.filename),
+        entry_id: metaRef.current?.entry_id,
       });
       setSaved(true); loadChars();
     } catch (e: any) { alert(e.message); }

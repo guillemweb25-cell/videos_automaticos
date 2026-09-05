@@ -358,6 +358,7 @@ class CharGenerateRequest(BaseModel):
     neutral_bg: bool = True
     gender: str = "mujer"          # hombre | mujer (para las poses OpenPose)
     pose_control: bool = False     # forzar poses de la librería con ControlNet
+    name: str = ""                 # nombre (para auto-guardar el personaje)
 
 
 @router.post("/generate")
@@ -389,7 +390,22 @@ def char_generate(req: CharGenerateRequest, current_user: User = Depends(get_cur
         raise HTTPException(status_code=502, detail=f"No se pudo contactar con ComfyUI: {e}")
     if not r.ok:
         raise HTTPException(status_code=400, detail=f"ComfyUI rechazó el grafo: {r.text[:500]}")
-    return {"ok": True, "prompt_id": r.json().get("prompt_id"), "expected": num + 1,
+    pid = r.json().get("prompt_id")
+    expected = num + 1
+    # Auto-guardado: crea el personaje ya (draft, sin imágenes) y un hilo de fondo le
+    # mete las imágenes al terminar el render. Así NO se pierde aunque cierres/actualices.
+    entry_id = uuid.uuid4().hex
+    draft = {
+        "id": entry_id, "name": (req.name or "").strip() or "Personaje sin guardar",
+        "description": req.description.strip(), "description_en": desc_en,
+        "style": req.style, "seed": seed, "images": [], "gender": req.gender,
+        "created_at": int(time.time()), "draft": True,
+    }
+    items = _load(current_user.id)
+    items.insert(0, draft)
+    _save(current_user.id, items[:100])
+    threading.Thread(target=_poll_and_update_char, args=(current_user.id, entry_id, pid, expected), daemon=True).start()
+    return {"ok": True, "prompt_id": pid, "expected": expected, "entry_id": entry_id,
             "description_en": desc_en, "style": req.style, "seed": seed,
             "gender": req.gender, "pose_control": bool(pose_names)}
 
@@ -431,11 +447,23 @@ class CharSaveRequest(BaseModel):
     seed: Optional[int] = None
     images: List[str] = []
     gender: str = "mujer"
+    entry_id: Optional[str] = None   # si viene, actualiza ese draft (auto-guardado) en vez de crear
 
 
 @router.post("/save")
 def char_save(req: CharSaveRequest, current_user: User = Depends(get_current_user)):
     items = _load(current_user.id)
+    # Si el generador ya auto-creó el personaje (draft), actualízalo (nombre/imágenes)
+    # en vez de crear un duplicado.
+    if req.entry_id:
+        for c in items:
+            if c.get("id") == req.entry_id:
+                c["name"] = req.name or c.get("name") or "Personaje"
+                if req.images:
+                    c["images"] = req.images
+                c["draft"] = False
+                _save(current_user.id, items)
+                return {"ok": True, "entry": c}
     entry = {
         "id": uuid.uuid4().hex,
         "name": req.name or "Personaje",

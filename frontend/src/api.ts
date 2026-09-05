@@ -99,6 +99,7 @@ export interface CharGenerateResponse {
   description_en: string;
   style: string;
   seed: number;
+  entry_id?: string;
 }
 
 export interface CharacterItem {
@@ -444,7 +445,7 @@ class ApiClient {
   }
 
   // --- Generador de personajes consistentes (SDXL + IPAdapter) ---
-  async charGenerate(payload: { description: string; style: string; num_poses: number; seed?: number | null; neutral_bg?: boolean; gender?: string; pose_control?: boolean }): Promise<CharGenerateResponse> {
+  async charGenerate(payload: { description: string; style: string; num_poses: number; seed?: number | null; neutral_bg?: boolean; gender?: string; pose_control?: boolean; name?: string }): Promise<CharGenerateResponse> {
     const res = await fetch(`${this.baseUrl}/characters/generate`, {
       method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(payload),
     });
@@ -456,7 +457,7 @@ class ApiClient {
     if (!res.ok) throw new Error('Error de estado');
     return res.json();
   }
-  async charSave(entry: Omit<CharacterItem, 'id' | 'created_at'>): Promise<{ ok: boolean; entry: CharacterItem }> {
+  async charSave(entry: Omit<CharacterItem, 'id' | 'created_at'> & { entry_id?: string }): Promise<{ ok: boolean; entry: CharacterItem }> {
     const res = await fetch(`${this.baseUrl}/characters/save`, {
       method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(entry),
     });
