@@ -116,6 +116,17 @@ export interface CharacterItem {
   lora_strength?: number;
 }
 
+export interface LoraJob {
+  state: string;   // none | queued | dataset | training | done | error
+  phase?: string;
+  step?: number;
+  total?: number;
+  message?: string;
+  output_name?: string;
+  trigger?: string;
+  lora_filename?: string;
+}
+
 export interface SceneHistoryItem {
   id: string;
   character_id: string;
@@ -502,6 +513,18 @@ class ApiClient {
     });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al asignar LoRA'); }
     return res.json();
+  }
+  async charTrainLora(charId: string, data?: { trigger?: string; output_name?: string; steps?: number }): Promise<{ ok: boolean; output_name: string; trigger: string; steps: number }> {
+    const res = await fetch(`${this.baseUrl}/characters/${charId}/train-lora`, {
+      method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(data || {}),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al iniciar el entrenamiento'); }
+    return res.json();
+  }
+  async charTrainLoraStatus(charId: string): Promise<LoraJob> {
+    const res = await fetch(`${this.baseUrl}/characters/${charId}/train-lora/status`, { headers: this.getHeaders(true) });
+    if (!res.ok) return { state: 'none' };
+    return (await res.json()).job || { state: 'none' };
   }
   async charPoses(gender = 'mujer'): Promise<{ key: string; label: string }[]> {
     const res = await fetch(`${this.baseUrl}/characters/poses?gender=${encodeURIComponent(gender)}`, { headers: this.getHeaders(true) });

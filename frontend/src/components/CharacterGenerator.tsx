@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api, type CharacterItem } from '../api';
+import { api, type CharacterItem, type LoraJob } from '../api';
 
 const STYLES = [
   { key: 'anime', label: '🎌 Anime / Manga' },
@@ -32,6 +32,8 @@ export default function CharacterGenerator() {
   const [loraPanel, setLoraPanel] = useState<string | null>(null);
   const [loraDraft, setLoraDraft] = useState<Record<string, { filename: string; trigger: string; strength: number }>>({});
   const [loraSaving, setLoraSaving] = useState<string | null>(null);
+  const [trainJobs, setTrainJobs] = useState<Record<string, LoraJob>>({});
+  const trainJobsRef = useRef<Record<string, LoraJob>>({});
 
   const pollRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -63,6 +65,33 @@ export default function CharacterGenerator() {
       setLoraPanel(null); loadChars();
     } catch (e: any) { alert(e.message || 'Error al asignar LoRA'); }
     finally { setLoraSaving(null); }
+  };
+
+  // ---- Entrenamiento de LoRA por personaje ----
+  useEffect(() => { trainJobsRef.current = trainJobs; }, [trainJobs]);
+  const ACTIVE = ['queued', 'dataset', 'training'];
+  const fetchTrain = async (ids: string[]) => {
+    const entries = await Promise.all(ids.map(async (id) => [id, await api.charTrainLoraStatus(id)] as const));
+    setTrainJobs((p) => { const n = { ...p }; for (const [id, j] of entries) n[id] = j; return n; });
+    if (entries.some(([, j]) => j.state === 'done')) loadChars();  // refresca badge 🎭
+  };
+  // Carga inicial de estados cuando llegan los personajes
+  useEffect(() => { if (chars.length) fetchTrain(chars.map((c) => c.id)); /* eslint-disable-next-line */ }, [chars.length]);
+  // Poller estable: refresca solo los que tengan job activo
+  useEffect(() => {
+    const iv = window.setInterval(() => {
+      const active = chars.filter((c) => ACTIVE.includes(trainJobsRef.current[c.id]?.state || '')).map((c) => c.id);
+      if (active.length) fetchTrain(active);
+    }, 6000);
+    return () => clearInterval(iv);
+    /* eslint-disable-next-line */
+  }, [chars]);
+  const startTrain = async (c: CharacterItem) => {
+    if (!confirm(`¿Entrenar una LoRA para "${c.name}"?\n\nGenera ~20 imágenes y entrena (~1–1,5 h). Ocupará la GPU y ComfyUI se reiniciará solo al terminar.`)) return;
+    try {
+      const r = await api.charTrainLora(c.id);
+      setTrainJobs((p) => ({ ...p, [c.id]: { state: 'queued', message: 'En cola', output_name: r.output_name, trigger: r.trigger, step: 0, total: r.steps } }));
+    } catch (e: any) { alert(e.message || 'Error al iniciar el entrenamiento'); }
   };
 
   const generate = async () => {
@@ -259,6 +288,23 @@ export default function CharacterGenerator() {
                     <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem', ...(c.lora_filename ? { borderColor: '#a855f7', color: '#d8b4fe' } : {}) }} onClick={() => toggleLoraPanel(c)} title="LoRA propia (identidad píxel-perfecta)">
                       {c.lora_filename ? '🎭 LoRA ✓' : '🎭 LoRA'}
                     </button>
+                    {(() => {
+                      const j = trainJobs[c.id];
+                      if (j && ['queued', 'dataset', 'training'].includes(j.state)) {
+                        const pct = j.total ? Math.round(((j.step || 0) / j.total) * 100) : 0;
+                        const label = j.state === 'dataset' ? `📸 Dataset ${j.step || 0}/${j.total || 0}`
+                          : j.state === 'training' ? `🎓 Entrenando ${pct}%`
+                            : '⏳ En cola';
+                        return <span title={j.message} style={{ fontSize: '0.75rem', color: '#c4b5fd', padding: '5px 8px', background: '#2e1065', borderRadius: 6, whiteSpace: 'nowrap' }}>{label}</span>;
+                      }
+                      const isErr = j && j.state === 'error';
+                      return (
+                        <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem', ...(isErr ? { borderColor: '#ef4444', color: '#fca5a5' } : {}) }}
+                          onClick={() => startTrain(c)} title={isErr ? j!.message : 'Genera dataset y entrena una LoRA propia (~1–1,5 h)'}>
+                          {isErr ? '⚠️ Reintentar LoRA' : '🎓 Entrenar LoRA'}
+                        </button>
+                      );
+                    })()}
                     <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem' }} onClick={() => delChar(c)}>🗑️</button>
                   </div>
                 </div>

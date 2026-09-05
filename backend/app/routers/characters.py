@@ -20,8 +20,13 @@ from pydantic import BaseModel
 
 from app.core.deps import get_current_user
 from app.models.user import User
+from app.database import SessionLocal
+from app.models.lora import Lora
 
 router = APIRouter(prefix="/characters", tags=["characters"])
+
+# Agente de entrenamiento de LoRAs en el host (fuera de Docker; ver host_agent/train_agent.py)
+TRAIN_AGENT_URL = os.getenv("TRAIN_AGENT_URL", "http://192.168.1.46:8600").rstrip("/")
 
 
 def _translate_character(text: str, neutral_bg: bool) -> str:
@@ -681,6 +686,215 @@ def char_set_lora(char_id: str, req: CharLoraRequest, current_user: User = Depen
         raise HTTPException(status_code=404, detail="Personaje no encontrado")
     _save(current_user.id, items)
     return {"ok": True, "entry": entry}
+
+
+# ---- Entrenamiento de LoRA de personaje (dataset vía ComfyUI + agente kohya) ----
+DS_BG = "plain white background, studio lighting, photorealistic, high detail, sharp focus"
+# (variación para la imagen, caption corta para el .txt)
+DATASET_VARIATIONS = [
+    ("close-up portrait, neutral expression, looking at camera, white t-shirt", "portrait, neutral expression"),
+    ("close-up portrait, gentle warm smile, white t-shirt", "portrait, smiling"),
+    ("close-up portrait, serious expression, black top", "portrait, serious"),
+    ("close-up portrait, laughing happily, denim jacket", "portrait, laughing"),
+    ("portrait, three-quarter view, looking to the side, grey sweater", "portrait, three-quarter view"),
+    ("portrait, looking up slightly, soft expression, white blouse", "portrait, looking up"),
+    ("portrait, side profile view, black dress", "side profile portrait"),
+    ("portrait, slightly surprised expression, casual hoodie", "portrait, surprised"),
+    ("close-up face, calm expression, red top", "close-up, calm"),
+    ("close-up face, confident look, leather jacket", "close-up, confident"),
+    ("upper body, standing, arms relaxed, white blouse", "upper body, standing"),
+    ("upper body, three-quarter turn, hand near face, beige coat", "upper body, three-quarter"),
+    ("upper body, looking over shoulder, black top", "looking over shoulder"),
+    ("medium shot, confident pose, hands on hips, blue dress", "medium shot, hands on hips"),
+    ("full body, standing straight, casual jeans and t-shirt", "full body, standing"),
+    ("full body, relaxed standing pose, summer dress", "full body, summer dress"),
+    ("portrait, head tilted, playful expression, striped shirt", "portrait, head tilt"),
+    ("close-up portrait, natural makeup, looking away, white top", "portrait, looking away"),
+    ("upper body, arms crossed, confident, black blazer", "upper body, arms crossed"),
+    ("portrait, soft smile, elegant top", "portrait, soft smile"),
+]
+
+
+def _slug(name: str) -> str:
+    s = "".join(c.lower() if c.isalnum() else "_" for c in (name or "").strip())
+    while "__" in s:
+        s = s.replace("__", "_")
+    return s.strip("_") or "personaje"
+
+
+def _update_job(uid: int, char_id: str, **kw) -> None:
+    items = _load(uid)
+    for c in items:
+        if c.get("id") == char_id:
+            c.setdefault("lora_job", {}).update(kw)
+            break
+    _save(uid, items)
+
+
+def _build_ds_graph(ref_name: str, identity_en: str, variation: str, ckpt: str,
+                    seed: int, i: int, job_tag: str, w: int = 832, h: int = 1216) -> dict:
+    ckpt = ckpt.replace("/", "\\")
+    pos = f"{identity_en}, {variation}, {DS_BG}"
+    return {
+        "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
+        "ipload": {"class_type": "IPAdapterUnifiedLoader", "inputs": {"model": ["ckpt", 0], "preset": "PLUS FACE (portraits)"}},
+        "ref": {"class_type": "LoadImage", "inputs": {"image": ref_name}},
+        "ip": {"class_type": "IPAdapterAdvanced", "inputs": {"model": ["ipload", 0], "ipadapter": ["ipload", 1], "image": ["ref", 0], "weight": 0.85, "weight_type": "linear", "combine_embeds": "concat", "start_at": 0.0, "end_at": 1.0, "embeds_scaling": "V only"}},
+        "pos": {"class_type": "CLIPTextEncode", "inputs": {"text": pos, "clip": ["ckpt", 1]}},
+        "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": NEG, "clip": ["ckpt", 1]}},
+        "lat": {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}},
+        "k": {"class_type": "KSampler", "inputs": {"seed": seed + i, "steps": 28, "cfg": 6.0, "sampler_name": "dpmpp_2m", "scheduler": "karras", "denoise": 1, "model": ["ip", 0], "positive": ["pos", 0], "negative": ["neg", 0], "latent_image": ["lat", 0]}},
+        "dec": {"class_type": "VAEDecode", "inputs": {"samples": ["k", 0], "vae": ["ckpt", 2]}},
+        "save": {"class_type": "SaveImage", "inputs": {"filename_prefix": f"lorads_{job_tag}_{i:02d}", "images": ["dec", 0]}},
+    }
+
+
+def _wait_output(prompt_id: str, tries: int = 120) -> Optional[str]:
+    for _ in range(tries):
+        time.sleep(2)
+        try:
+            h = requests.get(f"{COMFY_URL}/history/{prompt_id}", timeout=15).json()
+        except Exception:
+            continue
+        if prompt_id in h:
+            outs = h[prompt_id].get("outputs", {})
+            for k in sorted(outs.keys()):
+                for im in outs[k].get("images", []):
+                    return im.get("filename")
+            return None
+    return None
+
+
+def _run_lora_training(uid: int, char_id: str, ref_name: str, identity_en: str,
+                       ckpt: str, trigger: str, output_name: str, steps: int) -> None:
+    """Hilo de fondo: genera el dataset vía ComfyUI y delega el entrenamiento en el
+    agente del host; refleja el progreso en char['lora_job']."""
+    try:
+        import random
+        seed0 = random.randint(0, 2**31 - 1)
+        _update_job(uid, char_id, phase="dataset", state="dataset", step=0,
+                    total=len(DATASET_VARIATIONS), message="Generando dataset…")
+        # 1) enviar los 20 grafos (se encolan en ComfyUI)
+        pids = []
+        for i, (variation, _cap) in enumerate(DATASET_VARIATIONS):
+            wf = _build_ds_graph(ref_name, identity_en, variation, ckpt, seed0, i, char_id[:8])
+            try:
+                r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": wf}, timeout=30)
+                pids.append(r.json().get("prompt_id") if r.ok else None)
+            except Exception:
+                pids.append(None)
+        # 2) recoger las imágenes en orden
+        images = []
+        for i, pid in enumerate(pids):
+            fn = _wait_output(pid) if pid else None
+            if fn:
+                images.append(fn)
+            _update_job(uid, char_id, step=len(images), message=f"Dataset {len(images)}/{len(pids)}…")
+        images = [x for x in images if x]
+        if len(images) < 8:
+            _update_job(uid, char_id, state="error", phase="error",
+                        message=f"Dataset insuficiente ({len(images)} imágenes)")
+            return
+        captions = [f"{trigger}, {cap}" for (_v, cap) in DATASET_VARIATIONS][:len(images)]
+        # 3) delegar en el agente del host
+        _update_job(uid, char_id, phase="training", state="training", step=0, total=steps,
+                    message="Enviando al agente de entrenamiento…")
+        try:
+            r = requests.post(f"{TRAIN_AGENT_URL}/train", json={
+                "job_id": f"{output_name}", "output_name": output_name,
+                "images": images, "captions": captions, "steps": steps}, timeout=30)
+            if not r.ok:
+                _update_job(uid, char_id, state="error", phase="error",
+                            message=f"Agente rechazó el job: {r.text[:200]}")
+                return
+        except Exception as e:
+            _update_job(uid, char_id, state="error", phase="error",
+                        message=f"No se pudo contactar con el agente ({TRAIN_AGENT_URL}): {e}")
+            return
+        # 4) sondear el agente
+        for _ in range(1600):   # ~2h30
+            time.sleep(6)
+            try:
+                st = requests.get(f"{TRAIN_AGENT_URL}/status", params={"job_id": output_name}, timeout=15).json()
+            except Exception:
+                continue
+            state = st.get("state")
+            _update_job(uid, char_id, state=state, step=st.get("step", 0),
+                        total=st.get("total", steps), message=st.get("message", ""))
+            if state == "done":
+                lora_fn = st.get("lora_filename") or f"{output_name}.safetensors"
+                _finalize_lora(uid, char_id, lora_fn, trigger)
+                _update_job(uid, char_id, state="done", phase="done",
+                            message="LoRA lista y asignada", lora_filename=lora_fn)
+                return
+            if state == "error":
+                _update_job(uid, char_id, phase="error", message=st.get("message", "Error en el agente"))
+                return
+    except Exception as e:
+        _update_job(uid, char_id, state="error", phase="error", message=f"Excepción: {e}")
+
+
+def _finalize_lora(uid: int, char_id: str, lora_fn: str, trigger: str) -> None:
+    """Asigna la LoRA al personaje y la registra en el picker (tabla loras)."""
+    items = _load(uid)
+    name = ""
+    for c in items:
+        if c.get("id") == char_id:
+            c["lora_filename"] = lora_fn
+            c["lora_trigger"] = trigger
+            c["lora_strength"] = 0.9
+            name = c.get("name", "")
+            break
+    _save(uid, items)
+    db = SessionLocal()
+    try:
+        exists = db.query(Lora).filter(Lora.user_id == uid, Lora.filename == lora_fn).first()
+        if not exists:
+            db.add(Lora(label=name or lora_fn, filename=lora_fn, trigger_words=trigger,
+                        model_strength=0.9, clip_strength=1.0,
+                        notes="LoRA de personaje entrenada desde la app (kohya)", user_id=uid))
+            db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
+class TrainLoraRequest(BaseModel):
+    trigger: Optional[str] = None
+    output_name: Optional[str] = None
+    steps: int = 1600
+
+
+@router.post("/{char_id}/train-lora")
+def char_train_lora(char_id: str, req: TrainLoraRequest, current_user: User = Depends(get_current_user)):
+    char = next((c for c in _load(current_user.id) if c.get("id") == char_id), None)
+    if not char or not char.get("images"):
+        raise HTTPException(status_code=404, detail="Personaje no encontrado o sin imágenes")
+    job = char.get("lora_job") or {}
+    if job.get("state") in ("queued", "dataset", "training"):
+        raise HTTPException(status_code=409, detail="Ya hay un entrenamiento en curso para este personaje")
+    ckpt = STYLES.get(char.get("style", "realista"), STYLES["realista"])
+    identity_en = (char.get("description_en") or _translate_character(char.get("description", ""), True)).strip()
+    slug = _slug(char.get("name", "personaje"))
+    output_name = _slug(req.output_name) if req.output_name else f"{slug}_v1"
+    trigger = (req.trigger or f"ohwx {slug.split('_')[0]}").strip()
+    steps = max(400, min(4000, int(req.steps or 1600)))
+    ref_name = _upload_ref(char_id, char["images"][0])
+    _update_job(current_user.id, char_id, state="queued", phase="dataset", step=0,
+                total=len(DATASET_VARIATIONS), message="En cola", output_name=output_name, trigger=trigger)
+    threading.Thread(target=_run_lora_training,
+                     args=(current_user.id, char_id, ref_name, identity_en, ckpt, trigger, output_name, steps),
+                     daemon=True).start()
+    return {"ok": True, "output_name": output_name, "trigger": trigger, "steps": steps}
+
+
+@router.get("/{char_id}/train-lora/status")
+def char_train_lora_status(char_id: str, current_user: User = Depends(get_current_user)):
+    char = next((c for c in _load(current_user.id) if c.get("id") == char_id), None)
+    if not char:
+        raise HTTPException(status_code=404, detail="Personaje no encontrado")
+    return {"ok": True, "job": char.get("lora_job") or {"state": "none"}}
 
 
 @router.get("/scenes")
