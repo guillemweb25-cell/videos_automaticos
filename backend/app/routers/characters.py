@@ -121,7 +121,11 @@ POSES = [
 # bajo = más variación de pose. 0.6 + "ease out" es el equilibrio cara/pose.
 IP_WEIGHT = 0.6
 IP_WEIGHT_TYPE = "ease out"
-NEG = "lowres, bad anatomy, worst quality, blurry, extra fingers, deformed, multiple people, text, watermark, (nsfw:1.6), (nude:1.6)"
+NEG = ("lowres, bad anatomy, worst quality, blurry, extra fingers, deformed, multiple people, "
+       "text, watermark, (nsfw:1.6), (nude:1.6), "
+       "(extra legs:1.3), (extra limbs:1.3), missing legs, malformed legs, deformed legs, "
+       "fused legs, twisted legs, (floating limbs:1.2), disconnected limbs, mutated limbs, "
+       "poorly drawn feet, deformed feet, bad proportions, unnatural pose")
 
 
 def _store_path(uid: int) -> Path:
@@ -141,6 +145,81 @@ def _load(uid: int) -> list:
 
 def _save(uid: int, items: list) -> None:
     _store_path(uid).write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _apply_lora(g: dict, lora_filename: str, strength_model: float = 0.9,
+                strength_clip: float = 1.0) -> None:
+    """Inyecta un LoraLoader en un grafo ya construido y reencamina el modelo y el
+    CLIP a través de él. Genérico: sirve para cualquier builder que use ["ckpt",0]
+    (modelo) y ["ckpt",1] (clip). El VAE (["ckpt",2]) se deja intacto. Muta g in situ.
+
+    Con esto, un personaje con LoRA propia (identidad píxel-perfecta) la aplica
+    encima del checkpoint; el IPAdapter (PLUS FACE) y el ControlNet siguen colgando
+    del modelo ya "loraizado" y refuerzan cara/pose."""
+    fn = (lora_filename or "").strip()
+    if not fn:
+        return
+    fn = fn.replace("/", "\\")   # ComfyUI espera la barra de Windows en subcarpetas
+    g["charlora"] = {"class_type": "LoraLoader", "inputs": {
+        "model": ["ckpt", 0], "clip": ["ckpt", 1],
+        "lora_name": fn, "strength_model": float(strength_model),
+        "strength_clip": float(strength_clip)}}
+    for name, node in g.items():
+        if name in ("ckpt", "charlora"):
+            continue
+        for k, v in node.get("inputs", {}).items():
+            if v == ["ckpt", 0]:
+                node["inputs"][k] = ["charlora", 0]
+            elif v == ["ckpt", 1]:
+                node["inputs"][k] = ["charlora", 1]
+
+
+def _char_lora(char: dict) -> tuple:
+    """(filename, trigger, strength_model) de la LoRA del personaje, o (None, '', 0.9)."""
+    fn = (char.get("lora_filename") or "").strip()
+    return fn or None, (char.get("lora_trigger") or "").strip(), float(char.get("lora_strength") or 0.9)
+
+
+def _scene_store_path(uid: int) -> Path:
+    STORE_DIR.mkdir(parents=True, exist_ok=True)
+    return STORE_DIR / f"scenes_user_{uid}.json"
+
+
+def _load_scenes(uid: int) -> list:
+    p = _scene_store_path(uid)
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _save_scenes(uid: int, items: list) -> None:
+    _scene_store_path(uid).write_text(json.dumps(items[:200], ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _poll_and_save_scene(uid: int, entry_id: str, prompt_id: str, expected: int) -> None:
+    """En un hilo de fondo: espera a que ComfyUI termine y guarda las imágenes en
+    la entrada del historial. Robusto ante cierre del navegador."""
+    for _ in range(400):  # ~20 min
+        time.sleep(3)
+        try:
+            hist = requests.get(f"{COMFY_URL}/history/{prompt_id}", timeout=15).json()
+        except Exception:
+            continue
+        if prompt_id not in hist:
+            continue
+        outs = hist[prompt_id].get("outputs", {})
+        imgs = [im.get("filename") for k in sorted(outs.keys()) for im in outs[k].get("images", [])]
+        items = _load_scenes(uid)
+        for e in items:
+            if e.get("id") == entry_id:
+                e["images"] = imgs
+                e["done"] = True
+                break
+        _save_scenes(uid, items)
+        return
 
 
 def _poll_and_update_char(uid: int, char_id: str, prompt_id: str, expected: int) -> None:
@@ -440,14 +519,33 @@ def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)
             prompt_en = f"{char_desc}, {prompt_en}"
         if req.pose:
             pose_name = _upload_pose(char.get("gender", "mujer"), req.pose)
+    # LoRA propia del personaje (identidad píxel-perfecta): trigger al frente del prompt.
+    lora_fn, lora_trigger, lora_sm = _char_lora(char)
+    if lora_fn and lora_trigger:
+        prompt_en = f"{lora_trigger}, {prompt_en}"
     wf = _build_scene_graph(current_user.id, ref_name, prompt_en, ckpt, style_suffix, seed, num, w, h, pose_name)
+    if lora_fn:
+        _apply_lora(wf, lora_fn, lora_sm)
     try:
         r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": wf}, timeout=30)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"No se pudo contactar con ComfyUI: {e}")
     if not r.ok:
         raise HTTPException(status_code=400, detail=f"ComfyUI rechazó el grafo: {r.text[:500]}")
-    return {"ok": True, "prompt_id": r.json().get("prompt_id"), "expected": num, "prompt_en": prompt_en, "seed": seed}
+    pid = r.json().get("prompt_id")
+    # Historial: crea la entrada (pendiente) y un hilo que guarda las imágenes al terminar.
+    entry_id = uuid.uuid4().hex
+    entry = {
+        "id": entry_id, "character_id": req.character_id, "character_name": char.get("name", ""),
+        "prompt": req.prompt.strip(), "prompt_en": prompt_en, "seed": seed,
+        "pose": req.pose or "", "num": num, "images": [], "done": False,
+        "created_at": int(time.time()),
+    }
+    scenes = _load_scenes(current_user.id)
+    scenes.insert(0, entry)
+    _save_scenes(current_user.id, scenes)
+    threading.Thread(target=_poll_and_save_scene, args=(current_user.id, entry_id, pid, num), daemon=True).start()
+    return {"ok": True, "prompt_id": pid, "expected": num, "prompt_en": prompt_en, "seed": seed, "entry_id": entry_id}
 
 
 def _build_regen_graph(uid: int, ref_name: str, desc_en: str, ckpt: str,
@@ -510,6 +608,11 @@ def char_regen(char_id: str, req: RegenRequest, current_user: User = Depends(get
     import random
     seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
 
+    # LoRA propia del personaje: trigger al frente de la descripción.
+    lora_fn, lora_trigger, lora_sm = _char_lora(char)
+    if lora_fn and lora_trigger:
+        desc_en = f"{lora_trigger}, {desc_en}"
+
     ref_name = _upload_ref(char_id, char["images"][0])
     pose_names = {}
     for k in SHEET_SKELETONS:
@@ -517,6 +620,8 @@ def char_regen(char_id: str, req: RegenRequest, current_user: User = Depends(get
         if n:
             pose_names[k] = n
     wf = _build_regen_graph(current_user.id, ref_name, desc_en, ckpt, style_suffix, seed, pose_names)
+    if lora_fn:
+        _apply_lora(wf, lora_fn, lora_sm)
     try:
         r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": wf}, timeout=30)
     except Exception as e:
@@ -548,6 +653,47 @@ def char_update_images(char_id: str, req: UpdateImagesRequest, current_user: Use
     if not found:
         raise HTTPException(status_code=404, detail="Personaje no encontrado")
     _save(current_user.id, items)
+    return {"ok": True}
+
+
+class CharLoraRequest(BaseModel):
+    lora_filename: Optional[str] = None   # None o "" = quitar la LoRA
+    lora_trigger: str = ""
+    lora_strength: float = 0.9
+
+
+@router.post("/{char_id}/lora")
+def char_set_lora(char_id: str, req: CharLoraRequest, current_user: User = Depends(get_current_user)):
+    """Asigna (o quita) una LoRA propia al personaje. Con LoRA asignada, las
+    escenas y la regeneración del sheet la aplican para identidad píxel-perfecta,
+    anteponiendo el trigger word al prompt."""
+    items = _load(current_user.id)
+    entry = None
+    for c in items:
+        if c.get("id") == char_id:
+            fn = (req.lora_filename or "").strip()
+            c["lora_filename"] = fn
+            c["lora_trigger"] = (req.lora_trigger or "").strip()
+            c["lora_strength"] = float(req.lora_strength or 0.9)
+            entry = c
+            break
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Personaje no encontrado")
+    _save(current_user.id, items)
+    return {"ok": True, "entry": entry}
+
+
+@router.get("/scenes")
+def char_scenes(current_user: User = Depends(get_current_user)):
+    """Historial de imágenes generadas (pestaña Imágenes), más recientes primero."""
+    return {"ok": True, "items": _load_scenes(current_user.id)}
+
+
+@router.delete("/scenes/{entry_id}")
+def char_scene_delete(entry_id: str, current_user: User = Depends(get_current_user)):
+    """Borra una entrada del historial (los ficheros en disco de ComfyUI no se tocan)."""
+    items = [x for x in _load_scenes(current_user.id) if x.get("id") != entry_id]
+    _save_scenes(current_user.id, items)
     return {"ok": True}
 
 

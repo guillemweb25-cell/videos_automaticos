@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api, type CharacterItem } from '../api';
+import { api, type CharacterItem, type SceneHistoryItem } from '../api';
 
 const RATIOS = [
   { label: 'Vertical 2:3 (832×1216)', w: 832, h: 1216 },
@@ -24,6 +24,11 @@ export default function CharacterImages() {
   const [promptEn, setPromptEn] = useState('');
   const [imgs, setImgs] = useState<{ filename: string; url: string }[]>([]);
 
+  // Historial de fotos generadas
+  const [history, setHistory] = useState<SceneHistoryItem[]>([]);
+  const [openHist, setOpenHist] = useState<Record<string, { filename: string; url: string }[]>>({});
+  const [loadingHist, setLoadingHist] = useState<string | null>(null);
+
   // Animar (I2V)
   const [animFor, setAnimFor] = useState<string | null>(null);
   const [animPrompt, setAnimPrompt] = useState('');
@@ -40,10 +45,14 @@ export default function CharacterImages() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   };
+  const loadHistory = async () => {
+    try { setHistory(await api.charScenes()); } catch { /* */ }
+  };
   useEffect(() => {
     (async () => {
       try { const c = await api.charList(); setChars(c); if (c[0]) setCharId(c[0].id); } catch { /* */ }
     })();
+    loadHistory();
     return () => stop();
   }, []);
 
@@ -65,6 +74,7 @@ export default function CharacterImages() {
       const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null });
       setPromptEn(r.prompt_en || '');
       setStatus(`Generando ${r.expected} imagen(es)…`);
+      loadHistory();   // muestra la entrada pendiente en el historial
       timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
       pollRef.current = window.setInterval(() => poll(r.prompt_id), 4000);
     } catch (e: any) { setError(e.message); setBusy(false); setStatus(''); }
@@ -77,8 +87,24 @@ export default function CharacterImages() {
         stop(); setStatus('Cargando…');
         const loaded = await Promise.all(s.images.map(async (f) => ({ filename: f, url: await api.charImageObjectUrl(f) })));
         setImgs(loaded); setStatus(''); setBusy(false);
+        loadHistory();   // el hilo de fondo ya habrá guardado las imágenes
       } else if (s.status === 'error') { stop(); setError('Error en la generación'); setBusy(false); setStatus(''); }
     } catch { /* reintenta */ }
+  };
+
+  const viewHist = async (e: SceneHistoryItem) => {
+    if (openHist[e.id]) { setOpenHist((p) => { const n = { ...p }; Object.values(n[e.id] || []).forEach((i) => { try { URL.revokeObjectURL(i.url); } catch { /* */ } }); delete n[e.id]; return n; }); return; }
+    if (!e.images.length) return;
+    setLoadingHist(e.id);
+    try {
+      const loaded = await Promise.all(e.images.map(async (f) => ({ filename: f, url: await api.charImageObjectUrl(f) })));
+      setOpenHist((p) => ({ ...p, [e.id]: loaded }));
+    } catch { alert('No se pudieron cargar (¿borradas del disco?).'); }
+    finally { setLoadingHist(null); }
+  };
+  const delHist = async (e: SceneHistoryItem) => {
+    if (!confirm('¿Borrar esta entrada del historial? (las imágenes en disco no se borran)')) return;
+    try { await api.charSceneDelete(e.id); setOpenHist((p) => { const n = { ...p }; delete n[e.id]; return n; }); loadHistory(); } catch { alert('Error'); }
   };
 
   const dl = (url: string, filename: string) => {
@@ -200,6 +226,48 @@ export default function CharacterImages() {
           </div>
         </div>
       )}
+
+      <div style={{ background: '#1e293b', borderRadius: 12, padding: 20, marginTop: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0 }}>🕘 Historial de fotos ({history.length})</h3>
+          <button className="btn-link" onClick={loadHistory}>Refrescar</button>
+        </div>
+        {history.length === 0 ? (
+          <p style={{ color: '#64748b', marginTop: 12 }}>Aún no has generado fotos.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+            {history.map((e) => (
+              <div key={e.id} style={{ background: '#0f172a', borderRadius: 8, padding: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{e.character_name || 'Personaje'} <span style={{ color: '#64748b', fontWeight: 400, fontSize: '0.8rem' }}>· {new Date(e.created_at * 1000).toLocaleString()} · {e.done ? `${e.images.length} img` : '⏳ generando…'}</span></div>
+                    <div style={{ color: '#64748b', fontSize: '0.78rem', maxWidth: 560, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.prompt}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem' }} onClick={() => viewHist(e)} disabled={!e.done || !e.images.length || loadingHist === e.id}>
+                      {loadingHist === e.id ? '⏳' : openHist[e.id] ? 'Ocultar' : '🖼️ Ver'}
+                    </button>
+                    <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem' }} onClick={() => delHist(e)}>🗑️</button>
+                  </div>
+                </div>
+                {openHist[e.id] && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginTop: 10 }}>
+                    {openHist[e.id].map((im) => (
+                      <div key={im.filename} style={{ background: '#000', borderRadius: 6, overflow: 'hidden' }}>
+                        <img src={im.url} style={{ width: '100%', display: 'block' }} />
+                        <div style={{ display: 'flex' }}>
+                          <button className="btn btn-secondary" style={{ flex: 1, padding: '4px', fontSize: '0.68rem', borderRadius: 0 }} onClick={() => dl(im.url, im.filename)}>⬇️</button>
+                          <button className="btn btn-primary" style={{ flex: 2, padding: '4px', fontSize: '0.68rem', borderRadius: 0 }} onClick={() => openAnim(im.filename)}>🎬 Animar</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {animFor && (
         <div onClick={closeAnim} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>

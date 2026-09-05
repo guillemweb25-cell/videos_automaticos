@@ -111,6 +111,23 @@ export interface CharacterItem {
   seed?: number | null;
   images: string[];
   created_at: number;
+  lora_filename?: string | null;
+  lora_trigger?: string;
+  lora_strength?: number;
+}
+
+export interface SceneHistoryItem {
+  id: string;
+  character_id: string;
+  character_name: string;
+  prompt: string;
+  prompt_en: string;
+  seed?: number | null;
+  pose?: string;
+  num: number;
+  images: string[];
+  done: boolean;
+  created_at: number;
 }
 
 export interface LtxHistoryItem {
@@ -462,11 +479,28 @@ class ApiClient {
     if (!res.ok) throw new Error('Error al obtener imagen');
     return window.URL.createObjectURL(await res.blob());
   }
-  async charScene(payload: { character_id: string; prompt: string; num_images: number; width?: number; height?: number; seed?: number | null; pose?: string | null }): Promise<{ ok: boolean; prompt_id: string; expected: number; prompt_en: string; seed: number }> {
+  async charScene(payload: { character_id: string; prompt: string; num_images: number; width?: number; height?: number; seed?: number | null; pose?: string | null }): Promise<{ ok: boolean; prompt_id: string; expected: number; prompt_en: string; seed: number; entry_id?: string }> {
     const res = await fetch(`${this.baseUrl}/characters/scene`, {
       method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(payload),
     });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al generar'); }
+    return res.json();
+  }
+  async charScenes(): Promise<SceneHistoryItem[]> {
+    const res = await fetch(`${this.baseUrl}/characters/scenes`, { headers: this.getHeaders(true) });
+    if (!res.ok) return [];
+    return (await res.json()).items || [];
+  }
+  async charSceneDelete(id: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/characters/scenes/${id}`, { method: 'DELETE', headers: this.getHeaders(true) });
+    if (!res.ok) throw new Error('Error al borrar del historial');
+  }
+  async charSetLora(charId: string, data: { lora_filename: string | null; lora_trigger?: string; lora_strength?: number }): Promise<{ ok: boolean; entry: CharacterItem }> {
+    const res = await fetch(`${this.baseUrl}/characters/${charId}/lora`, {
+      method: 'POST', headers: this.getHeaders(true),
+      body: JSON.stringify({ lora_filename: data.lora_filename, lora_trigger: data.lora_trigger ?? '', lora_strength: data.lora_strength ?? 0.9 }),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al asignar LoRA'); }
     return res.json();
   }
   async charPoses(gender = 'mujer'): Promise<{ key: string; label: string }[]> {

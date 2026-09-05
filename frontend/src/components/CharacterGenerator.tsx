@@ -28,6 +28,10 @@ export default function CharacterGenerator() {
   const [loadingChar, setLoadingChar] = useState<string | null>(null);
   const [regenId, setRegenId] = useState<string | null>(null);
   const [genderSel, setGenderSel] = useState<Record<string, string>>({});
+  const [loraFiles, setLoraFiles] = useState<string[]>([]);
+  const [loraPanel, setLoraPanel] = useState<string | null>(null);
+  const [loraDraft, setLoraDraft] = useState<Record<string, { filename: string; trigger: string; strength: number }>>({});
+  const [loraSaving, setLoraSaving] = useState<string | null>(null);
 
   const pollRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -42,6 +46,24 @@ export default function CharacterGenerator() {
     setOpenImgs((prev) => { Object.values(prev).flat().forEach((i) => { try { URL.revokeObjectURL(i.url); } catch { /* */ } }); return {}; });
   };
   useEffect(() => { loadChars(); return () => stop(); }, []);
+  useEffect(() => { api.getAvailableLoraFiles().then(setLoraFiles).catch(() => { /* */ }); }, []);
+
+  const toggleLoraPanel = (c: CharacterItem) => {
+    if (loraPanel === c.id) { setLoraPanel(null); return; }
+    setLoraDraft((p) => ({ ...p, [c.id]: {
+      filename: c.lora_filename || '', trigger: c.lora_trigger || '', strength: c.lora_strength ?? 0.9,
+    } }));
+    setLoraPanel(c.id);
+  };
+  const saveLora = async (c: CharacterItem) => {
+    const d = loraDraft[c.id]; if (!d) return;
+    setLoraSaving(c.id);
+    try {
+      await api.charSetLora(c.id, { lora_filename: d.filename || null, lora_trigger: d.trigger, lora_strength: d.strength });
+      setLoraPanel(null); loadChars();
+    } catch (e: any) { alert(e.message || 'Error al asignar LoRA'); }
+    finally { setLoraSaving(null); }
+  };
 
   const generate = async () => {
     if (!description.trim() || busy) return;
@@ -234,9 +256,38 @@ export default function CharacterGenerator() {
                     <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem' }} onClick={() => regenChar(c)} disabled={!!regenId} title="Regenerar con las poses nuevas">
                       {regenId === c.id ? '⏳ Regenerando…' : '🔄 Regenerar poses'}
                     </button>
+                    <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem', ...(c.lora_filename ? { borderColor: '#a855f7', color: '#d8b4fe' } : {}) }} onClick={() => toggleLoraPanel(c)} title="LoRA propia (identidad píxel-perfecta)">
+                      {c.lora_filename ? '🎭 LoRA ✓' : '🎭 LoRA'}
+                    </button>
                     <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem' }} onClick={() => delChar(c)}>🗑️</button>
                   </div>
                 </div>
+                {loraPanel === c.id && (
+                  <div style={{ marginTop: 10, padding: 10, background: '#1a1030', border: '1px solid #6b21a8', borderRadius: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div style={{ flex: '1 1 240px' }}>
+                      <label style={{ color: '#c4b5fd', fontSize: '0.75rem' }}>Fichero LoRA</label>
+                      <select value={loraDraft[c.id]?.filename || ''} onChange={(e) => setLoraDraft((p) => ({ ...p, [c.id]: { ...p[c.id], filename: e.target.value } }))}
+                        style={{ width: '100%', marginTop: 4, padding: 7, borderRadius: 6, border: '1px solid #4c1d95', background: '#0f172a', color: '#e2e8f0', fontSize: '0.8rem' }}>
+                        <option value="">— ninguna (usar IPAdapter) —</option>
+                        {loraFiles.map((f) => <option key={f} value={f}>{f}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ flex: '1 1 160px' }}>
+                      <label style={{ color: '#c4b5fd', fontSize: '0.75rem' }}>Trigger word</label>
+                      <input value={loraDraft[c.id]?.trigger || ''} onChange={(e) => setLoraDraft((p) => ({ ...p, [c.id]: { ...p[c.id], trigger: e.target.value } }))}
+                        placeholder="ohwx woman"
+                        style={{ width: '100%', marginTop: 4, padding: 7, borderRadius: 6, border: '1px solid #4c1d95', background: '#0f172a', color: '#e2e8f0', fontSize: '0.8rem' }} />
+                    </div>
+                    <div style={{ flex: '0 1 90px' }}>
+                      <label style={{ color: '#c4b5fd', fontSize: '0.75rem' }}>Fuerza</label>
+                      <input type="number" min={0} max={1.5} step={0.05} value={loraDraft[c.id]?.strength ?? 0.9} onChange={(e) => setLoraDraft((p) => ({ ...p, [c.id]: { ...p[c.id], strength: +e.target.value } }))}
+                        style={{ width: '100%', marginTop: 4, padding: 7, borderRadius: 6, border: '1px solid #4c1d95', background: '#0f172a', color: '#e2e8f0', fontSize: '0.8rem' }} />
+                    </div>
+                    <button className="btn btn-primary" style={{ padding: '7px 12px', fontSize: '0.78rem' }} onClick={() => saveLora(c)} disabled={loraSaving === c.id}>
+                      {loraSaving === c.id ? '⏳' : '💾 Guardar LoRA'}
+                    </button>
+                  </div>
+                )}
                 {openImgs[c.id] && (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8, marginTop: 10 }}>
                     {openImgs[c.id].map((im, i) => (
