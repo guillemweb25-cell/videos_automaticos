@@ -144,6 +144,22 @@ PHONE_NEG = ("professional photography, dslr, studio lighting, cinematic, editor
              "plastic skin, airbrushed, cgi, 3d render, doll")
 
 
+def _enforce_safety_neg(neg: str) -> str:
+    """Garantiza que el negativo mantenga el guardarraíl SFW (nsfw/nude), aunque el
+    usuario lo edite/borre en el preview. Se reañade si falta."""
+    n = (neg or "").strip()
+    low = n.lower()
+    add = []
+    if "nsfw" not in low:
+        add.append("(nsfw:1.6)")
+    if "nude" not in low and "nudity" not in low:
+        add.append("(nude:1.6)")
+    if not add:
+        return n
+    joined = ", ".join(add)
+    return f"{n.rstrip(', ')}, {joined}" if n else joined
+
+
 def _store_path(uid: int) -> Path:
     STORE_DIR.mkdir(parents=True, exist_ok=True)
     return STORE_DIR / f"user_{uid}.json"
@@ -510,7 +526,8 @@ def _upload_ref(char_id: str, filename: str) -> str:
 def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
                        style_suffix: str, seed: int, num: int, w: int, h: int,
                        pose_name: Optional[str] = None, use_ipadapter: bool = True,
-                       extra_neg: str = "", cfg: float = 6.0, hq: bool = False) -> dict:
+                       extra_neg: str = "", cfg: float = 6.0, hq: bool = False,
+                       pos_override: str = "", neg_override: str = "") -> dict:
     """Grafo de escena. Con `use_ipadapter` (personaje SIN LoRA) la identidad viene
     del IPAdapter PLUS FACE de la imagen de referencia. Con LoRA se pasa
     use_ipadapter=False: la identidad la lleva la LoRA (aplicada aparte con
@@ -518,8 +535,10 @@ def _build_scene_graph(uid: int, ref_name: str, prompt_en: str, ckpt: str,
     de la referencia."""
     ckpt = ckpt.replace("/", "\\")
     # Con pose, el esqueleto es de cuerpo entero -> forzamos ese encuadre.
-    desc = f"{'full body shot, ' if pose_name else ''}{prompt_en}, {style_suffix}"
-    neg_text = f"{NEG}, {extra_neg}" if extra_neg else NEG
+    # Con override (preview editado por el usuario) se usa su texto tal cual; el
+    # negativo pasa por _enforce_safety_neg para mantener el guardarraíl.
+    desc = pos_override if pos_override else f"{'full body shot, ' if pose_name else ''}{prompt_en}, {style_suffix}"
+    neg_text = _enforce_safety_neg(neg_override) if neg_override else (f"{NEG}, {extra_neg}" if extra_neg else NEG)
     g = {
         "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
         "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": neg_text, "clip": ["ckpt", 1]}},
@@ -583,6 +602,9 @@ class SceneRequest(BaseModel):
     pose: Optional[str] = None   # clave de la librería de poses (o None = libre)
     phone: bool = False          # look "foto de móvil" (amateur/casual)
     hq: bool = False             # alta calidad: FaceDetailer (cara) + upscale 2x
+    preview: bool = False        # solo devolver los prompts (no generar)
+    positive: Optional[str] = None   # override del positivo (del preview editado)
+    negative: Optional[str] = None   # override del negativo (se le fuerza el SFW)
 
 
 @router.get("/poses")
@@ -636,8 +658,16 @@ def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)
     else:
         extra_neg = REALISM_NEG if is_real else ""
         cfg = 6.0
+    # Prompts finales (positivo/negativo) tal cual irán al grafo. En preview se
+    # devuelven para que el usuario los vea/edite; al generar, si vienen editados
+    # (req.positive/negative) se usan de override (el negativo mantiene el SFW).
+    positive_full = req.positive if req.positive else f"{'full body shot, ' if pose_name else ''}{prompt_en}, {style_suffix}"
+    negative_full = _enforce_safety_neg(req.negative) if req.negative else (f"{NEG}, {extra_neg}" if extra_neg else NEG)
+    if req.preview:
+        return {"ok": True, "preview": True, "positive": positive_full, "negative": negative_full, "prompt_en": prompt_en}
     wf = _build_scene_graph(current_user.id, ref_name, prompt_en, ckpt, style_suffix, seed, num, w, h,
-                            pose_name, use_ipadapter=not bool(lora_fn), extra_neg=extra_neg, cfg=cfg, hq=req.hq)
+                            pose_name, use_ipadapter=not bool(lora_fn), extra_neg=extra_neg, cfg=cfg, hq=req.hq,
+                            pos_override=req.positive or "", neg_override=req.negative or "")
     if lora_fn:
         _apply_lora(wf, lora_fn, lora_sm)
     try:

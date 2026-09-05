@@ -20,6 +20,8 @@ export default function CharacterImages() {
   const [phone, setPhone] = useState(false);
   const [hq, setHq] = useState(false);
   const [lightbox, setLightbox] = useState<{ urls: string[]; i: number } | null>(null);
+  const [preview, setPreview] = useState<{ pos: string; neg: string } | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -69,13 +71,27 @@ export default function CharacterImages() {
     })();
   }, [charId, selChar?.gender]);
 
+  // Invalida el preview si cambian los ajustes (para no enviar prompts obsoletos)
+  useEffect(() => { setPreview(null); }, [charId, prompt, pose, phone, hq, num, ratio]);
+
+  const doPreview = async () => {
+    if (!charId || !prompt.trim() || previewing || busy) return;
+    setPreviewing(true); setError('');
+    const r0 = RATIOS[ratio];
+    try {
+      const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null, phone, hq, preview: true });
+      setPreview({ pos: r.positive || '', neg: r.negative || '' });
+    } catch (e: any) { setError(e.message); }
+    finally { setPreviewing(false); }
+  };
+
   const generate = async () => {
     if (!charId || !prompt.trim() || busy) return;
     setError(''); setStatus('Enviando…'); setBusy(true); setElapsed(0);
     imgs.forEach((i) => URL.revokeObjectURL(i.url)); setImgs([]);
     const r0 = RATIOS[ratio];
     try {
-      const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null, phone, hq });
+      const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null, phone, hq, positive: preview?.pos, negative: preview?.neg });
       setPromptEn(r.prompt_en || '');
       setStatus(`Generando ${r.expected} imagen(es)…`);
       loadHistory();   // muestra la entrada pendiente en el historial
@@ -212,11 +228,25 @@ export default function CharacterImages() {
             </label>
 
             <div style={{ marginTop: 14, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary" onClick={doPreview} disabled={previewing || busy || !prompt.trim()} title="Ver y editar el prompt positivo/negativo antes de generar">
+                {previewing ? '⏳…' : '👁️ Ver/editar prompt'}
+              </button>
               <button className="btn btn-primary" onClick={generate} disabled={busy || !prompt.trim()}>
-                {busy ? '⏳ Generando…' : '🖼️ Generar imágenes'}
+                {busy ? '⏳ Generando…' : (preview ? '🖼️ Generar con estos prompts' : '🖼️ Generar imágenes')}
               </button>
               {status && <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>{status} {elapsed > 0 && `(${mmss(elapsed)})`}</span>}
             </div>
+            {preview && (
+              <div style={{ marginTop: 12, padding: 12, background: '#0b1220', border: '1px solid #334155', borderRadius: 8 }}>
+                <label style={{ color: '#4ade80', fontSize: '0.8rem', fontWeight: 600 }}>Prompt POSITIVO (editable)</label>
+                <textarea value={preview.pos} onChange={(e) => setPreview((p) => (p ? { ...p, pos: e.target.value } : p))} rows={4} disabled={busy}
+                  style={{ width: '100%', marginTop: 4, padding: 9, borderRadius: 6, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', fontSize: '0.8rem', fontFamily: 'monospace' }} />
+                <label style={{ color: '#f87171', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginTop: 8 }}>Prompt NEGATIVO (editable · nsfw/nude se mantienen siempre)</label>
+                <textarea value={preview.neg} onChange={(e) => setPreview((p) => (p ? { ...p, neg: e.target.value } : p))} rows={3} disabled={busy}
+                  style={{ width: '100%', marginTop: 4, padding: 9, borderRadius: 6, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', fontSize: '0.8rem', fontFamily: 'monospace' }} />
+                <div style={{ color: '#64748b', fontSize: '0.72rem', marginTop: 6 }}>Edita lo que quieras y pulsa "Generar con estos prompts". (Cambiar la escena o los ajustes de arriba recalcula el prompt.)</div>
+              </div>
+            )}
             {promptEn && <div style={{ color: '#64748b', fontSize: '0.78rem', marginTop: 8, fontStyle: 'italic' }}>Escena (EN): {promptEn}</div>}
             {error && <div style={{ color: '#f87171', marginTop: 10 }}>⚠️ {error}</div>}
           </>
