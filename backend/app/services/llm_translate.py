@@ -52,9 +52,10 @@ def translate(text: str, system_prompt: str, provider: str = "openai",
 
 _DESCRIBE_SYSTEM = (
     "Describe this reference photo as a concise English prompt for an image generator. "
-    "Focus on the OUTFIT (clothing type, colors, style), the SETTING/background, and the "
-    "LIGHTING and framing (e.g. mirror selfie, full body). Do NOT mention identity, face, "
-    "names or explicit content. Output ONE line, comma-separated keywords/phrases, no explanation."
+    "START with the main garment and its COLOR, emphasized in parentheses with weight, e.g. "
+    "'(pink wrap dress:1.3)'. Then add the SETTING/background and the LIGHTING and framing "
+    "(e.g. mirror selfie, full body). Do NOT mention identity, face, names or explicit content. "
+    "Output ONE line, comma-separated keywords/phrases, no explanation."
 )
 
 
