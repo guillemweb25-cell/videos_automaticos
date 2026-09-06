@@ -8,6 +8,16 @@ const STYLES = [
   { key: 'cartoon', label: '🧸 Cartoon 3D' },
 ];
 
+// Plantillas de ejemplo (rellenan el formulario al pulsarlas)
+const PRESETS = [
+  { emoji: '💃', title: 'La influencer', card: 'Guapa y con estilo, perfecta para redes.', name: 'Influencer', style: 'realista', gender: 'mujer', desc: 'mujer joven de aspecto hiperrealista, muy guapa y con estilo, pelo largo cuidado, piel perfecta, expresión confiada y cercana' },
+  { emoji: '🕴️', title: 'El profesional', card: 'Buena presencia, elocuente y capaz.', name: 'Profesional', style: 'realista', gender: 'hombre', desc: 'hombre de mediana edad, aspecto hiperrealista, traje elegante, buena presencia, mirada segura, aspecto ejecutivo' },
+  { emoji: '⚔️', title: 'La guerrera', card: 'Heroína de acción con carácter.', name: 'Guerrera', style: 'anime', gender: 'mujer', desc: 'guerrera joven de pelo azul y ojos verdes, armadura ligera, expresión decidida, estilo anime' },
+  { emoji: '😈', title: 'El villano', card: 'Figura antagónica que domina la pantalla.', name: 'Villano', style: 'realista', gender: 'hombre', desc: 'villano carismático, cicatriz en la ceja, abrigo largo negro, mirada intensa y fría, aspecto hiperrealista' },
+  { emoji: '🧝', title: 'Lo fantástico', card: 'Ser etéreo y onírico, entre lo humano y lo mítico.', name: 'Élfica', style: 'realista', gender: 'mujer', desc: 'ser etéreo y onírico, mujer de piel pálida luminosa, rasgos élficos, ojos claros, atmósfera mística' },
+  { emoji: '🤖', title: 'El excéntrico', card: 'Peculiar e inolvidable, con encanto fuera de lo común.', name: 'Excéntrico', style: 'cartoon', gender: 'hombre', desc: 'personaje peculiar e inolvidable, look estrafalario, ropa colorida, peinado llamativo, estilo cartoon 3d' },
+];
+
 export default function CharacterGenerator() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -97,6 +107,10 @@ export default function CharacterGenerator() {
     } catch (e: any) { alert(e.message || 'Error al iniciar el entrenamiento'); }
   };
 
+  const applyPreset = (p: typeof PRESETS[number]) => {
+    setName(p.name); setDescription(p.desc); setStyle(p.style); setGender(p.gender);
+  };
+
   const generate = async () => {
     if (!description.trim() || busy) return;
     setError(''); setStatus('Enviando…'); setBusy(true); setElapsed(0); setSaved(false);
@@ -182,11 +196,28 @@ export default function CharacterGenerator() {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
+      <div style={{ textAlign: 'center', margin: '6px 0 20px' }}>
+        <h2 style={{ margin: 0, fontSize: '1.35rem' }}>Crea y reutiliza personajes para que tus vídeos tengan coherencia</h2>
+        <p style={{ color: '#94a3b8', marginTop: 6 }}>Usa una plantilla de ejemplo de abajo o crea uno desde cero.</p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12, marginBottom: 22 }}>
+        {PRESETS.map((p) => (
+          <button key={p.title} onClick={() => applyPreset(p)} disabled={busy}
+            style={{ display: 'flex', gap: 12, alignItems: 'center', textAlign: 'left', padding: 12, borderRadius: 12, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', cursor: busy ? 'default' : 'pointer' }}>
+            <div style={{ fontSize: '1.8rem', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1e293b', borderRadius: 10, flexShrink: 0 }}>{p.emoji}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600 }}>{p.title}</div>
+              <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>{p.card}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
       <div style={{ background: '#1e293b', borderRadius: 12, padding: 20, marginBottom: 20 }}>
-        <h2 style={{ marginTop: 0 }}>🧑‍🎨 Generador de personajes consistentes</h2>
+        <h2 style={{ marginTop: 0 }}>🧑‍🎨 Crear personaje</h2>
         <p style={{ color: '#94a3b8', marginTop: 4 }}>
-          Crea un personaje y su set de imágenes (misma cara en varias poses, vía IPAdapter-face).
-          Sirve para reutilizarlo o como dataset para entrenar una LoRA.
+          Rellena o edita una plantilla y genera su set de imágenes (misma cara en varias poses).
+          Se guarda solo al terminar.
         </p>
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
