@@ -47,13 +47,15 @@ export default function CharacterFromRef() {
 
   const extract = async () => {
     if (!file || extracting) return;
-    setExtracting(true); setError(''); setStatus('Extrayendo pose…');
+    setExtracting(true); setError(''); setStatus('Extrayendo pose y describiendo…');
     try {
-      const r = await api.charPoseFromImage(file);
+      const r = await api.charPoseFromImage(file, provider);
       setSkeleton(r.skeleton);
       const url = await api.charImageObjectUrl(r.preview);
       if (skelUrl) URL.revokeObjectURL(skelUrl);
-      setSkelUrl(url); setStatus('');
+      setSkelUrl(url);
+      if (r.suggested_prompt) setPrompt(r.suggested_prompt);   // auto-rellena el prompt desde la imagen
+      setStatus('');
     } catch (e: any) { setError(e.message || 'Error al extraer la pose'); setStatus(''); }
     finally { setExtracting(false); }
   };

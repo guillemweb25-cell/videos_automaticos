@@ -498,9 +498,10 @@ class ApiClient {
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al generar'); }
     return res.json();
   }
-  async charPoseFromImage(file: File): Promise<{ ok: boolean; skeleton: string; preview: string }> {
+  async charPoseFromImage(file: File, provider = 'openai'): Promise<{ ok: boolean; skeleton: string; preview: string; suggested_prompt?: string }> {
     const fd = new FormData();
     fd.append('file', file);
+    fd.append('provider', provider);
     const res = await fetch(`${this.baseUrl}/characters/pose-from-image`, {
       method: 'POST', headers: this.getHeaders(true, false), body: fd,
     });

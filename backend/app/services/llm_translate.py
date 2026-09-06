@@ -5,6 +5,7 @@ Reutilizable por el estudio de personajes (characters.py) y el vídeo LTX
 (video_ltx.py). Las claves vienen de UserSettings (por usuario) o del entorno.
 """
 import os
+import base64
 from typing import Optional
 
 # Modelos por defecto (se pueden sobreescribir por entorno).
@@ -47,3 +48,45 @@ def translate(text: str, system_prompt: str, provider: str = "openai",
         return (r.choices[0].message.content or "").strip() or text
     except Exception:
         return text
+
+
+_DESCRIBE_SYSTEM = (
+    "Describe this reference photo as a concise English prompt for an image generator. "
+    "Focus on the OUTFIT (clothing type, colors, style), the SETTING/background, and the "
+    "LIGHTING and framing (e.g. mirror selfie, full body). Do NOT mention identity, face, "
+    "names or explicit content. Output ONE line, comma-separated keywords/phrases, no explanation."
+)
+
+
+def _vision_call(client, model, data_url):
+    r = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "system", "content": _DESCRIBE_SYSTEM},
+                  {"role": "user", "content": [
+                      {"type": "text", "text": "Describe this photo as a prompt:"},
+                      {"type": "image_url", "image_url": {"url": data_url}}]}],
+        temperature=0.3,
+    )
+    return (r.choices[0].message.content or "").strip()
+
+
+def describe_image(image_bytes: bytes, mime: str = "image/jpeg", provider: str = "openai",
+                   openai_key: Optional[str] = None, grok_key: Optional[str] = None) -> str:
+    """Genera un prompt (inglés) que describe la foto de referencia (ropa/escena/luz)
+    con un modelo de visión. Best-effort: "" si falla. Con Grok, cae a OpenAI si peta."""
+    provider = (provider or "openai").lower()
+    try:
+        from openai import OpenAI
+        data_url = f"data:{mime};base64,{base64.b64encode(image_bytes).decode()}"
+        ok = openai_key or os.getenv("OPENAI_API_KEY")
+        gk = grok_key or os.getenv("GROK_API_KEY")
+        if provider == "grok" and gk:
+            try:
+                return _vision_call(OpenAI(api_key=gk, base_url=GROK_BASE_URL), GROK_MODEL, data_url)
+            except Exception:
+                pass  # fallback a OpenAI
+        if ok:
+            return _vision_call(OpenAI(api_key=ok, base_url=os.getenv("OPENAI_BASE_URL") or None), "gpt-4o-mini", data_url)
+        return ""
+    except Exception:
+        return ""

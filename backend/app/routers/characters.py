@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional, List
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -648,21 +648,26 @@ def _extract_pose(uid: int, src_name: str) -> str:
 
 
 @router.post("/pose-from-image")
-async def char_pose_from_image(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
-    """Sube una foto de referencia y devuelve su esqueleto OpenPose, listo para
-    usarlo como pose (ControlNet) al generar un personaje."""
+async def char_pose_from_image(file: UploadFile = File(...), provider: str = Form("openai"),
+                               describe: bool = Form(True), current_user: User = Depends(get_current_user)):
+    """Sube una foto de referencia: devuelve su esqueleto OpenPose (para usarlo como
+    pose) y, opcionalmente, un prompt sugerido describiendo la foto (visión)."""
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Fichero vacío")
     uid = current_user.id
     _upload_input(f"refsrc_{uid}.png", data)
     skel_out = _extract_pose(uid, f"refsrc_{uid}.png")
-    # descarga el esqueleto del output y súbelo a input (nombre fijo) para poder usarlo como pose
     rv = requests.get(f"{COMFY_URL}/view", params={"filename": skel_out, "type": "output", "subfolder": ""}, timeout=30)
     skel_in = f"refpose_{uid}.png"
     if rv.ok:
         _upload_input(skel_in, rv.content)
-    return {"ok": True, "skeleton": skel_in, "preview": skel_out}
+    suggested = ""
+    if describe:
+        from app.services.llm_translate import describe_image
+        _ok, _gk = _llm_keys(uid)
+        suggested = describe_image(data, (file.content_type or "image/jpeg"), provider, _ok, _gk)
+    return {"ok": True, "skeleton": skel_in, "preview": skel_out, "suggested_prompt": suggested}
 
 
 @router.post("/scene")
