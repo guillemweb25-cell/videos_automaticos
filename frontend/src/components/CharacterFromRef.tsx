@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, type CharacterItem } from '../api';
 import Lightbox from './Lightbox';
+import SceneHistory from './SceneHistory';
 
 /** Genera un personaje en la MISMA pose que una foto de referencia:
  *  subes la foto -> se extrae su esqueleto (OpenPose) -> eliges personaje -> generas. */
@@ -25,6 +26,7 @@ export default function CharacterFromRef() {
   const [elapsed, setElapsed] = useState(0);
   const [imgs, setImgs] = useState<{ filename: string; url: string }[]>([]);
   const [lightbox, setLightbox] = useState<{ urls: string[]; i: number } | null>(null);
+  const [histSignal, setHistSignal] = useState(0);
 
   const pollRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -79,6 +81,7 @@ export default function CharacterFromRef() {
         stop(); setStatus('Cargando…');
         const loaded = await Promise.all(s.images.map(async (f) => ({ filename: f, url: await api.charImageObjectUrl(f) })));
         setImgs(loaded); setStatus(''); setBusy(false);
+        setHistSignal((n) => n + 1);   // refresca el historial
       } else if (s.status === 'error') { stop(); setError('Error en la generación'); setBusy(false); setStatus(''); }
     } catch { /* reintenta */ }
   };
@@ -171,6 +174,8 @@ export default function CharacterFromRef() {
           </div>
         </div>
       )}
+
+      <SceneHistory reloadSignal={histSignal} />
 
       {lightbox && <Lightbox urls={lightbox.urls} index={lightbox.i} onClose={() => setLightbox(null)} />}
     </div>
