@@ -17,6 +17,7 @@ export default function CharacterImages() {
   const [ratio, setRatio] = useState(0);
   const [poses, setPoses] = useState<{ key: string; label: string }[]>([]);
   const [pose, setPose] = useState('');
+  const [provider, setProvider] = useState('openai');
   const [phone, setPhone] = useState(false);
   const [hq, setHq] = useState(false);
   const [lightbox, setLightbox] = useState<{ urls: string[]; i: number } | null>(null);
@@ -72,14 +73,14 @@ export default function CharacterImages() {
   }, [charId, selChar?.gender]);
 
   // Invalida el preview si cambian los ajustes (para no enviar prompts obsoletos)
-  useEffect(() => { setPreview(null); }, [charId, prompt, pose, phone, hq, num, ratio]);
+  useEffect(() => { setPreview(null); }, [charId, prompt, pose, phone, hq, num, ratio, provider]);
 
   const doPreview = async () => {
     if (!charId || !prompt.trim() || previewing || busy) return;
     setPreviewing(true); setError('');
     const r0 = RATIOS[ratio];
     try {
-      const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null, phone, hq, preview: true });
+      const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null, phone, hq, provider, preview: true });
       setPreview({ pos: r.positive || '', neg: r.negative || '' });
     } catch (e: any) { setError(e.message); }
     finally { setPreviewing(false); }
@@ -91,7 +92,7 @@ export default function CharacterImages() {
     imgs.forEach((i) => URL.revokeObjectURL(i.url)); setImgs([]);
     const r0 = RATIOS[ratio];
     try {
-      const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null, phone, hq, positive: preview?.pos, negative: preview?.neg });
+      const r = await api.charScene({ character_id: charId, prompt: prompt.trim(), num_images: num, width: r0.w, height: r0.h, pose: pose || null, phone, hq, provider, positive: preview?.pos, negative: preview?.neg });
       setPromptEn(r.prompt_en || '');
       setStatus(`Generando ${r.expected} imagen(es)…`);
       loadHistory();   // muestra la entrada pendiente en el historial
@@ -197,6 +198,14 @@ export default function CharacterImages() {
                 <select value={num} onChange={(e) => setNum(+e.target.value)} disabled={busy}
                   style={{ width: '100%', marginTop: 4, padding: 9, borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}>
                   {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: '0 1 130px' }}>
+                <label style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Traductor</label>
+                <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={busy}
+                  style={{ width: '100%', marginTop: 4, padding: 9, borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}>
+                  <option value="openai">🟢 OpenAI</option>
+                  <option value="grok">⚫ Grok</option>
                 </select>
               </div>
               {poses.length > 0 && (

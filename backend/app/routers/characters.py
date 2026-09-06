@@ -18,10 +18,26 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from sqlalchemy.orm import Session
+
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.database import SessionLocal
+from app.database import SessionLocal, get_db
 from app.models.lora import Lora
+from app.models.user_settings import UserSettings
+from app.services.llm_translate import translate
+
+
+def _llm_keys(uid: int):
+    """(openai_key, grok_key) del usuario desde UserSettings (o None -> env)."""
+    db = SessionLocal()
+    try:
+        s = db.query(UserSettings).filter(UserSettings.user_id == uid).first()
+        return (getattr(s, "openai_api_key", None), getattr(s, "grok_api_key", None)) if s else (None, None)
+    except Exception:
+        return (None, None)
+    finally:
+        db.close()
 
 router = APIRouter(prefix="/characters", tags=["characters"])
 
@@ -29,34 +45,18 @@ router = APIRouter(prefix="/characters", tags=["characters"])
 TRAIN_AGENT_URL = os.getenv("TRAIN_AGENT_URL", "http://192.168.1.46:8600").rstrip("/")
 
 
-def _translate_character(text: str, neutral_bg: bool) -> str:
-    """Traduce la descripción del personaje a inglés. Con fondo neutro, instruye
-    al LLM para describir SOLO al personaje (sin escena/fondo/luz), que es lo que
-    metía fondos indeseados en el dataset."""
-    key = os.getenv("OPENAI_API_KEY")
-    if not key:
-        return text
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=key, base_url=os.getenv("OPENAI_BASE_URL") or None)
-        extra = (" Describe ONLY the character (body, face, hair, eyes, clothing, accessories, "
-                 "expression). Do NOT mention any background, scene, setting, environment, "
-                 "location or lighting." if neutral_bg else "")
-        r = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": (
-                    "Translate this character description into fluent English for an image "
-                    "model. Keep the subject and appearance EXACTLY. Output ONLY the English "
-                    "description on one line, no quotes, no explanation." + extra
-                )},
-                {"role": "user", "content": text},
-            ],
-            temperature=0.4,
-        )
-        return (r.choices[0].message.content or "").strip() or text
-    except Exception:
-        return text
+def _translate_character(text: str, neutral_bg: bool, provider: str = "openai",
+                         openai_key: Optional[str] = None, grok_key: Optional[str] = None) -> str:
+    """Traduce la descripción del personaje a inglés (proveedor OpenAI o Grok). Con
+    fondo neutro, instruye al LLM para describir SOLO al personaje (sin escena/
+    fondo/luz), que es lo que metía fondos indeseados en el dataset."""
+    extra = (" Describe ONLY the character (body, face, hair, eyes, clothing, accessories, "
+             "expression). Do NOT mention any background, scene, setting, environment, "
+             "location or lighting." if neutral_bg else "")
+    system = ("Translate this character description into fluent English for an image "
+              "model. Keep the subject and appearance EXACTLY. Output ONLY the English "
+              "description on one line, no quotes, no explanation." + extra)
+    return translate(text, system, provider=provider, openai_key=openai_key, grok_key=grok_key)
 
 COMFY_URL = os.getenv("COMFY_URL", "http://192.168.1.46:8188").rstrip("/")
 STORE_DIR = Path("/app/cache/characters")
@@ -375,6 +375,7 @@ class CharGenerateRequest(BaseModel):
     gender: str = "mujer"          # hombre | mujer (para las poses OpenPose)
     pose_control: bool = False     # forzar poses de la librería con ControlNet
     name: str = ""                 # nombre (para auto-guardar el personaje)
+    provider: str = "openai"       # openai | grok (para traducir la descripción)
 
 
 @router.post("/generate")
@@ -383,7 +384,8 @@ def char_generate(req: CharGenerateRequest, current_user: User = Depends(get_cur
         raise HTTPException(status_code=400, detail="Falta la descripción del personaje")
     ckpt = STYLES.get(req.style, STYLES["anime"])
     style_suffix = STYLE_SUFFIX.get(req.style, STYLE_SUFFIX["anime"])
-    desc_en = _translate_character(req.description.strip(), req.neutral_bg)
+    _ok, _gk = _llm_keys(current_user.id)
+    desc_en = _translate_character(req.description.strip(), req.neutral_bg, req.provider, _ok, _gk)
     import random
     seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
 
@@ -605,6 +607,7 @@ class SceneRequest(BaseModel):
     preview: bool = False        # solo devolver los prompts (no generar)
     positive: Optional[str] = None   # override del positivo (del preview editado)
     negative: Optional[str] = None   # override del negativo (se le fuerza el SFW)
+    provider: str = "openai"     # openai | grok (para traducir el prompt de escena)
 
 
 @router.get("/poses")
@@ -626,7 +629,8 @@ def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)
     ckpt = STYLES.get(char.get("style", "anime"), STYLES["anime"])
     style_suffix = STYLE_SUFFIX.get(char.get("style", "anime"), STYLE_SUFFIX["anime"])
     from app.routers.video_ltx import _to_english_prompt
-    prompt_en = _to_english_prompt(req.prompt.strip())
+    _ok, _gk = _llm_keys(current_user.id)
+    prompt_en = _to_english_prompt(req.prompt.strip(), req.provider, _ok, _gk)
     import random
     seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
     num = max(1, min(4, int(req.num_images)))

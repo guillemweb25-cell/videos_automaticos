@@ -16,6 +16,7 @@ export default function CharacterGenerator() {
   const [neutralBg, setNeutralBg] = useState(true);
   const [gender, setGender] = useState('mujer');
   const [poseControl, setPoseControl] = useState(false);
+  const [provider, setProvider] = useState('openai');
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -101,7 +102,7 @@ export default function CharacterGenerator() {
     setError(''); setStatus('Enviando…'); setBusy(true); setElapsed(0); setSaved(false);
     resultImgs.forEach((i) => URL.revokeObjectURL(i.url)); setResultImgs([]);
     try {
-      const r = await api.charGenerate({ description: description.trim(), style, num_poses: numPoses, neutral_bg: neutralBg, gender, pose_control: poseControl, name: name.trim() });
+      const r = await api.charGenerate({ description: description.trim(), style, num_poses: numPoses, neutral_bg: neutralBg, gender, pose_control: poseControl, name: name.trim(), provider });
       metaRef.current = { description_en: r.description_en, seed: r.seed, entry_id: r.entry_id };
       setStatus(`Generando ${r.expected} imágenes… (se guarda solo al terminar)`);
       loadChars();   // el personaje ya existe (auto-guardado); aparece en la lista
@@ -214,6 +215,14 @@ export default function CharacterGenerator() {
             <select value={numPoses} onChange={(e) => setNumPoses(+e.target.value)} disabled={busy}
               style={{ width: '100%', marginTop: 4, padding: 9, borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}>
               {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n} + base</option>)}
+            </select>
+          </div>
+          <div style={{ flex: '0 1 130px' }}>
+            <label style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Traductor</label>
+            <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={busy}
+              style={{ width: '100%', marginTop: 4, padding: 9, borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}>
+              <option value="openai">🟢 OpenAI</option>
+              <option value="grok">⚫ Grok</option>
             </select>
           </div>
         </div>

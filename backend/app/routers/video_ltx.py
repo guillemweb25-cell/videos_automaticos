@@ -62,32 +62,16 @@ def _save_hist(user_id: int, items: list) -> None:
     _hist_path(user_id).write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _to_english_prompt(text: str) -> str:
-    """Traduce/mejora el prompt a inglés cinematográfico (el encoder gemma de
-    LTX es casi solo inglés). Best-effort: si falla, devuelve el original."""
-    key = os.getenv("OPENAI_API_KEY")
-    if not key:
-        return text
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=key, base_url=os.getenv("OPENAI_BASE_URL") or None)
-        r = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": (
-                    "You translate short prompts for a text-to-video model into fluent, vivid ENGLISH. "
-                    "Keep the user's subject and intent EXACTLY. Output ONLY the English prompt on one "
-                    "line, no quotes, no explanation. If it's already English, improve it slightly for "
-                    "cinematic video (lighting, camera, detail)."
-                )},
-                {"role": "user", "content": text},
-            ],
-            temperature=0.4,
-        )
-        out = (r.choices[0].message.content or "").strip()
-        return out or text
-    except Exception:
-        return text
+def _to_english_prompt(text: str, provider: str = "openai", openai_key=None, grok_key=None) -> str:
+    """Traduce/mejora el prompt a inglés cinematográfico (el encoder gemma de LTX
+    es casi solo inglés), con proveedor OpenAI o Grok. Best-effort: si falla,
+    devuelve el original."""
+    from app.services.llm_translate import translate
+    system = ("You translate short prompts for a text-to-video model into fluent, vivid ENGLISH. "
+              "Keep the user's subject and intent EXACTLY. Output ONLY the English prompt on one "
+              "line, no quotes, no explanation. If it's already English, improve it slightly for "
+              "cinematic video (lighting, camera, detail).")
+    return translate(text, system, provider=provider, openai_key=openai_key, grok_key=grok_key)
 
 
 def _snap32(v: int) -> int:

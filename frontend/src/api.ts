@@ -445,7 +445,7 @@ class ApiClient {
   }
 
   // --- Generador de personajes consistentes (SDXL + IPAdapter) ---
-  async charGenerate(payload: { description: string; style: string; num_poses: number; seed?: number | null; neutral_bg?: boolean; gender?: string; pose_control?: boolean; name?: string }): Promise<CharGenerateResponse> {
+  async charGenerate(payload: { description: string; style: string; num_poses: number; seed?: number | null; neutral_bg?: boolean; gender?: string; pose_control?: boolean; name?: string; provider?: string }): Promise<CharGenerateResponse> {
     const res = await fetch(`${this.baseUrl}/characters/generate`, {
       method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(payload),
     });
@@ -491,7 +491,7 @@ class ApiClient {
     if (!res.ok) throw new Error('Error al obtener imagen');
     return window.URL.createObjectURL(await res.blob());
   }
-  async charScene(payload: { character_id: string; prompt: string; num_images: number; width?: number; height?: number; seed?: number | null; pose?: string | null; phone?: boolean; hq?: boolean; preview?: boolean; positive?: string; negative?: string }): Promise<{ ok: boolean; prompt_id?: string; expected?: number; prompt_en?: string; seed?: number; entry_id?: string; positive?: string; negative?: string; preview?: boolean }> {
+  async charScene(payload: { character_id: string; prompt: string; num_images: number; width?: number; height?: number; seed?: number | null; pose?: string | null; phone?: boolean; hq?: boolean; preview?: boolean; positive?: string; negative?: string; provider?: string }): Promise<{ ok: boolean; prompt_id?: string; expected?: number; prompt_en?: string; seed?: number; entry_id?: string; positive?: string; negative?: string; preview?: boolean }> {
     const res = await fetch(`${this.baseUrl}/characters/scene`, {
       method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(payload),
     });
