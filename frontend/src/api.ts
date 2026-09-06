@@ -498,6 +498,15 @@ class ApiClient {
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al generar'); }
     return res.json();
   }
+  async charPoseFromImage(file: File): Promise<{ ok: boolean; skeleton: string; preview: string }> {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(`${this.baseUrl}/characters/pose-from-image`, {
+      method: 'POST', headers: this.getHeaders(true, false), body: fd,
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al extraer la pose'); }
+    return res.json();
+  }
   async charScenes(): Promise<SceneHistoryItem[]> {
     const res = await fetch(`${this.baseUrl}/characters/scenes`, { headers: this.getHeaders(true) });
     if (!res.ok) return [];

@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import LtxVideoGenerator from './LtxVideoGenerator';
 import CharacterGenerator from './CharacterGenerator';
 import CharacterImages from './CharacterImages';
+import CharacterFromRef from './CharacterFromRef';
 
-type Tab = 'video' | 'chars' | 'images';
+type Tab = 'video' | 'chars' | 'images' | 'ref';
 
 /** Apartado "Vídeo LTX" con pestañas: vídeo, personajes e imágenes. */
 export default function LtxStudio() {
@@ -27,8 +28,9 @@ export default function LtxStudio() {
         {tabBtn('video', '🎬 Vídeo')}
         {tabBtn('chars', '🧑‍🎨 Personajes')}
         {tabBtn('images', '🖼️ Imágenes')}
+        {tabBtn('ref', '🎯 Desde referencia')}
       </div>
-      {tab === 'video' ? <LtxVideoGenerator /> : tab === 'chars' ? <CharacterGenerator /> : <CharacterImages />}
+      {tab === 'video' ? <LtxVideoGenerator /> : tab === 'chars' ? <CharacterGenerator /> : tab === 'images' ? <CharacterImages /> : <CharacterFromRef />}
     </div>
   );
 }

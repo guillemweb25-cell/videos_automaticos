@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional, List
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -602,6 +602,7 @@ class SceneRequest(BaseModel):
     height: int = 1216
     seed: Optional[int] = None
     pose: Optional[str] = None   # clave de la librería de poses (o None = libre)
+    pose_image: Optional[str] = None   # esqueleto propio (input de ComfyUI, de /pose-from-image)
     phone: bool = False          # look "foto de móvil" (amateur/casual)
     hq: bool = False             # alta calidad: FaceDetailer (cara) + upscale 2x
     preview: bool = False        # solo devolver los prompts (no generar)
@@ -614,6 +615,54 @@ class SceneRequest(BaseModel):
 def char_poses(gender: str = "mujer", current_user: User = Depends(get_current_user)):
     """Poses disponibles en la librería (esqueletos OpenPose) para el género dado."""
     return {"ok": True, "poses": _list_poses(gender)}
+
+
+def _upload_input(name: str, data: bytes) -> str:
+    up = requests.post(f"{COMFY_URL}/upload/image",
+                       files={"image": (name, data, "image/png")},
+                       data={"overwrite": "true", "type": "input"}, timeout=30)
+    if not up.ok:
+        raise HTTPException(status_code=502, detail="No se pudo subir la imagen a ComfyUI")
+    return up.json().get("name", name)
+
+
+def _extract_pose(uid: int, src_name: str) -> str:
+    """Extrae el esqueleto OpenPose (DWPreprocessor) de una imagen ya subida al
+    input de ComfyUI. Devuelve el nombre del PNG del esqueleto en output."""
+    g = {
+        "load": {"class_type": "LoadImage", "inputs": {"image": src_name}},
+        "dw": {"class_type": "DWPreprocessor", "inputs": {
+            "image": ["load", 0], "detect_hand": "enable", "detect_body": "enable",
+            "detect_face": "enable", "resolution": 512,
+            "bbox_detector": "yolox_l.onnx", "pose_estimator": "dw-ll_ucoco_384_bs5.torchscript.pt",
+            "scale_stick_for_xinsr_cn": "disable"}},
+        "save": {"class_type": "SaveImage", "inputs": {"filename_prefix": f"refpose_{uid}", "images": ["dw", 0]}},
+    }
+    r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": g}, timeout=30)
+    if not r.ok:
+        raise HTTPException(status_code=400, detail=f"ComfyUI rechazó la extracción: {r.text[:300]}")
+    out = _wait_output(r.json().get("prompt_id"), tries=90)
+    if not out:
+        raise HTTPException(status_code=504, detail="No se pudo extraer la pose (timeout)")
+    return out
+
+
+@router.post("/pose-from-image")
+async def char_pose_from_image(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
+    """Sube una foto de referencia y devuelve su esqueleto OpenPose, listo para
+    usarlo como pose (ControlNet) al generar un personaje."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Fichero vacío")
+    uid = current_user.id
+    _upload_input(f"refsrc_{uid}.png", data)
+    skel_out = _extract_pose(uid, f"refsrc_{uid}.png")
+    # descarga el esqueleto del output y súbelo a input (nombre fijo) para poder usarlo como pose
+    rv = requests.get(f"{COMFY_URL}/view", params={"filename": skel_out, "type": "output", "subfolder": ""}, timeout=30)
+    skel_in = f"refpose_{uid}.png"
+    if rv.ok:
+        _upload_input(skel_in, rv.content)
+    return {"ok": True, "skeleton": skel_in, "preview": skel_out}
 
 
 @router.post("/scene")
@@ -650,6 +699,9 @@ def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)
             prompt_en = f"{char_desc}, {prompt_en}"
         if req.pose:
             pose_name = _upload_pose(char.get("gender", "mujer"), req.pose)
+    # Esqueleto propio (de una foto de referencia) tiene prioridad sobre la librería.
+    if req.pose_image:
+        pose_name = req.pose_image
     # LoRA propia del personaje (identidad píxel-perfecta): trigger al frente del prompt.
     lora_fn, lora_trigger, lora_sm = _char_lora(char)
     if lora_fn and lora_trigger:
