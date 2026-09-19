@@ -28,6 +28,8 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
 
   // Thumbnail actions
   const [thumbnailBust, setThumbnailBust] = useState(Date.now());
+  const [ytCharSide, setYtCharSide] = useState<'right' | 'left'>('right');
+  const [ytRegenCtx, setYtRegenCtx] = useState(true);
   const [thumbBusy, setThumbBusy] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -91,7 +93,12 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const handleRegenerateThumbnail = async () => {
     setThumbBusy('regen');
     try {
-      await api.generateThumbnail(videoId);
+      // Opcional: regenera antes el CONTEXTO (IA) para que emoción/fondo/personaje
+      // se actualicen según el tema del vídeo.
+      if (ytRegenCtx) {
+        try { await api.regenerateThumbnailVisualPrompt(videoId); } catch { /* sigue con el contexto actual */ }
+      }
+      await api.generateThumbnail(videoId, undefined, undefined, undefined, undefined, undefined, ytCharSide);
       setThumbnailBust(Date.now());
     } catch (err: any) {
       setUploadStatus(`Error al regenerar miniatura: ${err.message || ''}`);
@@ -211,6 +218,19 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
                 <span className="yt-section-label">Miniatura Final</span>
                 <div className="yt-thumbnail-wrapper">
                   <img src={`${API_URL}${metadata.thumbnail_url}?t=${thumbnailBust}`} alt="Thumbnail" />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>Personaje:</span>
+                  {(['right', 'left'] as const).map(s => (
+                    <button key={s} type="button" onClick={() => setYtCharSide(s)} disabled={!!thumbBusy}
+                      style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'white', background: ytCharSide === s ? '#7c3aed' : '#374151' }}>
+                      {s === 'right' ? 'Derecha' : 'Izquierda'}
+                    </button>
+                  ))}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#cbd5e1', cursor: 'pointer', marginLeft: '4px' }}>
+                    <input type="checkbox" checked={ytRegenCtx} onChange={(e) => setYtRegenCtx(e.target.checked)} disabled={!!thumbBusy} />
+                    Actualizar contexto (tema/emoción)
+                  </label>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                   <button
