@@ -1201,7 +1201,7 @@ class ApiClient {
     return res.json();
   }
 
-  async generateThumbnail(videoId: number, hook?: string, visualPrompt?: string, modelId?: string, generationMode?: string, position?: string): Promise<{ ok: boolean, url: string }> {
+  async generateThumbnail(videoId: number, hook?: string, visualPrompt?: string, modelId?: string, generationMode?: string, position?: string, charSide?: string): Promise<{ ok: boolean, url: string }> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/generate-thumbnail`, {
       method: 'POST',
       headers: this.getHeaders(true),
@@ -1210,7 +1210,8 @@ class ApiClient {
         visual_prompt: visualPrompt,
         model_id: modelId,
         generation_mode: generationMode,
-        position
+        position,
+        char_side: charSide
       })
     });
 
@@ -1218,11 +1219,11 @@ class ApiClient {
     return res.json();
   }
 
-  async updateThumbnailText(videoId: number, hook: string, position?: string): Promise<{ ok: boolean, url: string }> {
+  async updateThumbnailText(videoId: number, hook: string, position?: string, charSide?: string): Promise<{ ok: boolean, url: string }> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/update-thumbnail-text`, {
       method: 'POST',
       headers: this.getHeaders(true),
-      body: JSON.stringify({ hook, position })
+      body: JSON.stringify({ hook, position, char_side: charSide })
     });
     if (!res.ok) throw new Error('Error al actualizar texto de la miniatura');
     return res.json();

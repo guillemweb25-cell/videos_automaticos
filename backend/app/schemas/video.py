@@ -81,6 +81,7 @@ class ThumbnailGenerationRequest(BaseModel):
     model_id: Optional[str] = None
     generation_mode: Optional[str] = "QUALITY"
     position: Optional[str] = "top"  # top | center | bottom — dónde va el texto
+    char_side: Optional[str] = "right"  # right | left — lado del personaje (el texto va al opuesto)
 
 class ConvertToVideoRequest(BaseModel):
     paragraph_id: int

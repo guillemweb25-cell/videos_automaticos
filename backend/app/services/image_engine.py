@@ -520,7 +520,7 @@ class ImageEngine:
         
         return {"amount": cost_amount, "seed": img_data.get("seed")}
 
-    async def generate_comfy_image(self, prompt: str, out_path: Path, size: str = "1024x1024", negative_prompt: Optional[str] = None, workflow_name: str = "Comic-Horror.json", seed: Optional[int] = None, loras: Optional[List[Dict[str, Any]]] = None, trigger_words: Optional[str] = None) -> Dict[str, Any]:
+    async def generate_comfy_image(self, prompt: str, out_path: Path, size: str = "1024x1024", negative_prompt: Optional[str] = None, workflow_name: str = "Comic-Horror.json", seed: Optional[int] = None, loras: Optional[List[Dict[str, Any]]] = None, trigger_words: Optional[str] = None, pose_image: Optional[str] = None, pose_strength: float = 0.85) -> Dict[str, Any]:
         """Generates an image using local ComfyUI via ComfyService."""
         # Use absolute path inside Docker container
         workflow_path = Path("/app/workflows") / workflow_name
@@ -550,7 +550,9 @@ class ImageEngine:
             height=h,
             seed=seed,
             loras=loras,
-            trigger_words=trigger_words
+            trigger_words=trigger_words,
+            pose_image=pose_image,
+            pose_strength=pose_strength
         )
 
         print(f"Executing ComfyUI workflow: {workflow_name}")
@@ -727,7 +729,46 @@ class ImageEngine:
             time.sleep(3)
         raise TimeoutError("Leonardo V2 timeout")
 
-    async def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY", channel_name: Optional[str] = None, workflow_name: Optional[str] = None, text_position: str = "top") -> None:
+    def _build_thumb_pose(self, w: int, h: int, side: str = "right") -> Optional[str]:
+        """Compone un esqueleto OpenPose al tamaño exacto (w,h) con la figura a un
+        lado (right/left) y lo sube al input de ComfyUI. Devuelve el nombre del
+        fichero, o None si no hay esqueleto base. Así ControlNet coloca al personaje
+        a ese lado dejando el otro libre para el texto."""
+        try:
+            import requests
+            base_path = Path("/app/pose_library/mujer/frontal.png")
+            if not base_path.exists():
+                base_path = Path("pose_library/mujer/frontal.png")
+            if not base_path.exists():
+                print("[thumb-pose] no hay esqueleto base (pose_library/mujer/frontal.png)", flush=True)
+                return None
+            base = Image.open(base_path).convert("RGB")
+            bbox = base.getbbox()          # recorta al esqueleto (quita bordes negros)
+            if bbox:
+                base = base.crop(bbox)
+            scale = (0.92 * h) / base.height
+            nw, nh = max(1, int(base.width * scale)), max(1, int(base.height * scale))
+            base_r = base.resize((nw, nh), Image.LANCZOS)
+            canvas = Image.new("RGB", (w, h), (0, 0, 0))
+            cx = int((0.70 if side == "right" else 0.30) * w)
+            x = cx - nw // 2
+            x = max(0, min(x, w - nw))
+            canvas.paste(base_r, (x, h - nh))   # alineado abajo
+            import io
+            buf = io.BytesIO(); canvas.save(buf, format="PNG")
+            name = f"thumbpose_{w}x{h}_{side}.png"
+            up = requests.post(f"{self.comfy_service.comfy_url}/upload/image",
+                               files={"image": (name, buf.getvalue(), "image/png")},
+                               data={"overwrite": "true", "type": "input"}, timeout=30)
+            if up.ok:
+                return up.json().get("name", name)
+            print(f"[thumb-pose] fallo al subir el esqueleto: {up.status_code}", flush=True)
+            return None
+        except Exception as e:
+            print(f"[thumb-pose] error: {e}", flush=True)
+            return None
+
+    async def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY", channel_name: Optional[str] = None, workflow_name: Optional[str] = None, text_position: str = "top", char_side: str = "right") -> None:
         """Generates a professional thumbnail. Blends visual prompt with text instructions. 
         """
 
@@ -780,9 +821,11 @@ class ImageEngine:
             else:
                 visual_prompt = visual_prompt.replace("child", "(child:1.5)")
 
-        # Ensure the subject is on the right to leave space for text on the left
-        if "right side" not in visual_prompt.lower() and style != "jesus":
-            visual_prompt = f"Subject on the right side of the frame, empty space on the left for text overlay. {visual_prompt}"
+        # Pista textual del lado (la posición REAL la fuerza el ControlNet de abajo).
+        _cs = "left" if char_side == "left" else "right"
+        _ts = "right" if _cs == "left" else "left"
+        if "side of the frame" not in visual_prompt.lower():
+            visual_prompt = f"Subject on the {_cs} side of the frame, empty space on the {_ts} for text overlay. {visual_prompt}"
 
         # Generate base image
         if self.comfy_url:
@@ -819,12 +862,21 @@ class ImageEngine:
                 else:
                     workflow = "Comic-Horror-Ultra.json"
             
+            # Esqueleto posicionado a un lado -> ControlNet coloca al personaje ahí.
+            pose_img = None
+            try:
+                tw, th = map(int, size.split("x"))
+                pose_img = self._build_thumb_pose(tw, th, char_side)
+            except Exception as e:
+                print(f"[thumbnail] no se pudo construir el esqueleto: {e}", flush=True)
             await self.generate_comfy_image(
-                prompt=visual_prompt, 
-                out_path=out_path, 
-                size=size, 
+                prompt=visual_prompt,
+                out_path=out_path,
+                size=size,
                 negative_prompt=negative_prompt,
-                workflow_name=workflow
+                workflow_name=workflow,
+                pose_image=pose_img,
+                pose_strength=0.8,
             )
         else:
             target_model = model_id or "gpt-image-1.5"
@@ -838,10 +890,10 @@ class ImageEngine:
         import shutil
         shutil.copy2(out_path, clean_path)
 
-        # Apply text overlay using Python
-        self._apply_thumbnail_text_overlay(out_path, hook, channel_name=channel_name, position=text_position)
+        # Apply text overlay using Python (al lado opuesto del personaje)
+        self._apply_side_text_overlay(out_path, hook, char_side=char_side, channel_name=channel_name)
 
-    def apply_text_to_thumbnail(self, base_dir: str, hook: str, channel_name: Optional[str] = None, position: str = "top") -> str:
+    def apply_text_to_thumbnail(self, base_dir: str, hook: str, channel_name: Optional[str] = None, position: str = "top", char_side: str = "right") -> str:
         """Re-applies text overlay to an existing clean thumbnail (re-paint)."""
         out_path = Path(base_dir) / "output" / "thumbnail.png"
         clean_path = Path(base_dir) / "output" / "thumbnail-clean.png"
@@ -858,9 +910,101 @@ class ImageEngine:
         import shutil
         shutil.copy2(clean_path, out_path)
 
-        # Apply text
-        self._apply_thumbnail_text_overlay(out_path, hook, channel_name=channel_name, position=position)
+        # Apply text (nuevo overlay lateral)
+        self._apply_side_text_overlay(out_path, hook, char_side=char_side, channel_name=channel_name)
         return f"cache/{os.path.relpath(out_path, 'cache')}"
+
+    def _apply_side_text_overlay(self, image_path: Path, text: str, char_side: str = "right", channel_name: Optional[str] = None):
+        """Overlay de texto al lado OPUESTO del personaje, en 2-3 líneas, con fuente
+        moderna (Montserrat/Poppins), degradado oscuro en ese lado para legibilidad
+        y contorno negro. `char_side` = dónde está el personaje (right|left)."""
+        if not image_path.exists():
+            return
+        img = Image.open(image_path).convert("RGBA")
+        W, H = img.size
+        text_on_left = (char_side != "left")   # personaje a la derecha -> texto a la izquierda
+        fonts_dir = Path(__file__).parent.parent / "fonts"
+
+        def _has_cjk(s: str) -> bool:
+            for c in s or "":
+                cp = ord(c)
+                if (0xAC00 <= cp <= 0xD7AF or 0x3040 <= cp <= 0x309F
+                        or 0x30A0 <= cp <= 0x30FF or 0x4E00 <= cp <= 0x9FFF):
+                    return True
+            return False
+
+        candidates = [fonts_dir / "Poppins-Bold.ttf",
+                      fonts_dir / "BebasNeue-Regular.ttf", fonts_dir / "Anton-Regular.ttf",
+                      Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")]
+        if _has_cjk(text):
+            candidates = [Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+                          Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc")] + candidates
+        # Robusto: elige la primera fuente que EXISTE y CARGA (una corrupta no rompe todo).
+        font_path = None
+        for p in candidates:
+            if not p.exists():
+                continue
+            try:
+                ImageFont.truetype(str(p), 40)
+                font_path = str(p)
+                break
+            except Exception:
+                continue
+
+        margin = int(W * 0.045)
+        col_w = int(W * 0.50)
+        col_x0 = margin if text_on_left else (W - margin - col_w)
+        words = " ".join((text or "").split()).split(" ")
+
+        def wrap(font):
+            d = ImageDraw.Draw(img)
+            lines, cur = [], ""
+            for wd in words:
+                t = (cur + " " + wd).strip()
+                if not cur or d.textlength(t, font=font) <= col_w:
+                    cur = t
+                else:
+                    lines.append(cur); cur = wd
+            if cur:
+                lines.append(cur)
+            return lines
+
+        # Elige tamaño para que quepa en 2-3 líneas dentro de la columna.
+        size = max(24, int(H * 0.11))
+        font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
+        lines = wrap(font)
+        while font_path and size > 24:
+            d = ImageDraw.Draw(img)
+            widest = max((d.textlength(l, font=font) for l in lines), default=0)
+            asc = font.getbbox("Ay")[3]
+            line_h = asc + int(size * 0.30)
+            if len(lines) <= 3 and widest <= col_w and line_h * len(lines) <= H * 0.72:
+                break
+            size -= 6
+            font = ImageFont.truetype(font_path, size)
+            lines = wrap(font)
+
+        # Scrim: degradado oscuro fuerte en el borde del lado del texto -> transparente al centro.
+        grad = Image.new("L", (W, 1))
+        span = W * 0.62
+        for x in range(W):
+            t = (x / span) if text_on_left else ((W - 1 - x) / span)
+            grad.putpixel((x, 0), int(max(0.0, 1.0 - t) * 170))
+        img.paste(Image.new("RGBA", (W, H), (0, 0, 0, 255)), (0, 0), grad.resize((W, H)))
+
+        # Dibuja las líneas centradas verticalmente, ancladas al lado del texto.
+        asc = font.getbbox("Ay")[3]
+        line_h = asc + int(size * 0.30)
+        y = (H - line_h * len(lines)) // 2
+        d = ImageDraw.Draw(img)
+        stroke = max(3, int(size * 0.10))
+        for l in lines:
+            lw = d.textlength(l, font=font)
+            x = col_x0 if text_on_left else (col_x0 + col_w - lw)
+            d.text((x, y), l, font=font, fill=(255, 255, 255, 255),
+                   stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+            y += line_h
+        img.convert("RGB").save(image_path)
 
     def _apply_thumbnail_text_overlay(self, image_path: Path, text: str, channel_name: Optional[str] = None, position: str = "top"):
         """Applies the text overlay. `position` (top|center|bottom) controls where

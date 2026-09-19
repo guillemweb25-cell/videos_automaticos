@@ -24,6 +24,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [thumbnailHook, setThumbnailHook] = useState('');
   const [thumbnailVisualPrompt, setThumbnailVisualPrompt] = useState('');
   const [thumbnailPosition, setThumbnailPosition] = useState<'top' | 'center' | 'bottom'>('top');
+  const [charSide, setCharSide] = useState<'right' | 'left'>('right');
   const [thumbnailRegenerating, setThumbnailRegenerating] = useState(false);
   const [leonardoModels, setLeonardoModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState('7b592283-e8a7-4c5a-9ba6-d18c31f258b9'); // Default to Lucid Origin
@@ -409,7 +410,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleGenerateThumbnailImage = async () => {
     setThumbnailRegenerating(true);
     try {
-      const res = await api.generateThumbnail(videoId, thumbnailHook, thumbnailVisualPrompt, selectedModel, generationMode, thumbnailPosition);
+      const res = await api.generateThumbnail(videoId, thumbnailHook, thumbnailVisualPrompt, selectedModel, generationMode, thumbnailPosition, charSide);
       if (res.ok) {
         setThumbnailUrl(res.url);
       }
@@ -424,7 +425,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleUpdateThumbnailText = async () => {
     setThumbnailRegenerating(true);
     try {
-      const res = await api.updateThumbnailText(videoId, thumbnailHook, thumbnailPosition);
+      const res = await api.updateThumbnailText(videoId, thumbnailHook, thumbnailPosition, charSide);
       if (res.ok) {
         setThumbnailUrl(res.url);
       }
@@ -1295,6 +1296,25 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                   </button>
                 ))}
                 <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>(luego pulsa "Actualizar Texto")</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Personaje:</span>
+                {(['right', 'left'] as const).map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setCharSide(s)}
+                    style={{
+                      padding: '6px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                      fontSize: '0.8rem', fontWeight: 600, color: 'white',
+                      background: charSide === s ? '#7c3aed' : '#374151',
+                    }}
+                  >
+                    {s === 'right' ? '🧍 Derecha (texto izq.)' : '🧍 Izquierda (texto der.)'}
+                  </button>
+                ))}
+                <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>(afecta al regenerar la imagen)</span>
               </div>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>

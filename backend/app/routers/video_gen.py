@@ -2341,8 +2341,9 @@ async def generate_thumbnail_api(
         channel_name=video.channel.name,
         workflow_name=data.get("workflow_name"),
         text_position=(req.position or "top"),
+        char_side=(req.char_side or "right"),
     )
-    
+
     # Save updates
     images_json.write_text(json.dumps(data, indent=2))
     
@@ -2374,7 +2375,7 @@ async def update_thumbnail_text(
     engine = ImageEngine()
     url_rel = engine.apply_text_to_thumbnail(
         video.base_dir, hook, channel_name=video.channel.name,
-        position=(req.position or "top"),
+        position=(req.position or "top"), char_side=(req.char_side or "right"),
     )
 
     return {"ok": True, "url": f"/{url_rel}?t={int(datetime.now().timestamp())}"}

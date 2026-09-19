@@ -240,6 +240,42 @@ class ComfyService:
                         node["inputs"][key] = list(clip_src)
         print(f"[loras] injected {len(new_ids)} LoRA(s) after checkpoint node {ckpt_id}", flush=True)
 
+    # ControlNet OpenPose SDXL "fuerte" (xinsir); mismo que usa el estudio de personajes.
+    OPENPOSE_CN = "SDXL\\controlnet-openpose-sdxl-xinsir.safetensors"
+
+    def _inject_controlnet_pose(self, workflow: Dict[str, Any], pos_id: Optional[str],
+                                neg_id: Optional[str], pose_image: str, strength: float = 0.85) -> None:
+        """Inserta ControlNet OpenPose: carga el esqueleto `pose_image` (ya en el
+        input de ComfyUI) y reencamina positivo/negativo del sampler a través de un
+        ControlNetApplyAdvanced. Mutates in place. No-op si faltan pos/neg."""
+        if not pose_image or not pos_id or not neg_id or pos_id not in workflow or neg_id not in workflow:
+            print("[cnpose] falta pose_image o nodos pos/neg — se omite ControlNet", flush=True)
+            return
+        digit_ids = [int(k) for k in workflow.keys() if str(k).isdigit()]
+        nid = (max(digit_ids) + 1) if digit_ids else 1
+        cnload, poseimg, cnapply = str(nid), str(nid + 1), str(nid + 2)
+        workflow[cnload] = {"inputs": {"control_net_name": self.OPENPOSE_CN},
+                            "class_type": "ControlNetLoader", "_meta": {"title": "CN Pose Loader"}}
+        workflow[poseimg] = {"inputs": {"image": pose_image, "upload": "image"},
+                             "class_type": "LoadImage", "_meta": {"title": "CN Pose Skeleton"}}
+        workflow[cnapply] = {"inputs": {
+            "strength": float(strength), "start_percent": 0.0, "end_percent": 0.9,
+            "positive": [pos_id, 0], "negative": [neg_id, 0],
+            "control_net": [cnload, 0], "image": [poseimg, 0]},
+            "class_type": "ControlNetApplyAdvanced", "_meta": {"title": "CN Pose Apply"}}
+        # Reencamina cualquier consumidor de [pos_id,0]/[neg_id,0] al ControlNetApply.
+        skip = {cnapply}
+        for k, node in workflow.items():
+            if k in skip:
+                continue
+            for key, val in node.get("inputs", {}).items():
+                if isinstance(val, list) and len(val) == 2:
+                    if val[0] == pos_id and val[1] == 0:
+                        node["inputs"][key] = [cnapply, 0]
+                    elif val[0] == neg_id and val[1] == 0:
+                        node["inputs"][key] = [cnapply, 1]
+        print(f"[cnpose] ControlNet OpenPose inyectado (pose={pose_image}, strength={strength})", flush=True)
+
     def prepare_workflow(self,
         base_workflow: Dict[str, Any],
         prompt: str,
@@ -252,7 +288,9 @@ class ComfyService:
         seed_node_id: Optional[str] = None,
         seed: Optional[int] = None,
         loras: Optional[List[Dict[str, Any]]] = None,
-        trigger_words: Optional[str] = None
+        trigger_words: Optional[str] = None,
+        pose_image: Optional[str] = None,
+        pose_strength: float = 0.85
     ) -> Dict[str, Any]:
         """
         Injects parameters into a workflow dictionary.
@@ -272,20 +310,21 @@ class ComfyService:
 
         # 1. Find Positive Prompt Node
         pos_node = None
+        pos_id = None
         if positive_node_id and positive_node_id in workflow:
-            pos_node = workflow[positive_node_id]
+            pos_node = workflow[positive_node_id]; pos_id = positive_node_id
         else:
             # Search by title "Positive" or class CLIPTextEncode
-            for node in workflow.values():
+            for nid, node in workflow.items():
                 title = node.get("_meta", {}).get("title", "").lower()
                 if title == "positive":
-                    pos_node = node
+                    pos_node = node; pos_id = nid
                     break
             if not pos_node:
-                for node in workflow.values():
+                for nid, node in workflow.items():
                     if node.get("class_type") == "CLIPTextEncode" and "text" in node.get("inputs", {}):
                         # Use the first one found if no title matches
-                        pos_node = node
+                        pos_node = node; pos_id = nid
                         break
         
         if pos_node:
@@ -298,21 +337,32 @@ class ComfyService:
 
         # 2. Find Negative Prompt Node
         neg_node = None
+        neg_id = None
         if negative_node_id and negative_node_id in workflow:
-            neg_node = workflow[negative_node_id]
+            neg_node = workflow[negative_node_id]; neg_id = negative_node_id
         else:
-            for node in workflow.values():
+            for nid, node in workflow.items():
                 title = node.get("_meta", {}).get("title", "").lower()
                 if title == "negative":
-                    neg_node = node
+                    neg_node = node; neg_id = nid
                     break
-        
+            # Fallback: 2nd CLIPTextEncode (the positive was the 1st) as negative.
+            if not neg_node:
+                clip_ids = [nid for nid, node in workflow.items()
+                            if node.get("class_type") == "CLIPTextEncode" and nid != pos_id]
+                if clip_ids:
+                    neg_id = clip_ids[0]; neg_node = workflow[neg_id]
+
         if neg_node and negative_prompt:
             existing_neg = neg_node["inputs"].get("text", "")
             # Append negative prompt
             final_neg = f"{existing_neg}, {negative_prompt}" if existing_neg else negative_prompt
             neg_node["inputs"]["text"] = final_neg
             print(f"[DEBUG] Final Negative Prompt: {final_neg}")
+
+        # 2b. Inject ControlNet OpenPose (posiciona el personaje a un lado) si se pidió.
+        if pose_image:
+            self._inject_controlnet_pose(workflow, pos_id, neg_id, pose_image, pose_strength)
 
         # 3. Optimize dimensions for SDXL
         opt_w, opt_h = self.get_optimal_sdxl_size(width, height)
