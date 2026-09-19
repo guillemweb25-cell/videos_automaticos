@@ -1242,7 +1242,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                     script_snippet = "\n".join([item.get("spoken", "") for item in plan])
                     # NEW: use custom rules from guide for hook
                     custom_title_rules = StyleService.get_custom_title_rules(base_dir)
-                    hook = await asyncio.to_thread(seo.generate_thumbnail_hook, script_full, custom_rules=custom_title_rules)
+                    hook = await asyncio.to_thread(seo.generate_thumbnail_hook, script_full, custom_rules=custom_title_rules, channel_name=(channel.name if channel else None), title=(vid.youtube_title or vid.title))
 
                     # Look for custom thumbnail rules in style-guide.md
                     custom_thumb_rules = StyleService.get_custom_thumbnail_rules(base_dir)
@@ -2191,8 +2191,12 @@ async def regenerate_thumbnail_hook(video_id: int, db: Session = Depends(get_db)
     seo = SEOEngine(api_key=api_key, provider=llm_prov)
     # NEW: use custom rules from guide for hook
     custom_title_rules = StyleService.get_custom_title_rules(base_dir)
-    hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules)
-    
+    hook = seo.generate_thumbnail_hook(
+        script_full[:2000], custom_rules=custom_title_rules,
+        channel_name=video.channel.name,
+        title=(video.youtube_title or video.title),
+    )
+
     if "thumbnail" not in data:
         data["thumbnail"] = {}
     data["thumbnail"]["hook"] = hook
@@ -2302,7 +2306,7 @@ async def generate_thumbnail_api(
             seo = SEOEngine(api_key=api_key, provider=llm_prov)
             if not current_hook:
                 custom_title_rules = StyleService.get_custom_title_rules(base_dir)
-                current_hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules, channel_name=video.channel.name)
+                current_hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules, channel_name=video.channel.name, title=(video.youtube_title or video.title))
                 data["thumbnail"]["hook"] = current_hook
             # Visual prompt must be generated independently of the hook: a video can
             # have a hook but no stored visual prompt (older videos), and without this
@@ -2345,6 +2349,7 @@ async def generate_thumbnail_api(
         workflow_name=data.get("workflow_name"),
         text_position=(req.position or "top"),
         char_side=(req.char_side or "right"),
+        text_angle=req.text_angle,
     )
 
     # Save updates
@@ -2362,23 +2367,28 @@ async def update_thumbnail_text(
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
-    
-    if not hook:
-        raise HTTPException(status_code=400, detail="Hook text is required")
 
-    # Update json
+    # Update json (o recupera el hook guardado si no se envía uno nuevo —
+    # p.ej. cuando solo se cambia la inclinación del texto desde el modal).
     base_dir = Path(video.base_dir)
     images_json = base_dir / "image_prompts_all.json"
     if images_json.exists():
         data = json.loads(images_json.read_text())
         if "thumbnail" not in data: data["thumbnail"] = {}
-        data["thumbnail"]["hook"] = hook
-        images_json.write_text(json.dumps(data, indent=2))
+        if hook:
+            data["thumbnail"]["hook"] = hook
+            images_json.write_text(json.dumps(data, indent=2))
+        else:
+            hook = data["thumbnail"].get("hook")
+
+    if not hook:
+        raise HTTPException(status_code=400, detail="Hook text is required")
 
     engine = ImageEngine()
     url_rel = engine.apply_text_to_thumbnail(
         video.base_dir, hook, channel_name=video.channel.name,
         position=(req.position or "top"), char_side=(req.char_side or "right"),
+        text_angle=req.text_angle,
     )
 
     return {"ok": True, "url": f"/{url_rel}?t={int(datetime.now().timestamp())}"}

@@ -25,6 +25,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [thumbnailVisualPrompt, setThumbnailVisualPrompt] = useState('');
   const [thumbnailPosition, setThumbnailPosition] = useState<'top' | 'center' | 'bottom'>('top');
   const [charSide, setCharSide] = useState<'right' | 'left'>('right');
+  const [textAngle, setTextAngle] = useState<number>(7);
   const [thumbnailRegenerating, setThumbnailRegenerating] = useState(false);
   const [leonardoModels, setLeonardoModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState('7b592283-e8a7-4c5a-9ba6-d18c31f258b9'); // Default to Lucid Origin
@@ -410,7 +411,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleGenerateThumbnailImage = async () => {
     setThumbnailRegenerating(true);
     try {
-      const res = await api.generateThumbnail(videoId, thumbnailHook, thumbnailVisualPrompt, selectedModel, generationMode, thumbnailPosition, charSide);
+      const res = await api.generateThumbnail(videoId, thumbnailHook, thumbnailVisualPrompt, selectedModel, generationMode, thumbnailPosition, charSide, textAngle);
       if (res.ok) {
         setThumbnailUrl(res.url);
       }
@@ -425,7 +426,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const handleUpdateThumbnailText = async () => {
     setThumbnailRegenerating(true);
     try {
-      const res = await api.updateThumbnailText(videoId, thumbnailHook, thumbnailPosition, charSide);
+      const res = await api.updateThumbnailText(videoId, thumbnailHook, thumbnailPosition, charSide, textAngle);
       if (res.ok) {
         setThumbnailUrl(res.url);
       }
@@ -1315,6 +1316,17 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
                   </button>
                 ))}
                 <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>(afecta al regenerar la imagen)</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Inclinación texto:</span>
+                <input
+                  type="range" min={0} max={20} step={1} value={textAngle}
+                  onChange={(e) => setTextAngle(Number(e.target.value))}
+                  style={{ width: '140px' }}
+                />
+                <span style={{ fontSize: '0.8rem', color: 'white', fontWeight: 600, minWidth: '36px' }}>{textAngle}°</span>
+                <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>(0 = recto; se aplica al pulsar "Actualizar Texto", no hace falta regenerar la imagen)</span>
               </div>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>

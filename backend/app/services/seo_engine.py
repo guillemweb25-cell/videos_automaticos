@@ -175,7 +175,7 @@ class SEOEngine:
             clean_tags.append(t)
         return clean_tags[:count]
 
-    def generate_thumbnail_hook(self, script_snippet: str, lang: Optional[str] = None, custom_rules: Optional[str] = None, channel_name: Optional[str] = None) -> str:
+    def generate_thumbnail_hook(self, script_snippet: str, lang: Optional[str] = None, custom_rules: Optional[str] = None, channel_name: Optional[str] = None, title: Optional[str] = None) -> str:
         """Generates a catchy short hook for a YouTube thumbnail."""
         if lang is None:
             lang = detect_language(script_snippet)
@@ -196,24 +196,47 @@ class SEOEngine:
             "in ALL CAPS (use the script's native uppercase; Korean/Japanese/Chinese "
             "have no separate caps, use them as-is, big and bold). "
             "Optionally use a SINGLE '...' to split it into two short parts for a "
-            "two-line layout. NEVER use more than one '...'. NEVER write full sentences "
-            "or questions — just a punchy phrase. "
+            "two-line layout. NEVER use more than one '...'. NEVER write full sentences. "
+            "OUTPUT EXACTLY ONE LINE: no line breaks, no second sentence, no explanation, "
+            "no author credit — ONLY the punchy phrase itself. "
             "Examples (Spanish): 'TU ÁNGEL... TE VIGILA', 'NO MIRES... ATRÁS', "
             "'EL SECRETO PROHIBIDO', 'LA LUNA... OCULTA EL SOL'. "
             "Examples (Korean): '그는 사라졌다... 영원히', '보지 마라... 뒤를'. "
             "Translate the FORMAT to the script language."
         )
 
+        # RELEVANCE is the key fix: hooks were coming out as generic, interchangeable
+        # mystical filler ("TU DESTINO... ESCRITO YA") that fit any video and felt
+        # disconnected from the actual content. Force the hook to name a CONCRETE
+        # element that truly appears in THIS video and to open a curiosity gap the
+        # video pays off.
+        relevance_desc = (
+            "RELEVANCE (mandatory, most important): the hook must be UNMISTAKABLY about "
+            "the SPECIFIC content of THIS video — reference a concrete element that actually "
+            "appears in the script or title (a name, place, object, number, date, benefit, "
+            "enemy or twist). Create a curiosity gap tied to that concrete element. "
+            "STRICTLY AVOID vague, interchangeable filler that could headline any video in "
+            "the niche (e.g. 'TU DESTINO', 'EL SECRETO', 'LA VERDAD OCULTA', 'NO MIRES ATRÁS' "
+            "used generically). If you can imagine the same hook on a totally different video, "
+            "it is WRONG — make it specific. Prefer the concrete noun from the title over an abstraction."
+        )
+
         system_msg = (
             f"You are an expert YouTube CLICKBAIT strategist for a {niche_desc}. "
-            "Your goal is to create an IRRESISTIBLE hook. "
-            "Use psychological triggers like 'THE FORBIDDEN', 'THE UNKNOWN', 'LETHAL', 'TERRIFYING', 'SECRET' (adapted to the niche AND to the target language). "
+            "Your goal is to create an IRRESISTIBLE hook that is also SPECIFIC to this exact video. "
+            "Use psychological triggers like 'THE FORBIDDEN', 'THE UNKNOWN', 'LETHAL', 'TERRIFYING', 'SECRET' (adapted to the niche AND to the target language), "
+            "but always anchored to the concrete subject of the video. "
+            f"{relevance_desc} "
             f"{format_desc} "
             f"{f'Additional brand rules: {custom_rules}' if custom_rules else ''} "
             f"The hook MUST be written entirely in: {lang}. Do NOT mix languages. "
             "Output ONLY the text, no quotes or emojis."
         )
-        user_msg = f"Script snippet:\n{script_snippet}\n\nWrite a short thumbnail hook."
+        title_line = f"Video title (the core promise — anchor the hook to this):\n{title}\n\n" if title else ""
+        user_msg = (
+            f"{title_line}Script snippet:\n{script_snippet}\n\n"
+            "Write a short thumbnail hook that is specific to THIS video's content (not generic filler)."
+        )
         
         response = self.client.chat.completions.create(
             model=self.model,
@@ -223,7 +246,11 @@ class SEOEngine:
             ],
             temperature=0.8
         )
-        return (response.choices[0].message.content or "").strip()[:80]
+        raw = (response.choices[0].message.content or "").strip()
+        # El modelo a veces añade una segunda línea/explicación pese a las reglas.
+        # Nos quedamos SOLO con la primera línea no vacía y quitamos comillas.
+        first = next((ln.strip() for ln in raw.splitlines() if ln.strip()), "")
+        return first.strip(' "\'`')[:60]
 
     def generate_thumbnail_visual_prompt(self, script_snippet: str, style_desc: str, thumbnail_hook: str = "", custom_rules: Optional[str] = None, include_text_in_prompt: bool = False) -> str:
         """Generates a highly descriptive visual prompt for AI image generators."""

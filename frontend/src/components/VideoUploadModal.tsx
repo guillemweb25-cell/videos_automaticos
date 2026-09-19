@@ -30,6 +30,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const [thumbnailBust, setThumbnailBust] = useState(Date.now());
   const [ytCharSide, setYtCharSide] = useState<'right' | 'left'>('right');
   const [ytRegenCtx, setYtRegenCtx] = useState(true);
+  const [ytTextAngle, setYtTextAngle] = useState<number>(7);
   const [thumbBusy, setThumbBusy] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -98,10 +99,24 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
       if (ytRegenCtx) {
         try { await api.regenerateThumbnailVisualPrompt(videoId); } catch { /* sigue con el contexto actual */ }
       }
-      await api.generateThumbnail(videoId, undefined, undefined, undefined, undefined, undefined, ytCharSide);
+      await api.generateThumbnail(videoId, undefined, undefined, undefined, undefined, undefined, ytCharSide, ytTextAngle);
       setThumbnailBust(Date.now());
     } catch (err: any) {
       setUploadStatus(`Error al regenerar miniatura: ${err.message || ''}`);
+    } finally {
+      setThumbBusy(null);
+    }
+  };
+
+  // Solo reaplica el TEXTO (inclinación/lado) sobre la imagen existente — rápido,
+  // sin regenerar la imagen con IA.
+  const handleApplyTextAngle = async () => {
+    setThumbBusy('text');
+    try {
+      await api.updateThumbnailText(videoId, undefined, undefined, ytCharSide, ytTextAngle);
+      setThumbnailBust(Date.now());
+    } catch (err: any) {
+      setUploadStatus(`Error al aplicar el texto: ${err.message || ''}`);
     } finally {
       setThumbBusy(null);
     }
@@ -231,6 +246,18 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
                     <input type="checkbox" checked={ytRegenCtx} onChange={(e) => setYtRegenCtx(e.target.checked)} disabled={!!thumbBusy} />
                     Actualizar contexto (tema/emoción)
                   </label>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>Inclinación texto:</span>
+                  <input type="range" min={0} max={20} step={1} value={ytTextAngle}
+                    onChange={(e) => setYtTextAngle(Number(e.target.value))} disabled={!!thumbBusy}
+                    style={{ width: '110px' }} />
+                  <span style={{ fontSize: '0.72rem', color: 'white', fontWeight: 600, minWidth: '30px' }}>{ytTextAngle}°</span>
+                  <button type="button" onClick={handleApplyTextAngle} disabled={!!thumbBusy}
+                    style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'white', background: '#374151' }}
+                    title="Reaplica solo el texto (rápido, sin regenerar la imagen)">
+                    {thumbBusy === 'text' ? 'Aplicando…' : 'Aplicar texto'}
+                  </button>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                   <button

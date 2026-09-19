@@ -770,7 +770,7 @@ class ImageEngine:
             print(f"[thumb-pose] error: {e}", flush=True)
             return None
 
-    async def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY", channel_name: Optional[str] = None, workflow_name: Optional[str] = None, text_position: str = "top", char_side: str = "right") -> None:
+    async def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY", channel_name: Optional[str] = None, workflow_name: Optional[str] = None, text_position: str = "top", char_side: str = "right", text_angle: Optional[int] = None) -> None:
         """Generates a professional thumbnail. Blends visual prompt with text instructions. 
         """
 
@@ -923,9 +923,9 @@ class ImageEngine:
         shutil.copy2(out_path, clean_path)
 
         # Apply text overlay using Python (al lado opuesto del personaje)
-        self._apply_side_text_overlay(out_path, hook, char_side=char_side, channel_name=channel_name)
+        self._apply_side_text_overlay(out_path, hook, char_side=char_side, channel_name=channel_name, text_angle=text_angle)
 
-    def apply_text_to_thumbnail(self, base_dir: str, hook: str, channel_name: Optional[str] = None, position: str = "top", char_side: str = "right") -> str:
+    def apply_text_to_thumbnail(self, base_dir: str, hook: str, channel_name: Optional[str] = None, position: str = "top", char_side: str = "right", text_angle: Optional[int] = None) -> str:
         """Re-applies text overlay to an existing clean thumbnail (re-paint)."""
         out_path = Path(base_dir) / "output" / "thumbnail.png"
         clean_path = Path(base_dir) / "output" / "thumbnail-clean.png"
@@ -943,13 +943,14 @@ class ImageEngine:
         shutil.copy2(clean_path, out_path)
 
         # Apply text (nuevo overlay lateral)
-        self._apply_side_text_overlay(out_path, hook, char_side=char_side, channel_name=channel_name)
+        self._apply_side_text_overlay(out_path, hook, char_side=char_side, channel_name=channel_name, text_angle=text_angle)
         return f"cache/{os.path.relpath(out_path, 'cache')}"
 
-    def _apply_side_text_overlay(self, image_path: Path, text: str, char_side: str = "right", channel_name: Optional[str] = None):
-        """Overlay de texto al lado OPUESTO del personaje, en 2-3 líneas, con fuente
-        moderna (Montserrat/Poppins), degradado oscuro en ese lado para legibilidad
-        y contorno negro. `char_side` = dónde está el personaje (right|left)."""
+    def _apply_side_text_overlay(self, image_path: Path, text: str, char_side: str = "right", channel_name: Optional[str] = None, text_angle: Optional[int] = None):
+        """Overlay de título estilo Canva al lado OPUESTO del personaje: fuente
+        gruesa (Anton), 2-3 líneas, contorno negro grueso + sombra difusa, relleno
+        degradado amarillo->dorado y el bloque inclinado en DIAGONAL. `char_side` =
+        dónde está el personaje (right|left)."""
         if not image_path.exists():
             return
         img = Image.open(image_path).convert("RGBA")
@@ -965,8 +966,10 @@ class ImageEngine:
                     return True
             return False
 
-        candidates = [fonts_dir / "Poppins-Bold.ttf",
-                      fonts_dir / "BebasNeue-Regular.ttf", fonts_dir / "Anton-Regular.ttf",
+        # Anton primero: condensada y MUY gruesa (look tipo Canva/Impact). Bebas y
+        # Poppins como respaldo; DejaVu del sistema como último recurso.
+        candidates = [fonts_dir / "Anton-Regular.ttf", fonts_dir / "BebasNeue-Regular.ttf",
+                      fonts_dir / "Poppins-Bold.ttf",
                       Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")]
         if _has_cjk(text):
             candidates = [Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
@@ -983,34 +986,47 @@ class ImageEngine:
             except Exception:
                 continue
 
-        margin = int(W * 0.045)
-        col_w = int(W * 0.50)
+        margin = int(W * 0.04)
+        col_w = int(W * 0.52)
         col_x0 = margin if text_on_left else (W - margin - col_w)
-        words = " ".join((text or "").split()).split(" ")
+
+        # El "..." SIEMPRE fuerza un salto de línea: lo de antes (con el "...") en
+        # una línea y lo de después en la siguiente. Cada segmento aún puede
+        # ajustarse por ancho si no cabe. Se conserva un único "..." (el formato
+        # del hook no permite más).
+        full = " ".join((text or "").upper().split())   # MAYÚSCULAS: más impacto
+        if "..." in full:
+            before, _, after = full.partition("...")
+            segments = [(before.strip() + "...").strip(), after.strip()]
+            segments = [s for s in segments if s and s != "..."]
+        else:
+            segments = [full]
 
         def wrap(font):
             d = ImageDraw.Draw(img)
-            lines, cur = [], ""
-            for wd in words:
-                t = (cur + " " + wd).strip()
-                if not cur or d.textlength(t, font=font) <= col_w:
-                    cur = t
-                else:
-                    lines.append(cur); cur = wd
-            if cur:
-                lines.append(cur)
+            lines = []
+            for seg in segments:
+                cur = ""
+                for wd in seg.split(" "):
+                    t = (cur + " " + wd).strip()
+                    if not cur or d.textlength(t, font=font) <= col_w:
+                        cur = t
+                    else:
+                        lines.append(cur); cur = wd
+                if cur:
+                    lines.append(cur)
             return lines
 
         # Elige tamaño para que quepa en 2-3 líneas dentro de la columna.
-        size = max(24, int(H * 0.11))
+        size = max(28, int(H * 0.14))   # más grande (Anton es estrecha, cabe más)
         font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
         lines = wrap(font)
-        while font_path and size > 24:
+        while font_path and size > 28:
             d = ImageDraw.Draw(img)
             widest = max((d.textlength(l, font=font) for l in lines), default=0)
             asc = font.getbbox("Ay")[3]
-            line_h = asc + int(size * 0.30)
-            if len(lines) <= 3 and widest <= col_w and line_h * len(lines) <= H * 0.72:
+            line_h = asc + int(size * 0.22)
+            if len(lines) <= 3 and widest <= col_w and line_h * len(lines) <= H * 0.70:
                 break
             size -= 6
             font = ImageFont.truetype(font_path, size)
@@ -1021,42 +1037,68 @@ class ImageEngine:
         span = W * 0.62
         for x in range(W):
             t = (x / span) if text_on_left else ((W - 1 - x) / span)
-            grad.putpixel((x, 0), int(max(0.0, 1.0 - t) * 170))
+            grad.putpixel((x, 0), int(max(0.0, 1.0 - t) * 175))
         img.paste(Image.new("RGBA", (W, H), (0, 0, 0, 255)), (0, 0), grad.resize((W, H)))
 
-        # Dibuja las líneas centradas verticalmente, ancladas al lado del texto.
+        # --- Construye el BLOQUE de texto en su propia capa y luego lo inclina ---
         asc = font.getbbox("Ay")[3]
-        line_h = asc + int(size * 0.30)
-        y0 = (H - line_h * len(lines)) // 2
-        d = ImageDraw.Draw(img)
-        stroke = max(3, int(size * 0.11))
-        # posiciones de cada línea (ancladas al lado del texto)
+        line_h = asc + int(size * 0.22)
+        stroke = max(4, int(size * 0.15))          # contorno más grueso
+        pad = stroke * 3 + int(size * 0.35)
+        d0 = ImageDraw.Draw(img)
+        line_ws = [int(d0.textlength(l, font=font)) for l in lines] or [1]
+        block_w = max(line_ws) + pad * 2
+        block_h = line_h * len(lines) + pad * 2
+        layer = Image.new("RGBA", (block_w, block_h), (0, 0, 0, 0))
+
+        # posiciones de cada línea dentro de la capa (ancladas al lado del texto)
         placed = []
-        yy = y0
-        for l in lines:
-            lw = d.textlength(l, font=font)
-            x = col_x0 if text_on_left else (col_x0 + col_w - lw)
+        yy = pad
+        for l, lw in zip(lines, line_ws):
+            x = pad if text_on_left else (block_w - pad - lw)
             placed.append((x, yy, l))
             yy += line_h
-        # 1) contorno negro grueso de todas las líneas
+
+        # 1) sombra difusa (drop shadow) detrás del texto
+        shadow = Image.new("RGBA", (block_w, block_h), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(shadow)
         for x, yy, l in placed:
-            d.text((x, yy), l, font=font, fill=(0, 0, 0, 0),
-                   stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
-        # 2) relleno con degradado amarillo -> dorado (a través de una máscara del texto)
-        top_c, bot_c = (255, 226, 92), (245, 158, 11)   # amarillo cálido -> dorado
-        block_top, block_bot = y0, yy
-        grad = Image.new("RGB", (1, max(1, block_bot - block_top)))
-        gh = grad.height
+            sd.text((x, yy), l, font=font, fill=(0, 0, 0, 200),
+                    stroke_width=stroke, stroke_fill=(0, 0, 0, 200))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(max(2, int(size * 0.07))))
+        off = max(3, int(size * 0.05))
+        layer.alpha_composite(shadow, (off, off))
+
+        # 2) contorno negro grueso
+        ld = ImageDraw.Draw(layer)
+        for x, yy, l in placed:
+            ld.text((x, yy), l, font=font, fill=(0, 0, 0, 0),
+                    stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+
+        # 3) relleno degradado amarillo -> dorado a través de la máscara del texto
+        top_c, bot_c = (255, 226, 92), (245, 158, 11)
+        gh = max(1, block_h)
+        gcol = Image.new("RGB", (1, gh))
         for i in range(gh):
             t = i / max(1, gh - 1)
-            grad.putpixel((0, i), tuple(int(top_c[k] * (1 - t) + bot_c[k] * t) for k in range(3)))
-        grad_full = Image.new("RGB", (W, H), bot_c)
-        grad_full.paste(grad.resize((W, gh)), (0, block_top))
-        mask = Image.new("L", (W, H), 0)
+            gcol.putpixel((0, i), tuple(int(top_c[k] * (1 - t) + bot_c[k] * t) for k in range(3)))
+        grad_full = gcol.resize((block_w, gh)).convert("RGBA")
+        mask = Image.new("L", (block_w, block_h), 0)
         md = ImageDraw.Draw(mask)
         for x, yy, l in placed:
             md.text((x, yy), l, font=font, fill=255)
-        img.paste(grad_full.convert("RGBA"), (0, 0), mask)
+        layer.paste(grad_full, (0, 0), mask)
+
+        # 4) inclina el bloque en diagonal (sube hacia el centro) y compón.
+        #    text_angle (grados) lo configura el usuario; None -> 7 por defecto. Se
+        #    interpreta como MAGNITUD y el signo se elige para que el texto suba
+        #    siempre hacia el centro (0 = recto).
+        mag = 7 if text_angle is None else max(0, min(30, abs(int(text_angle))))
+        angle = mag if text_on_left else -mag
+        rot = layer.rotate(angle, expand=True, resample=Image.BICUBIC)
+        cx = col_x0 + col_w // 2
+        cy = H // 2
+        img.alpha_composite(rot, (cx - rot.width // 2, cy - rot.height // 2))
         img.convert("RGB").save(image_path)
 
     def _apply_thumbnail_text_overlay(self, image_path: Path, text: str, channel_name: Optional[str] = None, position: str = "top"):
