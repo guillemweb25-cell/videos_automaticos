@@ -245,10 +245,16 @@ class SEOEngine:
                 "because that area is reserved for a large text overlay. "
                 "The left half should contain only environment, atmosphere or supporting elements (props, scenery, "
                 "background actors at small scale) — never the main subject's face. "
+                "GAZE: the main subject must be FACING THE CAMERA / looking toward the viewer (or slightly toward the "
+                "empty text side) — NEVER looking away off-frame. "
+                "TOPICAL BACKGROUND (mandatory): the environment filling the empty side must VIVIDLY and dramatically "
+                "depict the video's specific topic and setting — e.g. a collapsed, devastated city with rubble and dust "
+                "for an earthquake, not a plain room. Make the background unmistakably about the subject of the video. "
                 "Use rule-of-thirds framing with the subject anchored on the right vertical third. "
                 "Explicitly include phrases like 'subject framed on the right side of the composition', "
+                "'subject facing the camera looking at the viewer', "
                 "'upper third of the frame intentionally empty', 'character's head positioned in the lower-right', "
-                "'left side filled with atmospheric environment only' so the image generator follows it."
+                "'left side filled with dramatic topical environment' so the image generator follows it."
             )
 
         system_msg = (

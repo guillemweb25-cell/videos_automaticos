@@ -821,11 +821,14 @@ class ImageEngine:
             else:
                 visual_prompt = visual_prompt.replace("child", "(child:1.5)")
 
-        # Pista textual del lado (la posición REAL la fuerza el ControlNet de abajo).
+        # Pista textual del lado + mirada (la posición REAL la fuerza el ControlNet).
         _cs = "left" if char_side == "left" else "right"
         _ts = "right" if _cs == "left" else "left"
         if "side of the frame" not in visual_prompt.lower():
-            visual_prompt = f"Subject on the {_cs} side of the frame, empty space on the {_ts} for text overlay. {visual_prompt}"
+            visual_prompt = (f"Subject on the {_cs} side of the frame, (facing the camera:1.2), "
+                             f"(looking toward the viewer and the {_ts} side:1.1), NOT looking away off-frame; "
+                             f"empty space on the {_ts} filled with topical dramatic background for text overlay. "
+                             f"{visual_prompt}")
 
         # Generate base image
         if self.comfy_url:
