@@ -998,15 +998,36 @@ class ImageEngine:
         # Dibuja las líneas centradas verticalmente, ancladas al lado del texto.
         asc = font.getbbox("Ay")[3]
         line_h = asc + int(size * 0.30)
-        y = (H - line_h * len(lines)) // 2
+        y0 = (H - line_h * len(lines)) // 2
         d = ImageDraw.Draw(img)
-        stroke = max(3, int(size * 0.10))
+        stroke = max(3, int(size * 0.11))
+        # posiciones de cada línea (ancladas al lado del texto)
+        placed = []
+        yy = y0
         for l in lines:
             lw = d.textlength(l, font=font)
             x = col_x0 if text_on_left else (col_x0 + col_w - lw)
-            d.text((x, y), l, font=font, fill=(255, 255, 255, 255),
+            placed.append((x, yy, l))
+            yy += line_h
+        # 1) contorno negro grueso de todas las líneas
+        for x, yy, l in placed:
+            d.text((x, yy), l, font=font, fill=(0, 0, 0, 0),
                    stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
-            y += line_h
+        # 2) relleno con degradado amarillo -> dorado (a través de una máscara del texto)
+        top_c, bot_c = (255, 226, 92), (245, 158, 11)   # amarillo cálido -> dorado
+        block_top, block_bot = y0, yy
+        grad = Image.new("RGB", (1, max(1, block_bot - block_top)))
+        gh = grad.height
+        for i in range(gh):
+            t = i / max(1, gh - 1)
+            grad.putpixel((0, i), tuple(int(top_c[k] * (1 - t) + bot_c[k] * t) for k in range(3)))
+        grad_full = Image.new("RGB", (W, H), bot_c)
+        grad_full.paste(grad.resize((W, gh)), (0, block_top))
+        mask = Image.new("L", (W, H), 0)
+        md = ImageDraw.Draw(mask)
+        for x, yy, l in placed:
+            md.text((x, yy), l, font=font, fill=255)
+        img.paste(grad_full.convert("RGBA"), (0, 0), mask)
         img.convert("RGB").save(image_path)
 
     def _apply_thumbnail_text_overlay(self, image_path: Path, text: str, channel_name: Optional[str] = None, position: str = "top"):
