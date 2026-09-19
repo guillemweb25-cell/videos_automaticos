@@ -259,7 +259,7 @@ class ComfyService:
         workflow[poseimg] = {"inputs": {"image": pose_image, "upload": "image"},
                              "class_type": "LoadImage", "_meta": {"title": "CN Pose Skeleton"}}
         workflow[cnapply] = {"inputs": {
-            "strength": float(strength), "start_percent": 0.0, "end_percent": 0.9,
+            "strength": float(strength), "start_percent": 0.0, "end_percent": 1.0,
             "positive": [pos_id, 0], "negative": [neg_id, 0],
             "control_net": [cnload, 0], "image": [poseimg, 0]},
             "class_type": "ControlNetApplyAdvanced", "_meta": {"title": "CN Pose Apply"}}

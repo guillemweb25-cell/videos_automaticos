@@ -750,7 +750,9 @@ class ImageEngine:
             nw, nh = max(1, int(base.width * scale)), max(1, int(base.height * scale))
             base_r = base.resize((nw, nh), Image.LANCZOS)
             canvas = Image.new("RGB", (w, h), (0, 0, 0))
-            cx = int((0.70 if side == "right" else 0.30) * w)
+            # Empuja la figura claramente hacia el borde (no solo a un lado del centro),
+            # para que el modelo NO la interprete como composición centrada.
+            cx = int((0.74 if side == "right" else 0.26) * w)
             x = cx - nw // 2
             x = max(0, min(x, w - nw))
             canvas.paste(base_r, (x, h - nh))   # alineado abajo
@@ -805,30 +807,57 @@ class ImageEngine:
         if style == "lallamavioleta":
             visual_prompt = scrub_violet_flame_ambiguity(visual_prompt)
 
+        # Suppress SDXL's tendency to bake garbled letters/watermarks into thumbnails
+        # (the real title text is composited later by PIL, so the render must stay clean).
+        _text_neg = "text, letters, words, caption, subtitles, watermark, signature, logo, gibberish text, typography"
+        negative_prompt = f"{negative_prompt}, {_text_neg}" if negative_prompt else _text_neg
+
         # Add age boosters if child/young age mentioned in the prompt — UNLESS the channel
         # explicitly forbids children (e.g. Grabovoi, Despertar, Koreano, LlamaVioleta).
         # When forbidden, strip child mentions from the positive (don't reinforce them)
         # so SDXL doesn't render a child even if the LLM accidentally wrote "young".
         vp_lower = visual_prompt.lower()
-        children_forbidden = style in ("grabovoi", "despertar", "koreano", "lallamavioleta")
+        # Channels that must NEVER show a minor: either because they forbid people-as-kids
+        # entirely (grabovoi et al.) or because the subject must always be a grown ADULT
+        # even when the story mentions a young protagonist (jesus → e.g. "young Tobías").
+        children_forbidden = style in ("grabovoi", "despertar", "koreano", "lallamavioleta", "jesus")
         if any(x in vp_lower for x in ["child", "girl", "boy", "ten", "aged 10", "young"]):
             if children_forbidden:
-                # Scrub child-related tokens; don't reinforce them.
-                for tok in ["child", "small child", "youthful features", "young face", "young person", "boy", "girl", "teen", "teenager", "kid", "kids"]:
+                # Scrub child/youth-related tokens; don't reinforce them, replace with adult.
+                for tok in ["small child", "young child", "child", "youthful features",
+                            "young face", "young person", "young man", "young woman",
+                            "young boy", "young girl", "youngster", "youth", "youthful",
+                            "adolescent", "teenager", "teenage", "teen", "boy", "girl",
+                            "kids", "kid", "young"]:
                     visual_prompt = re.sub(rf"\b{re.escape(tok)}\b", "adult", visual_prompt, flags=re.IGNORECASE)
+                # Positively enforce a grown adult so SDXL doesn't drift back to a child.
+                visual_prompt += ", (adult:1.4), (grown adult, mature adult face, 30-45 years old:1.3)"
+                # And push the negatives away from any minor.
+                _child_neg = "child, children, kid, boy, girl, baby, infant, toddler, teenager, teen, adolescent, youthful face, young face"
+                negative_prompt = f"{negative_prompt}, {_child_neg}" if negative_prompt else _child_neg
             elif "child" not in visual_prompt.lower():
                 visual_prompt += ", (child:1.4), (small child:1.2), youthful features"
             else:
                 visual_prompt = visual_prompt.replace("child", "(child:1.5)")
 
-        # Pista textual del lado + mirada (la posición REAL la fuerza el ControlNet).
+        # Pista textual del lado + mirada. El ControlNet ayuda, pero la posición la
+        # decide sobre todo ESTA pista de texto (con el openpose xinsir a strength 0.8
+        # el modelo no siempre sigue el esqueleto). Por eso se antepone SIEMPRE y con
+        # peso alto, mandando sobre lo que el LLM haya escrito (que a veces centra al
+        # personaje o dice "on one side" de forma ambigua). Además se neutraliza
+        # cualquier mención contradictoria de "centro" en el prompt del LLM.
         _cs = "left" if char_side == "left" else "right"
         _ts = "right" if _cs == "left" else "left"
-        if "side of the frame" not in visual_prompt.lower():
-            visual_prompt = (f"Subject on the {_cs} side of the frame, (facing the camera:1.2), "
-                             f"(looking toward the viewer and the {_ts} side:1.1), NOT looking away off-frame; "
-                             f"empty space on the {_ts} filled with topical dramatic background for text overlay. "
-                             f"{visual_prompt}")
+        # Quita indicaciones de "centrado" que compiten con la colocación a un lado.
+        visual_prompt = re.sub(r"\b(centered|in the center|at the center|center of the frame|centre)\b",
+                               f"on the {_cs} side", visual_prompt, flags=re.IGNORECASE)
+        visual_prompt = (f"(Subject on the {_cs} side of the frame:1.4), "
+                         f"(upper body and full face clearly visible, head-and-shoulders framing:1.3), "
+                         f"(facing the camera:1.2), "
+                         f"(looking toward the viewer and the {_ts} side:1.1), NOT looking away off-frame, "
+                         f"NOT centered, not a disembodied hand, not only a hand; "
+                         f"empty space on the {_ts} filled with topical dramatic background "
+                         f"for text overlay. {visual_prompt}")
 
         # Generate base image
         if self.comfy_url:
@@ -879,7 +908,7 @@ class ImageEngine:
                 negative_prompt=negative_prompt,
                 workflow_name=workflow,
                 pose_image=pose_img,
-                pose_strength=0.8,
+                pose_strength=0.9,
             )
         else:
             target_model = model_id or "gpt-image-1.5"

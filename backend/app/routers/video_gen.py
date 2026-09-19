@@ -2304,14 +2304,17 @@ async def generate_thumbnail_api(
                 custom_title_rules = StyleService.get_custom_title_rules(base_dir)
                 current_hook = seo.generate_thumbnail_hook(script_full[:2000], custom_rules=custom_title_rules, channel_name=video.channel.name)
                 data["thumbnail"]["hook"] = current_hook
-                if not current_visual:
-                    custom_thumb_rules = StyleService.get_custom_thumbnail_rules(base_dir)
-                    current_visual = seo.generate_thumbnail_visual_prompt(
-                        script_full[:2000], data.get("style", "stocksenior"), 
-                        thumbnail_hook=current_hook,
-                        custom_rules=custom_thumb_rules
-                    )
-                    data["thumbnail"]["visual_prompt"] = current_visual
+            # Visual prompt must be generated independently of the hook: a video can
+            # have a hook but no stored visual prompt (older videos), and without this
+            # current_visual stays None and generate_thumbnail crashes on .lower().
+            if not current_visual:
+                custom_thumb_rules = StyleService.get_custom_thumbnail_rules(base_dir)
+                current_visual = seo.generate_thumbnail_visual_prompt(
+                    script_full[:2000], data.get("style", "stocksenior"),
+                    thumbnail_hook=current_hook,
+                    custom_rules=custom_thumb_rules
+                )
+                data["thumbnail"]["visual_prompt"] = current_visual
 
     # Unify flow: Get negative prompt from channel style
     channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
