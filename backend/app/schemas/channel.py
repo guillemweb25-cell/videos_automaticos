@@ -11,6 +11,9 @@ class ChannelBase(BaseModel):
     default_style: str | None = None
     default_workflow: str | None = None
     loras: list[int] | None = None
+    affiliate_url: str | None = None
+    affiliate_label: str | None = None
+    description_header: str | None = None
 
 
 class ChannelCreate(ChannelBase):
@@ -26,6 +29,9 @@ class ChannelUpdate(BaseModel):
     default_style: str | None = None
     default_workflow: str | None = None
     loras: list[int] | None = None
+    affiliate_url: str | None = None
+    affiliate_label: str | None = None
+    description_header: str | None = None
 
 
 class ChannelResponse(ChannelBase):

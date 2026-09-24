@@ -17,6 +17,9 @@ class Channel(Base):
     default_style = Column(String(100), nullable=True)  # Alias del estilo por defecto (epic, onirico, ...)
     default_workflow = Column(String(255), nullable=True)  # Workflow ComfyUI .json por defecto
     loras = Column(JSON, nullable=True)  # Lista ordenada de ids de LoRA a inyectar (registro `loras`)
+    affiliate_url = Column(String(500), nullable=True)   # Link que codifica el QR de afiliado (libro del canal, etc.)
+    affiliate_label = Column(String(255), nullable=True)  # Texto sobre el QR (p.ej. "Compra el libro 📖\nbit.ly/pilar-libro")
+    description_header = Column(Text, nullable=True)      # Bloque fijo que se antepone a la descripción de los vídeos nuevos
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False)

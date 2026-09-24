@@ -2423,12 +2423,14 @@ async def generate_seo(video_id: int, db: Session = Depends(get_db)):
     combined_desc_rules = f"{desc_rules or ''}\n{lang_rules or ''}".strip()
     
     description = engine.generate_description(script[:3000], custom_rules=combined_desc_rules)
+    # Antepone el bloque fijo del canal (CTA/afiliado) si está configurado.
+    description = _with_channel_header(video.channel, description)
     hashtags_list = engine.generate_hashtags(script[:2000], custom_rules=tag_rules)
     hashtags = " ".join(hashtags_list)
-    
+
     # Also generate the question tags
     question_tags = engine.generate_video_questions_tags(script[:2000], custom_rules=tag_rules)
-    
+
     video.description = description
     db.commit()
     
@@ -2441,7 +2443,7 @@ async def generate_seo(video_id: int, db: Session = Depends(get_db)):
     return {"ok": True, "description": description, "hashtags": hashtags, "tags": question_tags}
 
 @router.post("/{video_id}/render")
-async def render_video(video_id: int, subtitles: bool = False, overlay: str | None = None, db: Session = Depends(get_db)):
+async def render_video(video_id: int, subtitles: bool = False, overlay: str | None = None, qr: bool = False, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -2461,7 +2463,7 @@ async def render_video(video_id: int, subtitles: bool = False, overlay: str | No
     video.last_error = None
     db.commit()
 
-    def _do_render_sync(vid_id: int, subs: bool, ovl: str | None):
+    def _do_render_sync(vid_id: int, subs: bool, ovl: str | None, show_qr: bool):
         """Runs in a thread executor so the event loop stays free for other requests."""
         from app.database import SessionLocal
         db_bg = SessionLocal()
@@ -2469,7 +2471,7 @@ async def render_video(video_id: int, subtitles: bool = False, overlay: str | No
             vid = db_bg.query(Video).filter(Video.id == vid_id).first()
             if not vid:
                 return
-            _render_video_blocking(vid, db_bg, subs, ovl)
+            _render_video_blocking(vid, db_bg, subs, ovl, show_qr)
         except Exception as e:
             print(f"[BG render] FAILED for video {vid_id}: {e}", flush=True)
             import traceback
@@ -2485,7 +2487,7 @@ async def render_video(video_id: int, subtitles: bool = False, overlay: str | No
     # Run the CPU-bound render in a thread so the asyncio event loop stays
     # responsive for other requests (status polls, UI navigation, etc).
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _do_render_sync, video_id, subtitles, overlay)
+    loop.run_in_executor(None, _do_render_sync, video_id, subtitles, overlay, qr)
 
     return {"ok": True, "background": True, "status": "rendering"}
 
@@ -2510,6 +2512,18 @@ def get_render_progress(video_id: int, db: Session = Depends(get_db)):
         "status": video.status,
         "last_error": video.last_error,
     }
+
+
+def _with_channel_header(channel, description: str) -> str:
+    """Antepone el `description_header` del canal (si existe) a la descripción.
+    Idempotente: no duplica si la descripción ya empieza por ese bloque."""
+    header = ((getattr(channel, "description_header", None) or "") if channel else "").strip()
+    desc = (description or "").strip()
+    if not header:
+        return desc
+    if desc.startswith(header):
+        return desc
+    return f"{header}\n\n{desc}" if desc else header
 
 
 def _ensure_seo_metadata(video, db):
@@ -2550,7 +2564,8 @@ def _ensure_seo_metadata(video, db):
                 print(f"[seo] título falló: {e}", flush=True)
         if not (video.youtube_description or "").strip():
             try:
-                video.youtube_description = seo.generate_description(script[:4000])
+                desc = seo.generate_description(script[:4000])
+                video.youtube_description = _with_channel_header(video.channel, desc)
                 data["description"] = video.youtube_description
                 changed = True
             except Exception as e:
@@ -2571,7 +2586,7 @@ def _ensure_seo_metadata(video, db):
         print(f"[seo] auto-SEO omitido para vídeo {getattr(video, 'id', None)}: {e}", flush=True)
 
 
-def _render_video_blocking(video, db, subtitles: bool, overlay: str | None):
+def _render_video_blocking(video, db, subtitles: bool, overlay: str | None, show_qr: bool = False):
     """Original synchronous render logic, callable from background tasks."""
     try:
         base_dir = Path(video.base_dir)
@@ -2697,7 +2712,27 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None):
             bg_music_volume=0.06,
             voice_volume=1.6
         )
-        
+
+        # ── QR de afiliado (arriba-derecha, 30s sí / 30s no) ──
+        # Se aplica ANTES de los subtítulos para que el quemado de subs lo conserve.
+        if show_qr:
+            try:
+                channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
+                aff_url = (channel.affiliate_url or "").strip() if channel else ""
+                if not aff_url:
+                    print("[render] QR pedido pero el canal no tiene affiliate_url; se omite.", flush=True)
+                else:
+                    RenderingEngine.apply_qr_overlay(
+                        video_path=out_path,
+                        out_size=out_size,
+                        affiliate_url=aff_url,
+                        affiliate_label=(channel.affiliate_label or None),
+                        on_secs=30, period_secs=60,
+                    )
+            except Exception as e:
+                print(f"[render] WARNING: overlay de QR falló: {e}", flush=True)
+                # No romper el render por el QR.
+
         # ── Karaoke Subtitles ──
         if subtitles:
             try:

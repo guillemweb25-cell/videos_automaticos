@@ -32,6 +32,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
   const [maxImagesPerParagraph, setMaxImagesPerParagraph] = useState(0);
   const [shouldAutoRender, setShouldAutoRender] = useState(false);
   const [enableSubtitles, setEnableSubtitles] = useState(false);
+  const [enableQr, setEnableQr] = useState(false);
   const [leonardoModels, setLeonardoModels] = useState<{ id: string, name: string }[]>([]);
   const [selectedModel, setSelectedModel] = useState('gpt-image-1.5'); // Default to GPT Image-1.5
   const [generationModes, setGenerationModes] = useState<{ id: string, name: string, cost: number }[]>([]);
@@ -434,7 +435,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
         setStatus('rendering');
         addLog('Iniciando renderizado del vídeo final en segundo plano...');
         const overlayArg = selectedOverlay === '' ? undefined : selectedOverlay;
-        await api.renderVideo(currentId, enableSubtitles, overlayArg);
+        await api.renderVideo(currentId, enableSubtitles, overlayArg, enableQr);
         addLog('Render lanzado. Quedará disponible en "Mis Generaciones" cuando termine.');
         setStatus('completed');
       } else {
@@ -635,6 +636,16 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
               disabled={isBusy}
             />
             <label htmlFor="enableSubtitles" style={{ margin: 0, cursor: 'pointer' }}>Subtítulos Karaoke</label>
+          </div>
+          <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '28px' }}>
+            <input
+              type="checkbox"
+              id="enableQr"
+              checked={enableQr}
+              onChange={(e) => setEnableQr(e.target.checked)}
+              disabled={isBusy}
+            />
+            <label htmlFor="enableQr" style={{ margin: 0, cursor: 'pointer' }} title="Muestra el QR de afiliado del canal arriba-derecha, 30s de cada minuto">QR de afiliado</label>
           </div>
           <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '10px' }}>
             <label>Efecto Overlay</label>

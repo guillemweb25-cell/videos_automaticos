@@ -35,6 +35,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [generationMode, setGenerationMode] = useState('QUALITY');
   const [uploading, setUploading] = useState(false);
   const [enableSubtitles, setEnableSubtitles] = useState(false);
+  const [enableQr, setEnableQr] = useState(false);
   const [availableOverlays, setAvailableOverlays] = useState<string[]>([]);
   const [selectedOverlay, setSelectedOverlay] = useState<string>('');
   const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
@@ -368,7 +369,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
     try {
       setRendering(true);
       const overlayArg = selectedOverlay === '' ? undefined : selectedOverlay;
-      await api.renderVideo(videoId, enableSubtitles, overlayArg);
+      await api.renderVideo(videoId, enableSubtitles, overlayArg, enableQr);
       alert('Render lanzado en segundo plano. Aparecerá listo en la lista de vídeos del canal cuando termine.');
       onClose();
     } catch (err) {
@@ -713,7 +714,16 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
               />
               Subtítulos Karaoke
             </label>
-            <button 
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'white', cursor: 'pointer', fontSize: '13px' }} title="Muestra el QR de afiliado del canal arriba-derecha, 30s de cada minuto">
+              <input
+                type="checkbox"
+                checked={enableQr}
+                onChange={(e) => setEnableQr(e.target.checked)}
+                disabled={rendering}
+              />
+              QR de afiliado
+            </label>
+            <button
               onClick={onClose}
               style={{
                 backgroundColor: '#374151',

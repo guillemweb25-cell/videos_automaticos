@@ -19,6 +19,164 @@ import subprocess
 
 class RenderingEngine:
     @staticmethod
+    def apply_qr_overlay(
+        video_path: Path,
+        out_size: Tuple[int, int],
+        affiliate_url: str,
+        affiliate_label: Optional[str] = None,
+        on_secs: int = 30,
+        period_secs: int = 60,
+    ) -> Path:
+        """Compone un panel con un código QR (+ etiqueta) y lo superpone en la
+        esquina SUPERIOR DERECHA del vídeo, visible los primeros `on_secs`
+        segundos de cada `period_secs` (por defecto 30s sí / 30s no). El QR va
+        arriba para no tapar los subtítulos (que van abajo). Modifica el vídeo
+        in situ (deja el resultado en `video_path`).
+        """
+        if not affiliate_url or not video_path.exists():
+            return video_path
+        try:
+            import qrcode
+        except Exception as e:
+            print(f"[qr] librería 'qrcode' no disponible ({e}); se omite el QR", flush=True)
+            return video_path
+
+        from PIL import ImageDraw, ImageFont
+        W, H = out_size
+
+        # 1) QR (negro sobre blanco, con quiet-zone). Tamaño ~18% del ancho.
+        qr = qrcode.QRCode(border=2, box_size=10,
+                           error_correction=qrcode.constants.ERROR_CORRECT_M)
+        qr.add_data(affiliate_url)
+        qr.make(fit=True)
+        qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        qr_side = max(140, int(W * 0.18))
+        qr_img = qr_img.resize((qr_side, qr_side), Image.NEAREST)
+
+        # 2) Etiqueta (texto sobre el QR). Se quitan emojis/símbolos que la fuente
+        #    no sabe dibujar (saldrían como cuadros). Poppins tiene minúsculas+dígitos.
+        # Permite que el usuario escriba "\n" literal en el campo de texto para
+        # forzar un salto de línea en la etiqueta.
+        raw_label = (affiliate_label or "").replace("\\n", "\n").strip()
+        label = "".join(ch for ch in raw_label if ord(ch) < 0x2500 or ch == "\n")
+        fonts_dir = Path(__file__).parent.parent / "fonts"
+        _font_file = None
+        for fp in (fonts_dir / "Poppins-Bold.ttf",
+                   Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")):
+            if fp.exists():
+                try:
+                    ImageFont.truetype(str(fp), 20); _font_file = str(fp); break
+                except Exception:
+                    continue
+
+        def _load_font(sz):
+            if _font_file:
+                try:
+                    return ImageFont.truetype(_font_file, sz)
+                except Exception:
+                    pass
+            return ImageFont.load_default()
+
+        pad = int(qr_side * 0.10)
+        _md = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+        # La etiqueta puede ser más ancha que el QR (hasta un tope) para no cortar
+        # URLs. Palabras más largas que el ancho se parten por caracteres.
+        text_w_cap = max(qr_side, int(W * 0.30))
+
+        def _wrap(font, maxw):
+            out: list[str] = []
+            for para in label.split("\n"):
+                cur = ""
+                for word in para.split(" "):
+                    # Parte palabras que por sí solas no caben (p.ej. una URL larga).
+                    while _md.textlength(word, font=font) > maxw and len(word) > 1:
+                        lo, hi = 1, len(word)
+                        while lo < hi:
+                            mid = (lo + hi + 1) // 2
+                            if _md.textlength(word[:mid], font=font) <= maxw:
+                                lo = mid
+                            else:
+                                hi = mid - 1
+                        if cur:
+                            out.append(cur); cur = ""
+                        out.append(word[:lo]); word = word[lo:]
+                    t = (cur + " " + word).strip()
+                    if not cur or _md.textlength(t, font=font) <= maxw:
+                        cur = t
+                    else:
+                        out.append(cur); cur = word
+                if cur:
+                    out.append(cur)
+            return out
+
+        # Elige tamaño de fuente: encoge si salen demasiadas líneas (para no crecer
+        # el panel en vertical). El ancho nunca se corta gracias a _wrap.
+        font_size = max(18, int(qr_side * 0.14))
+        font = _load_font(font_size)
+        lines: list[str] = _wrap(font, text_w_cap) if label else []
+        while label and len(lines) > 3 and font_size > 14:
+            font_size -= 2
+            font = _load_font(font_size)
+            lines = _wrap(font, text_w_cap)
+
+        line_gap = int(font_size * 0.25)
+        asc = font.getbbox("Ay")[3]
+        line_h = asc + line_gap
+        text_block_h = (line_h * len(lines) + pad) if lines else 0
+
+        widest = int(max((_md.textlength(l, font=font) for l in lines), default=0))
+        panel_w = max(qr_side, widest) + pad * 2
+        panel_h = qr_side + pad * 2 + text_block_h
+        # Panel oscuro semitransparente con esquinas redondeadas.
+        panel = Image.new("RGBA", (panel_w, panel_h), (0, 0, 0, 0))
+        pd = ImageDraw.Draw(panel)
+        radius = int(pad * 1.2)
+        pd.rounded_rectangle([0, 0, panel_w - 1, panel_h - 1], radius=radius,
+                             fill=(0, 0, 0, 170))
+        # Etiqueta arriba, centrada.
+        yy = pad // 2
+        for ln in lines:
+            lw = _md.textlength(ln, font=font)
+            pd.text(((panel_w - lw) // 2, yy), ln, font=font, fill=(255, 255, 255, 255),
+                    stroke_width=max(1, font_size // 12), stroke_fill=(0, 0, 0, 255))
+            yy += line_h
+        # QR debajo del texto, centrado, sobre una tarjeta blanca (contraste + escaneable).
+        qr_y = pad + text_block_h
+        card = Image.new("RGBA", (qr_side + pad, qr_side + pad), (255, 255, 255, 255))
+        card.paste(qr_img, (pad // 2, pad // 2))
+        panel.alpha_composite(card, ((panel_w - card.width) // 2, qr_y - pad // 2))
+
+        panel_path = video_path.parent / "qr_overlay.png"
+        panel.save(panel_path)
+
+        # 3) Overlay ffmpeg temporizado, esquina superior derecha con margen.
+        margin = int(W * 0.03)
+        enable = f"lt(mod(t\\,{period_secs})\\,{on_secs})"
+        tmp = video_path.parent / "__qr_tmp__.mp4"
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(video_path),
+            "-i", str(panel_path),
+            "-filter_complex",
+            f"[0:v][1:v]overlay=W-w-{margin}:{margin}:enable='{enable}'[v]",
+            "-map", "[v]", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            str(tmp),
+        ]
+        print(f"[qr] Superponiendo QR ({on_secs}s/{period_secs}s) -> {affiliate_url}", flush=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"[qr] ffmpeg falló, se deja el vídeo sin QR: {result.stderr[-600:]}", flush=True)
+            tmp.unlink(missing_ok=True)
+            return video_path
+        video_path.unlink(missing_ok=True)
+        tmp.rename(video_path)
+        print("[qr] QR aplicado correctamente.", flush=True)
+        return video_path
+
+    @staticmethod
     def _qtime(x: float, fps: int) -> float:
         if fps <= 0: return x
         frame = 1.0 / float(fps)

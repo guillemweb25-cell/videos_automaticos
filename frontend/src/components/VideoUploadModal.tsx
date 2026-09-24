@@ -79,6 +79,15 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
     }
   };
 
+  // Inserta el bloque fijo del canal arriba de la descripción (idempotente).
+  const handleInsertChannelHeader = () => {
+    const header = (metadata?.channel_description_header || '').trim();
+    if (!header) return;
+    const cur = (description || '').trim();
+    if (cur.startsWith(header)) return;
+    setDescription(cur ? `${header}\n\n${cur}` : header);
+  };
+
   const handleRegenerateTags = async () => {
     setRegenerating('tags');
     try {
@@ -390,13 +399,25 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
               <div className="yt-form-group">
                 <div className="yt-input-header">
                   <label className="yt-section-label">Descripción (Puntos Clave)</label>
-                  <button 
-                    className="yt-regen-btn"
-                    onClick={handleRegenerateDescription}
-                    disabled={!!regenerating}
-                  >
-                    {regenerating === 'description' ? 'Generando...' : '✨ IA: Resumir'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {metadata?.channel_description_header && (
+                      <button
+                        className="yt-regen-btn"
+                        onClick={handleInsertChannelHeader}
+                        disabled={!!regenerating}
+                        title="Añade el bloque fijo del canal (CTA/afiliado) arriba de la descripción"
+                      >
+                        ⬆️ Descripción del canal
+                      </button>
+                    )}
+                    <button
+                      className="yt-regen-btn"
+                      onClick={handleRegenerateDescription}
+                      disabled={!!regenerating}
+                    >
+                      {regenerating === 'description' ? 'Generando...' : '✨ IA: Resumir'}
+                    </button>
+                  </div>
                 </div>
                 <textarea 
                   className="yt-textarea"

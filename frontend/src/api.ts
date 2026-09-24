@@ -69,6 +69,9 @@ export interface ChannelResponse {
   default_style?: string | null;
   default_workflow?: string | null;
   loras?: number[] | null;
+  affiliate_url?: string | null;
+  affiliate_label?: string | null;
+  description_header?: string | null;
 }
 
 export interface LtxGenerateRequest {
@@ -957,10 +960,11 @@ class ApiClient {
     return res.json();
   }
 
-  async renderVideo(videoId: number, subtitles: boolean = false, overlay?: string): Promise<{ ok: boolean; background?: boolean; status?: string }> {
+  async renderVideo(videoId: number, subtitles: boolean = false, overlay?: string, qr: boolean = false): Promise<{ ok: boolean; background?: boolean; status?: string }> {
     const url = new URL(`${this.baseUrl}/videos/${videoId}/render`);
     if (subtitles) url.searchParams.append('subtitles', 'true');
     if (overlay) url.searchParams.append('overlay', overlay);
+    if (qr) url.searchParams.append('qr', 'true');
 
     const res = await fetch(url.toString(), {
       method: 'POST',
@@ -1238,6 +1242,7 @@ class ApiClient {
     thumbnail_url: string;
     is_uploaded?: boolean;
     youtube_video_id?: string;
+    channel_description_header?: string;
   }> {
     const res = await fetch(`${this.baseUrl}/youtube/${videoId}/metadata`, {
       headers: this.getHeaders(true),

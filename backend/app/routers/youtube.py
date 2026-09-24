@@ -178,6 +178,8 @@ async def get_video_metadata(
         "thumbnail_url": f"/videos/{video.id}/thumbnail.png",
         "is_uploaded": bool(video.is_uploaded),
         "youtube_video_id": video.youtube_video_id,
+        # Bloque fijo del canal para insertar arriba de la descripción (opcional).
+        "channel_description_header": (video.channel.description_header or "") if video.channel else "",
     }
 
 @router.post("/{video_id}/upload")

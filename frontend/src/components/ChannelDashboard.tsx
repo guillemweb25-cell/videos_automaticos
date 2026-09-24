@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, type ChannelResponse, type YouTubeChannelInfo, type YouTubeVideo, type VideoResponse } from '../api';
+import { api, API_URL, type ChannelResponse, type YouTubeChannelInfo, type YouTubeVideo, type VideoResponse } from '../api';
 import VideoCreator from './VideoCreator';
 import ImageReviewer from './ImageReviewer';
 import VideoUploadModal from './VideoUploadModal';
@@ -51,6 +51,7 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
   const [titlesCopied, setTitlesCopied] = useState(false);
   const [videosLoadedExtended, setVideosLoadedExtended] = useState(false);
   const [generations, setGenerations] = useState<VideoResponse[]>([]);
+  const [previewVideo, setPreviewVideo] = useState<VideoResponse | null>(null);
   // "Analizar Canal" tab — scrapes a public YouTube channel via yt-dlp
   // (no OAuth) to research competitor titles / view counts. Independent
   // from the user's own connected channels.
@@ -102,6 +103,9 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
   const [editNegativePrompt, setEditNegativePrompt] = useState(channel.negative_prompt || '');
   const [editDefaultStyle, setEditDefaultStyle] = useState(channel.default_style || '');
   const [editDefaultWorkflow, setEditDefaultWorkflow] = useState(channel.default_workflow || '');
+  const [editAffiliateUrl, setEditAffiliateUrl] = useState(channel.affiliate_url || '');
+  const [editAffiliateLabel, setEditAffiliateLabel] = useState(channel.affiliate_label || '');
+  const [editDescriptionHeader, setEditDescriptionHeader] = useState(channel.description_header || '');
   const [availableStyles, setAvailableStyles] = useState<{ id: string; name: string }[]>([]);
   const [availableWorkflowsList, setAvailableWorkflowsList] = useState<string[]>([]);
 
@@ -119,6 +123,9 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
     setEditNegativePrompt(channel.negative_prompt || '');
     setEditDefaultStyle(channel.default_style || '');
     setEditDefaultWorkflow(channel.default_workflow || '');
+    setEditAffiliateUrl(channel.affiliate_url || '');
+    setEditAffiliateLabel(channel.affiliate_label || '');
+    setEditDescriptionHeader(channel.description_header || '');
     loadDownloads();
     loadGenerations();
     loadMusicFiles();
@@ -351,6 +358,9 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
         negative_prompt: editNegativePrompt,
         default_style: editDefaultStyle || null,
         default_workflow: editDefaultWorkflow || null,
+        affiliate_url: editAffiliateUrl || null,
+        affiliate_label: editAffiliateLabel || null,
+        description_header: editDescriptionHeader || null,
       });
 
       const updated = await Promise.race([updatePromise, timeoutPromise]) as ChannelResponse;
@@ -575,6 +585,61 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
                     Si se establecen, se usan automáticamente en cada vídeo nuevo de este canal. Puedes
                     sobrescribirlos por vídeo desde el formulario de creación o el revisor de imágenes.
                   </p>
+
+                  <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                    <label style={{ display: 'block', fontSize: '0.9rem', color: '#fbbf24', marginBottom: '8px', fontWeight: 600 }}>
+                      🔗 QR de afiliado (libro / producto del canal)
+                    </label>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                      <div style={{ flex: '2 1 260px' }}>
+                        <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '4px' }}>
+                          Enlace (lo codifica el QR)
+                        </label>
+                        <input
+                          type="text"
+                          value={editAffiliateUrl}
+                          onChange={(e) => setEditAffiliateUrl(e.target.value)}
+                          placeholder="https://amzn.to/xxxx  o  https://bit.ly/pilar-libro"
+                          style={{ width: '100%', background: '#111827', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', color: 'white' }}
+                        />
+                      </div>
+                      <div style={{ flex: '1 1 200px' }}>
+                        <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '4px' }}>
+                          Etiqueta (texto sobre el QR)
+                        </label>
+                        <input
+                          type="text"
+                          value={editAffiliateLabel}
+                          onChange={(e) => setEditAffiliateLabel(e.target.value)}
+                          placeholder="Compra el libro\nbit.ly/pilar-libro"
+                          style={{ width: '100%', background: '#111827', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', color: 'white' }}
+                        />
+                      </div>
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '8px 0 0' }}>
+                      Al renderizar, marca <b>"QR de afiliado"</b> y aparecerá arriba-derecha durante los
+                      primeros 30s de cada minuto (sin tapar los subtítulos). Usa <code>\n</code> en la
+                      etiqueta para un salto de línea. Consejo: incluye una URL corta legible para quien vea en móvil.
+                    </p>
+
+                    <div style={{ marginTop: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '4px' }}>
+                        Descripción fija del canal (se pone ARRIBA de la descripción)
+                      </label>
+                      <textarea
+                        value={editDescriptionHeader}
+                        onChange={(e) => setEditDescriptionHeader(e.target.value)}
+                        rows={4}
+                        placeholder={"📖 Compra el libro: https://link.amazon/xxxx\n🙏 Suscríbete para más historias\n─────────────"}
+                        style={{ width: '100%', background: '#111827', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', color: 'white', resize: 'vertical', fontFamily: 'inherit' }}
+                      />
+                      <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '6px 0 0' }}>
+                        Si lo rellenas, se añade automáticamente al principio de la descripción de los
+                        <b> vídeos nuevos</b> (independiente del QR). En "Gestionar YouTube" tienes un botón
+                        para insertarlo arriba de la descripción de un vídeo concreto.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -890,6 +955,7 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
                                     Subir a YouTube
                                   </button>
                                 )}
+                                <button className="btn-link" style={{ color: '#38bdf8' }} onClick={() => setPreviewVideo(g)}>▶ Previsualizar</button>
                                 <button className="btn-link">Ver Carpeta</button>
                               </>
                             ) : (
@@ -1108,10 +1174,53 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
         />
       )}
       {uploadingVideoId && (
-        <VideoUploadModal 
-          videoId={uploadingVideoId} 
-          onClose={() => setUploadingVideoId(null)} 
+        <VideoUploadModal
+          videoId={uploadingVideoId}
+          onClose={() => setUploadingVideoId(null)}
         />
+      )}
+      {previewVideo && (
+        <div
+          onClick={() => setPreviewVideo(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
+          }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '92vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+              <span style={{ color: 'white', fontWeight: 600, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {previewVideo.title || `Vídeo ${previewVideo.id}`}
+              </span>
+              <button className="btn-link" style={{ color: '#e5e7eb', fontSize: '1.4rem', lineHeight: 1 }} onClick={() => setPreviewVideo(null)}>✕</button>
+            </div>
+            <video
+              src={encodeURI(`${API_URL}/${previewVideo.base_dir}/output/final_video.mp4`)}
+              controls
+              autoPlay
+              style={{ maxWidth: '92vw', maxHeight: '82vh', borderRadius: '10px', background: '#000' }}
+            />
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <a
+                className="btn-link"
+                style={{ color: '#38bdf8' }}
+                href={encodeURI(`${API_URL}/${previewVideo.base_dir}/output/final_video.mp4`)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Abrir en pestaña nueva
+              </a>
+              <a
+                className="btn-link"
+                style={{ color: '#4ade80' }}
+                href={encodeURI(`${API_URL}/${previewVideo.base_dir}/output/final_video.mp4`)}
+                download
+              >
+                Descargar
+              </a>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
