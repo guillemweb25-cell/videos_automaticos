@@ -2726,7 +2726,7 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None, show
                         video_path=out_path,
                         out_size=out_size,
                         affiliate_url=aff_url,
-                        affiliate_label=(channel.affiliate_label or None),
+                        affiliate_label=None,  # etiqueta fija "Compra el libro"; el link va en la descripción
                         on_secs=30, period_secs=60,
                     )
             except Exception as e:

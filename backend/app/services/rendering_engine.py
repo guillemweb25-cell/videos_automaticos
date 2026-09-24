@@ -57,7 +57,10 @@ class RenderingEngine:
         #    no sabe dibujar (saldrían como cuadros). Poppins tiene minúsculas+dígitos.
         # Permite que el usuario escriba "\n" literal en el campo de texto para
         # forzar un salto de línea en la etiqueta.
-        raw_label = (affiliate_label or "").replace("\\n", "\n").strip()
+        # La etiqueta del QR es fija ("Compra el libro"); el enlace clicable va en la
+        # descripción del vídeo, no aquí. (Si algún día se quiere por canal, basta con
+        # pasar affiliate_label.)
+        raw_label = (affiliate_label or "").replace("\\n", "\n").strip() or "Compra el libro"
         label = "".join(ch for ch in raw_label if ord(ch) < 0x2500 or ch == "\n")
         fonts_dir = Path(__file__).parent.parent / "fonts"
         _font_file = None

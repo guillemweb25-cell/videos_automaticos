@@ -104,7 +104,6 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
   const [editDefaultStyle, setEditDefaultStyle] = useState(channel.default_style || '');
   const [editDefaultWorkflow, setEditDefaultWorkflow] = useState(channel.default_workflow || '');
   const [editAffiliateUrl, setEditAffiliateUrl] = useState(channel.affiliate_url || '');
-  const [editAffiliateLabel, setEditAffiliateLabel] = useState(channel.affiliate_label || '');
   const [editDescriptionHeader, setEditDescriptionHeader] = useState(channel.description_header || '');
   const [availableStyles, setAvailableStyles] = useState<{ id: string; name: string }[]>([]);
   const [availableWorkflowsList, setAvailableWorkflowsList] = useState<string[]>([]);
@@ -124,7 +123,6 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
     setEditDefaultStyle(channel.default_style || '');
     setEditDefaultWorkflow(channel.default_workflow || '');
     setEditAffiliateUrl(channel.affiliate_url || '');
-    setEditAffiliateLabel(channel.affiliate_label || '');
     setEditDescriptionHeader(channel.description_header || '');
     loadDownloads();
     loadGenerations();
@@ -359,7 +357,7 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
         default_style: editDefaultStyle || null,
         default_workflow: editDefaultWorkflow || null,
         affiliate_url: editAffiliateUrl || null,
-        affiliate_label: editAffiliateLabel || null,
+        affiliate_label: null,  // etiqueta fija "Compra el libro"; se limpia cualquier valor antiguo
         description_header: editDescriptionHeader || null,
       });
 
@@ -590,36 +588,22 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
                     <label style={{ display: 'block', fontSize: '0.9rem', color: '#fbbf24', marginBottom: '8px', fontWeight: 600 }}>
                       🔗 QR de afiliado (libro / producto del canal)
                     </label>
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                      <div style={{ flex: '2 1 260px' }}>
-                        <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '4px' }}>
-                          Enlace (lo codifica el QR)
-                        </label>
-                        <input
-                          type="text"
-                          value={editAffiliateUrl}
-                          onChange={(e) => setEditAffiliateUrl(e.target.value)}
-                          placeholder="https://amzn.to/xxxx  o  https://bit.ly/pilar-libro"
-                          style={{ width: '100%', background: '#111827', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', color: 'white' }}
-                        />
-                      </div>
-                      <div style={{ flex: '1 1 200px' }}>
-                        <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '4px' }}>
-                          Etiqueta (texto sobre el QR)
-                        </label>
-                        <input
-                          type="text"
-                          value={editAffiliateLabel}
-                          onChange={(e) => setEditAffiliateLabel(e.target.value)}
-                          placeholder="Compra el libro\nbit.ly/pilar-libro"
-                          style={{ width: '100%', background: '#111827', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', color: 'white' }}
-                        />
-                      </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '4px' }}>
+                        Enlace (lo codifica el QR)
+                      </label>
+                      <input
+                        type="text"
+                        value={editAffiliateUrl}
+                        onChange={(e) => setEditAffiliateUrl(e.target.value)}
+                        placeholder="https://amzn.to/xxxx  o  https://link.amazon/B0gjoxZQX"
+                        style={{ width: '100%', background: '#111827', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', color: 'white' }}
+                      />
                     </div>
                     <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '8px 0 0' }}>
                       Al renderizar, marca <b>"QR de afiliado"</b> y aparecerá arriba-derecha durante los
-                      primeros 30s de cada minuto (sin tapar los subtítulos). Usa <code>\n</code> en la
-                      etiqueta para un salto de línea. Consejo: incluye una URL corta legible para quien vea en móvil.
+                      primeros 30s de cada minuto (sin tapar los subtítulos). El QR muestra siempre
+                      <b> "Compra el libro"</b> encima; el <b>enlace clicable</b> ponlo en la descripción fija de abajo.
                     </p>
 
                     <div style={{ marginTop: '16px' }}>
