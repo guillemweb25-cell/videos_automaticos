@@ -45,3 +45,7 @@ backend/alembic/videos.db
 *.log
 api_logs.txt
 backend/logs/
+
+# Volcado local de la BD (datos sensibles, no subir)
+backup.sql
+*.sql
