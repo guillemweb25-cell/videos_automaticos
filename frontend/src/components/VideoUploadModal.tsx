@@ -103,9 +103,11 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const handleRegenerateThumbnail = async () => {
     setThumbBusy('regen');
     try {
-      // Opcional: regenera antes el CONTEXTO (IA) para que emoción/fondo/personaje
-      // se actualicen según el tema del vídeo.
+      // Opcional: regenera antes el CONTEXTO (IA) — la FRASE (hook) y el visual
+      // (emoción/fondo/personaje) — según el tema del vídeo. Sin esto se reutiliza
+      // el hook viejo guardado.
       if (ytRegenCtx) {
+        try { await api.regenerateThumbnailHook(videoId); } catch { /* sigue con la frase actual */ }
         try { await api.regenerateThumbnailVisualPrompt(videoId); } catch { /* sigue con el contexto actual */ }
       }
       await api.generateThumbnail(videoId, undefined, undefined, undefined, undefined, undefined, ytCharSide, ytTextAngle);
@@ -253,7 +255,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
                   ))}
                   <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#cbd5e1', cursor: 'pointer', marginLeft: '4px' }}>
                     <input type="checkbox" checked={ytRegenCtx} onChange={(e) => setYtRegenCtx(e.target.checked)} disabled={!!thumbBusy} />
-                    Actualizar contexto (tema/emoción)
+                    Actualizar contexto (frase + tema/emoción)
                   </label>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
