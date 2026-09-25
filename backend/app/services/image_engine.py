@@ -821,21 +821,20 @@ class ImageEngine:
         # entirely (grabovoi et al.) or because the subject must always be a grown ADULT
         # even when the story mentions a young protagonist (jesus → e.g. "young Tobías").
         children_forbidden = style in ("grabovoi", "despertar", "koreano", "lallamavioleta", "jesus")
-        if any(x in vp_lower for x in ["child", "girl", "boy", "ten", "aged 10", "young"]):
-            if children_forbidden:
-                # Scrub child/youth-related tokens; don't reinforce them, replace with adult.
-                for tok in ["small child", "young child", "child", "youthful features",
-                            "young face", "young person", "young man", "young woman",
-                            "young boy", "young girl", "youngster", "youth", "youthful",
-                            "adolescent", "teenager", "teenage", "teen", "boy", "girl",
-                            "kids", "kid", "young"]:
-                    visual_prompt = re.sub(rf"\b{re.escape(tok)}\b", "adult", visual_prompt, flags=re.IGNORECASE)
-                # Positively enforce a grown adult so SDXL doesn't drift back to a child.
-                visual_prompt += ", (adult:1.4), (grown adult, mature adult face, 30-45 years old:1.3)"
-                # And push the negatives away from any minor.
-                _child_neg = "child, children, kid, boy, girl, baby, infant, toddler, teenager, teen, adolescent, youthful face, young face"
-                negative_prompt = f"{negative_prompt}, {_child_neg}" if negative_prompt else _child_neg
-            elif "child" not in visual_prompt.lower():
+        if children_forbidden:
+            # SIEMPRE (aunque el prompt no mencione edad): SDXL tiende a caras juveniles
+            # por sesgo, así que hay que forzar adulto incondicionalmente en estos canales.
+            for tok in ["small child", "young child", "child", "youthful features",
+                        "young face", "young person", "young man", "young woman",
+                        "young boy", "young girl", "youngster", "youth", "youthful",
+                        "adolescent", "teenager", "teenage", "teen", "boy", "girl",
+                        "kids", "kid", "young"]:
+                visual_prompt = re.sub(rf"\b{re.escape(tok)}\b", "adult", visual_prompt, flags=re.IGNORECASE)
+            visual_prompt += ", (adult:1.4), (grown adult, mature adult face, 30-50 years old:1.3)"
+            _child_neg = "child, children, kid, boy, girl, baby, infant, toddler, teenager, teen, adolescent, youthful face, young face"
+            negative_prompt = f"{negative_prompt}, {_child_neg}" if negative_prompt else _child_neg
+        elif any(x in vp_lower for x in ["child", "girl", "boy", "ten", "aged 10", "young"]):
+            if "child" not in visual_prompt.lower():
                 visual_prompt += ", (child:1.4), (small child:1.2), youthful features"
             else:
                 visual_prompt = visual_prompt.replace("child", "(child:1.5)")
@@ -853,6 +852,7 @@ class ImageEngine:
                                f"on the {_cs} side", visual_prompt, flags=re.IGNORECASE)
         visual_prompt = (f"(Subject on the {_cs} side of the frame:1.4), "
                          f"(upper body and full face clearly visible, head-and-shoulders framing:1.3), "
+                         f"(main subject clearly lit and visible, not underexposed, not too dark:1.15), "
                          f"(facing the camera:1.2), "
                          f"(looking toward the viewer and the {_ts} side:1.1), NOT looking away off-frame, "
                          f"NOT centered, not a disembodied hand, not only a hand; "
