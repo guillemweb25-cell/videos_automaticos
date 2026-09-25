@@ -25,7 +25,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [thumbnailVisualPrompt, setThumbnailVisualPrompt] = useState('');
   const [thumbnailPosition, setThumbnailPosition] = useState<'top' | 'center' | 'bottom'>('top');
   const [charSide, setCharSide] = useState<'right' | 'left'>('right');
-  const [textAngle, setTextAngle] = useState<number>(7);
+  const [textAngle, setTextAngle] = useState<number>(0);
   const [thumbnailRegenerating, setThumbnailRegenerating] = useState(false);
   const [leonardoModels, setLeonardoModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState('7b592283-e8a7-4c5a-9ba6-d18c31f258b9'); // Default to Lucid Origin

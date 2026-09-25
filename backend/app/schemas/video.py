@@ -82,7 +82,7 @@ class ThumbnailGenerationRequest(BaseModel):
     generation_mode: Optional[str] = "QUALITY"
     position: Optional[str] = "top"  # top | center | bottom — dónde va el texto
     char_side: Optional[str] = "right"  # right | left — lado del personaje (el texto va al opuesto)
-    text_angle: Optional[int] = None  # grados de inclinación del texto (0 = recto). None -> 7 por defecto
+    text_angle: Optional[int] = None  # grados de inclinación del texto (0 = recto). None -> 0 (recto) por defecto
 
 class ConvertToVideoRequest(BaseModel):
     paragraph_id: int

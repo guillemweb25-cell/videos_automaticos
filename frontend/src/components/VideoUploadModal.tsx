@@ -30,7 +30,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const [thumbnailBust, setThumbnailBust] = useState(Date.now());
   const [ytCharSide, setYtCharSide] = useState<'right' | 'left'>('right');
   const [ytRegenCtx, setYtRegenCtx] = useState(true);
-  const [ytTextAngle, setYtTextAngle] = useState<number>(7);
+  const [ytTextAngle, setYtTextAngle] = useState<number>(0);
   const [thumbBusy, setThumbBusy] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 

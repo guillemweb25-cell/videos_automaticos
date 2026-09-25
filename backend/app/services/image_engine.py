@@ -1112,10 +1112,10 @@ class ImageEngine:
         layer.paste(grad_full, (0, 0), mask)
 
         # 4) inclina el bloque en diagonal (sube hacia el centro) y compón.
-        #    text_angle (grados) lo configura el usuario; None -> 7 por defecto. Se
+        #    text_angle (grados) lo configura el usuario; None -> 0 (recto) por defecto. Se
         #    interpreta como MAGNITUD y el signo se elige para que el texto suba
         #    siempre hacia el centro (0 = recto).
-        mag = 7 if text_angle is None else max(0, min(30, abs(int(text_angle))))
+        mag = 0 if text_angle is None else max(0, min(30, abs(int(text_angle))))
         angle = mag if text_on_left else -mag
         rot = layer.rotate(angle, expand=True, resample=Image.BICUBIC)
         cx = col_x0 + col_w // 2
