@@ -10,7 +10,7 @@ from openai import OpenAI
 from app.services.style_service import StyleService, ALIASES
 from app.services.comfy_service import ComfyService
 import asyncio
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 
 
 def scrub_violet_flame_ambiguity(text: str) -> str:
@@ -919,6 +919,10 @@ class ImageEngine:
                 thumb_size = "1024x1024"
             self.generate_leonardo_image(visual_prompt, out_path, size=thumb_size, model_id=target_model, negative_prompt=negative_prompt, mode=mode)
             
+        # Realce de color ("pop" tipo YouTube) sobre la imagen BASE, antes del texto,
+        # para que el título conserve su color. Suave para no recocer.
+        self._apply_color_pop(out_path)
+
         # Save a "clean" copy before applying text
         clean_path = out_path.parent / "thumbnail-clean.png"
         import shutil
@@ -926,6 +930,22 @@ class ImageEngine:
 
         # Apply text overlay using Python (al lado opuesto del personaje)
         self._apply_side_text_overlay(out_path, hook, char_side=char_side, channel_name=channel_name, text_angle=text_angle)
+
+    def _apply_color_pop(self, image_path: Path, saturation: float = 1.22, contrast: float = 1.12,
+                         brightness: float = 1.05, sharpness: float = 1.18):
+        """Realce suave para que la miniatura 'salte': +saturación, +contraste, un
+        poco de brillo (contrarresta imágenes oscuras) y nitidez. In situ."""
+        try:
+            if not image_path.exists():
+                return
+            img = Image.open(image_path).convert("RGB")
+            img = ImageEnhance.Brightness(img).enhance(brightness)
+            img = ImageEnhance.Contrast(img).enhance(contrast)
+            img = ImageEnhance.Color(img).enhance(saturation)
+            img = ImageEnhance.Sharpness(img).enhance(sharpness)
+            img.save(image_path)
+        except Exception as e:
+            print(f"[thumbnail] realce de color omitido: {e}", flush=True)
 
     def apply_text_to_thumbnail(self, base_dir: str, hook: str, channel_name: Optional[str] = None, position: str = "top", char_side: str = "right", text_angle: Optional[int] = None) -> str:
         """Re-applies text overlay to an existing clean thumbnail (re-paint)."""
