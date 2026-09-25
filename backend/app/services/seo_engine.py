@@ -192,16 +192,21 @@ class SEOEngine:
         # (The old 3-part format produced cramped, wordy thumbnails that read as
         # three full sentences on top of the image.)
         format_desc = (
-            "FORMAT (mandatory): the hook must be VERY SHORT — 2 to 4 words TOTAL, "
+            "FORMAT (mandatory): the hook must be VERY SHORT — 2 to 5 words TOTAL, "
             "in ALL CAPS (use the script's native uppercase; Korean/Japanese/Chinese "
             "have no separate caps, use them as-is, big and bold). "
-            "Optionally use a SINGLE '...' to split it into two short parts for a "
-            "two-line layout. NEVER use more than one '...'. NEVER write full sentences. "
-            "OUTPUT EXACTLY ONE LINE: no line breaks, no second sentence, no explanation, "
-            "no author credit — ONLY the punchy phrase itself. "
-            "Examples (Spanish): 'TU ÁNGEL... TE VIGILA', 'NO MIRES... ATRÁS', "
-            "'EL SECRETO PROHIBIDO', 'LA LUNA... OCULTA EL SOL'. "
-            "Examples (Korean): '그는 사라졌다... 영원히', '보지 마라... 뒤를'. "
+            "The '...' is OPTIONAL — use it ONLY when it creates real suspense; at most ONE. "
+            "If you use '...', BOTH halves must carry meaning: the first states the concrete "
+            "subject, the second delivers intrigue or the payoff. "
+            "BANNED as a second half: empty filler that adds no information — words like "
+            "'YA', 'AHORA', 'REALMENTE', 'DENTRO', 'AQUÍ', 'ASÍ', 'DE VERDAD', 'EN TI'. "
+            "If the second half is just filler, DROP the '...' and write a single punchy phrase instead. "
+            "NEVER write full sentences. OUTPUT EXACTLY ONE LINE: no line breaks, no second "
+            "sentence, no explanation, no author credit — ONLY the punchy phrase itself. "
+            "Good examples (Spanish): 'SOÑAR CON DISPAROS... AVISA ESTO', 'TERREMOTO EN SUEÑOS: LA SEÑAL', "
+            "'EL ÁNGEL QUE TE VIGILA', 'LA LETRA YOD LO CAMBIA TODO'. "
+            "BAD examples (do NOT do this — vague/filler second half): 'TUS SUEÑOS... TEMBLANDO YA', "
+            "'TU DESTINO... ESCRITO YA', 'EL SECRETO... REALMENTE'. "
             "Translate the FORMAT to the script language."
         )
 
@@ -218,7 +223,11 @@ class SEOEngine:
             "STRICTLY AVOID vague, interchangeable filler that could headline any video in "
             "the niche (e.g. 'TU DESTINO', 'EL SECRETO', 'LA VERDAD OCULTA', 'NO MIRES ATRÁS' "
             "used generically). If you can imagine the same hook on a totally different video, "
-            "it is WRONG — make it specific. Prefer the concrete noun from the title over an abstraction."
+            "it is WRONG — make it specific. "
+            "Use the CONCRETE noun of the topic VERBATIM, do not paraphrase it away: if the video "
+            "is about dreaming of an earthquake, the word 'TERREMOTO' must appear (not 'temblando'); "
+            "if it's about being shot, 'DISPARO/DISPARAN' must appear; if it's about the Hebrew letter "
+            "Yod, 'YOD' must appear. Then add the intrigue about what it MEANS or reveals."
         )
 
         system_msg = (
