@@ -14,6 +14,9 @@ class ChannelBase(BaseModel):
     affiliate_url: str | None = None
     affiliate_label: str | None = None
     description_header: str | None = None
+    thumbnail_lora_filename: str | None = None
+    thumbnail_lora_strength: float | None = None
+    thumbnail_lora_trigger: str | None = None
 
 
 class ChannelCreate(ChannelBase):
@@ -32,6 +35,9 @@ class ChannelUpdate(BaseModel):
     affiliate_url: str | None = None
     affiliate_label: str | None = None
     description_header: str | None = None
+    thumbnail_lora_filename: str | None = None
+    thumbnail_lora_strength: float | None = None
+    thumbnail_lora_trigger: str | None = None
 
 
 class ChannelResponse(ChannelBase):

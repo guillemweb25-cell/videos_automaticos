@@ -770,7 +770,7 @@ class ImageEngine:
             print(f"[thumb-pose] error: {e}", flush=True)
             return None
 
-    async def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY", channel_name: Optional[str] = None, workflow_name: Optional[str] = None, text_position: str = "top", char_side: str = "right", text_angle: Optional[int] = None) -> None:
+    async def generate_thumbnail(self, hook: str, visual_prompt: str, out_path: Path, size: str = "1024x1792", model_id: Optional[str] = None, negative_prompt: Optional[str] = None, mode: str = "QUALITY", channel_name: Optional[str] = None, workflow_name: Optional[str] = None, text_position: str = "top", char_side: str = "right", text_angle: Optional[int] = None, loras: Optional[List[Dict[str, Any]]] = None, trigger_words: Optional[str] = None) -> None:
         """Generates a professional thumbnail. Blends visual prompt with text instructions. 
         """
 
@@ -909,6 +909,8 @@ class ImageEngine:
                 workflow_name=workflow,
                 pose_image=pose_img,
                 pose_strength=0.9,
+                loras=loras,
+                trigger_words=trigger_words,
             )
         else:
             target_model = model_id or "gpt-image-1.5"

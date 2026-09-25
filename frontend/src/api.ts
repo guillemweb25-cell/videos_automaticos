@@ -72,6 +72,9 @@ export interface ChannelResponse {
   affiliate_url?: string | null;
   affiliate_label?: string | null;
   description_header?: string | null;
+  thumbnail_lora_filename?: string | null;
+  thumbnail_lora_strength?: number | null;
+  thumbnail_lora_trigger?: string | null;
 }
 
 export interface LtxGenerateRequest {

@@ -2328,6 +2328,18 @@ async def generate_thumbnail_api(
     
     gen_mode = req.generation_mode or "QUALITY"
 
+    # LoRA de estilo SOLO para la miniatura (opcional, por canal).
+    thumb_loras = None
+    thumb_trigger = None
+    if channel and (channel.thumbnail_lora_filename or "").strip():
+        _s = channel.thumbnail_lora_strength if channel.thumbnail_lora_strength is not None else 0.6
+        thumb_loras = [{
+            "filename": channel.thumbnail_lora_filename.strip(),
+            "model_strength": float(_s),
+            "clip_strength": float(_s),
+        }]
+        thumb_trigger = (channel.thumbnail_lora_trigger or "").strip() or None
+
     thumbnail_path = base_dir / "output" / "thumbnail.png"
     settings = get_user_settings_for_video(video, db)
     if not settings:
@@ -2350,6 +2362,8 @@ async def generate_thumbnail_api(
         text_position=(req.position or "top"),
         char_side=(req.char_side or "right"),
         text_angle=req.text_angle,
+        loras=thumb_loras,
+        trigger_words=thumb_trigger,
     )
 
     # Save updates

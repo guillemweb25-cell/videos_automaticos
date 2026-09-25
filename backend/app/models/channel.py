@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, JSON, Float
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -20,6 +20,9 @@ class Channel(Base):
     affiliate_url = Column(String(500), nullable=True)   # Link que codifica el QR de afiliado (libro del canal, etc.)
     affiliate_label = Column(String(255), nullable=True)  # Texto sobre el QR (p.ej. "Compra el libro 📖\nbit.ly/pilar-libro")
     description_header = Column(Text, nullable=True)      # Bloque fijo que se antepone a la descripción de los vídeos nuevos
+    thumbnail_lora_filename = Column(String(255), nullable=True)  # LoRA SDXL de estilo SOLO para la miniatura
+    thumbnail_lora_strength = Column(Float, nullable=True)        # Fuerza del LoRA de miniatura (0.4-0.7 recomendado)
+    thumbnail_lora_trigger = Column(String(255), nullable=True)   # Trigger words del LoRA de miniatura (opcional)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False)

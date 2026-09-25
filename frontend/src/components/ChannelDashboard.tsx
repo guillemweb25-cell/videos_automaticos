@@ -105,6 +105,9 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
   const [editDefaultWorkflow, setEditDefaultWorkflow] = useState(channel.default_workflow || '');
   const [editAffiliateUrl, setEditAffiliateUrl] = useState(channel.affiliate_url || '');
   const [editDescriptionHeader, setEditDescriptionHeader] = useState(channel.description_header || '');
+  const [editThumbLora, setEditThumbLora] = useState(channel.thumbnail_lora_filename || '');
+  const [editThumbLoraStrength, setEditThumbLoraStrength] = useState<number>(channel.thumbnail_lora_strength ?? 0.6);
+  const [editThumbLoraTrigger, setEditThumbLoraTrigger] = useState(channel.thumbnail_lora_trigger || '');
   const [availableStyles, setAvailableStyles] = useState<{ id: string; name: string }[]>([]);
   const [availableWorkflowsList, setAvailableWorkflowsList] = useState<string[]>([]);
 
@@ -124,6 +127,9 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
     setEditDefaultWorkflow(channel.default_workflow || '');
     setEditAffiliateUrl(channel.affiliate_url || '');
     setEditDescriptionHeader(channel.description_header || '');
+    setEditThumbLora(channel.thumbnail_lora_filename || '');
+    setEditThumbLoraStrength(channel.thumbnail_lora_strength ?? 0.6);
+    setEditThumbLoraTrigger(channel.thumbnail_lora_trigger || '');
     loadDownloads();
     loadGenerations();
     loadMusicFiles();
@@ -359,6 +365,9 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
         affiliate_url: editAffiliateUrl || null,
         affiliate_label: null,  // etiqueta fija "Compra el libro"; se limpia cualquier valor antiguo
         description_header: editDescriptionHeader || null,
+        thumbnail_lora_filename: editThumbLora || null,
+        thumbnail_lora_strength: editThumbLora ? Number(editThumbLoraStrength) : null,
+        thumbnail_lora_trigger: editThumbLoraTrigger || null,
       });
 
       const updated = await Promise.race([updatePromise, timeoutPromise]) as ChannelResponse;
@@ -623,6 +632,54 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
                         para insertarlo arriba de la descripción de un vídeo concreto.
                       </p>
                     </div>
+                  </div>
+
+                  <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                    <label style={{ display: 'block', fontSize: '0.9rem', color: '#fbbf24', marginBottom: '8px', fontWeight: 600 }}>
+                      🎨 LoRA de estilo para la miniatura (opcional)
+                    </label>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                      <div style={{ flex: '2 1 240px' }}>
+                        <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '4px' }}>
+                          Fichero .safetensors (en D:\AI\ComfyUI\models\loras)
+                        </label>
+                        <input
+                          type="text"
+                          value={editThumbLora}
+                          onChange={(e) => setEditThumbLora(e.target.value)}
+                          placeholder="ej. YouTube_Thumbnail_XL.safetensors"
+                          style={{ width: '100%', background: '#111827', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', color: 'white' }}
+                        />
+                      </div>
+                      <div style={{ flex: '0 0 110px' }}>
+                        <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '4px' }}>
+                          Fuerza
+                        </label>
+                        <input
+                          type="number" min={0} max={1.2} step={0.05}
+                          value={editThumbLoraStrength}
+                          onChange={(e) => setEditThumbLoraStrength(Number(e.target.value))}
+                          style={{ width: '100%', background: '#111827', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', color: 'white' }}
+                        />
+                      </div>
+                      <div style={{ flex: '1 1 180px' }}>
+                        <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '4px' }}>
+                          Trigger (opcional)
+                        </label>
+                        <input
+                          type="text"
+                          value={editThumbLoraTrigger}
+                          onChange={(e) => setEditThumbLoraTrigger(e.target.value)}
+                          placeholder="palabra(s) de activación"
+                          style={{ width: '100%', background: '#111827', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', color: 'white' }}
+                        />
+                      </div>
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '8px 0 0' }}>
+                      LoRA <b>SDXL</b> de estilo aplicado SOLO a la miniatura (empuja el "look YouTube": más
+                      contraste/saturación/drama). Debe ser SDXL y a fuerza baja (<b>0.4–0.7</b>) o "recuece".
+                      Descarga el fichero de Civitai a <code>D:\AI\ComfyUI\models\loras</code> y pon aquí su nombre exacto.
+                    </p>
                   </div>
                 </div>
               </div>
