@@ -234,9 +234,8 @@ export interface YouTubeVideo {
 }
 
 const host = window.location.hostname;
-// Para acceso LOCAL (localhost o IP de LAN) se usa SIEMPRE el backend local en :8500,
-// ignorando cualquier VITE_API_URL horneado en el build (que apunta al dominio público).
-// Así la app funciona tanto por IP (192.168.x.x:8501 → :8500) como por el dominio público.
+const port = window.location.port;
+// Acceso LOCAL (localhost o IP de LAN).
 const isLocalHost =
   host === 'localhost' ||
   host === '127.0.0.1' ||
@@ -244,12 +243,19 @@ const isLocalHost =
   /^10\./.test(host) ||
   /^172\.(1[6-9]|2\d|3[01])\./.test(host);
 
-export const API_URL = isLocalHost
-  ? `${window.location.protocol}//${host}:8500`
-  : (import.meta.env.VITE_API_URL ||
-     (host === 'ytauto.enguillem.es'
-       ? 'https://ytapi.enguillem.es'
-       : `${window.location.protocol}//${host}`));
+// Regla: si el frontend se sirve en su PUERTO DIRECTO (8501, o 5173 en dev), o es un
+// host local, la API está en el MISMO host en el 8500 con el MISMO protocolo. Esto
+// cubre tanto la IP de LAN (192.168.x.x:8501 → :8500) como el dominio con port-forward
+// (http://ytauto.enguillem.es:8501 → http://ytauto.enguillem.es:8500), ignorando el
+// VITE_API_URL horneado. Solo el dominio público detrás del proxy inverso (443, sin
+// puerto en la URL) usa la API pública (ytapi).
+export const API_URL =
+  (isLocalHost || port === '8501' || port === '5173')
+    ? `${window.location.protocol}//${host}:8500`
+    : (import.meta.env.VITE_API_URL ||
+       (host === 'ytauto.enguillem.es'
+         ? 'https://ytapi.enguillem.es'
+         : `${window.location.protocol}//${host}`));
 
 class ApiClient {
   private baseUrl = API_URL;

@@ -36,7 +36,7 @@ app.mount("/cache", StaticFiles(directory="cache"), name="cache")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings_config.CORS_ORIGINS,
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|(192\.168|10\.\d{1,3})\.\d{1,3}\.\d{1,3})(:\d+)?",
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|(192\.168|10\.\d{1,3})\.\d{1,3}\.\d{1,3}|([a-z0-9-]+\.)*enguillem\.es)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
