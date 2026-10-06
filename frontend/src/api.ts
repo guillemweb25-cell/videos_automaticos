@@ -233,7 +233,23 @@ export interface YouTubeVideo {
   duration_seconds?: number;
 }
 
-export const API_URL = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8500`;
+const host = window.location.hostname;
+// Para acceso LOCAL (localhost o IP de LAN) se usa SIEMPRE el backend local en :8500,
+// ignorando cualquier VITE_API_URL horneado en el build (que apunta al dominio público).
+// Así la app funciona tanto por IP (192.168.x.x:8501 → :8500) como por el dominio público.
+const isLocalHost =
+  host === 'localhost' ||
+  host === '127.0.0.1' ||
+  /^192\.168\./.test(host) ||
+  /^10\./.test(host) ||
+  /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+
+export const API_URL = isLocalHost
+  ? `${window.location.protocol}//${host}:8500`
+  : (import.meta.env.VITE_API_URL ||
+     (host === 'ytauto.enguillem.es'
+       ? 'https://ytapi.enguillem.es'
+       : `${window.location.protocol}//${host}`));
 
 class ApiClient {
   private baseUrl = API_URL;
