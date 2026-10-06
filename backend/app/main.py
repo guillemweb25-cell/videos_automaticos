@@ -29,9 +29,14 @@ app.add_middleware(LargeUploadMiddleware)
 app.mount("/cache", StaticFiles(directory="cache"), name="cache")
 
 # CORS
+# allow_origins: orígenes explícitos del .env (dominio público, etc.).
+# allow_origin_regex: acepta automáticamente localhost y CUALQUIER IP de la LAN
+# (192.168.x.x / 10.x.x.x) en cualquier puerto, para no tener que editar .env y
+# recrear el contenedor cada vez que cambia la IP de la máquina.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings_config.CORS_ORIGINS,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|(192\.168|10\.\d{1,3})\.\d{1,3}\.\d{1,3})(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
