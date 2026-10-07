@@ -49,3 +49,7 @@ backend/logs/
 # Volcado local de la BD (datos sensibles, no subir)
 backup.sql
 *.sql
+
+# Backups locales con fecha (no subir; .env.bak tiene secretos)
+*.bak
+*.bak-*
