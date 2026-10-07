@@ -384,7 +384,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   // Regenera TODO el audio que falte con el TTS local (gratis). Útil cuando los .mp3
   // antiguos se borraron: sin esto el render falla ("no hay audio"). NO toca las
   // imágenes ya revisadas (skip_images).
-  const handleRegenerateAudio = async () => {
+  const handleRegenerateAllAudio = async () => {
     if (!confirm('¿Regenerar el audio que falte con el TTS LOCAL (gratis)?\n\nSe generan solo los .mp3 que no existan (p. ej. los borrados por antigüedad). Las imágenes NO se tocan. Puede tardar un poco.')) return;
     setAudioRegenerating(true);
     setAudioPct(0);
@@ -706,7 +706,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
               🔁 Regenerar prompts (IA)
             </button>
             <button
-              onClick={handleRegenerateAudio}
+              onClick={handleRegenerateAllAudio}
               disabled={rendering || !!regenerating || audioRegenerating}
               title="Regenera con TTS LOCAL (gratis) los audios que falten (p. ej. .mp3 borrados). No toca las imágenes."
               style={{
