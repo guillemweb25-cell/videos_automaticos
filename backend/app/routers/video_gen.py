@@ -2728,24 +2728,25 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None, show
         )
 
         # ── QR de afiliado (arriba-derecha, 30s sí / 30s no) ──
-        # Se aplica ANTES de los subtítulos para que el quemado de subs lo conserve.
-        if show_qr:
-            try:
-                channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
-                aff_url = (channel.affiliate_url or "").strip() if channel else ""
-                if not aff_url:
-                    print("[render] QR pedido pero el canal no tiene affiliate_url; se omite.", flush=True)
-                else:
-                    RenderingEngine.apply_qr_overlay(
-                        video_path=out_path,
-                        out_size=out_size,
-                        affiliate_url=aff_url,
-                        affiliate_label=None,  # etiqueta fija "Compra el libro"; el link va en la descripción
-                        on_secs=30, period_secs=60,
-                    )
-            except Exception as e:
-                print(f"[render] WARNING: overlay de QR falló: {e}", flush=True)
-                # No romper el render por el QR.
+        # AUTOMÁTICO: si el canal tiene affiliate_url configurado, se pone el QR
+        # SIEMPRE (independiente del toggle del render) — así basta con poner el link
+        # en el canal. Se aplica ANTES de los subtítulos para que el quemado los conserve.
+        try:
+            channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
+            aff_url = (channel.affiliate_url or "").strip() if channel else ""
+            if aff_url:
+                RenderingEngine.apply_qr_overlay(
+                    video_path=out_path,
+                    out_size=out_size,
+                    affiliate_url=aff_url,
+                    affiliate_label=None,  # etiqueta fija "Compra el libro"; el link va en la descripción
+                    on_secs=30, period_secs=60,
+                )
+            elif show_qr:
+                print("[render] QR pedido pero el canal no tiene affiliate_url; se omite.", flush=True)
+        except Exception as e:
+            print(f"[render] WARNING: overlay de QR falló: {e}", flush=True)
+            # No romper el render por el QR.
 
         # ── Karaoke Subtitles ──
         if subtitles:
