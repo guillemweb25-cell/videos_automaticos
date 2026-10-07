@@ -871,8 +871,9 @@ class ApiClient {
     return res.json();
   }
 
-  async generateAudio(videoId: number, voice: string, provider: string): Promise<{ ok: boolean; background?: boolean; status?: string }> {
-    const res = await fetch(`${this.baseUrl}/videos/${videoId}/audio?voice=${voice}&provider=${provider}`, {
+  async generateAudio(videoId: number, voice: string, provider: string, skipImages: boolean = false): Promise<{ ok: boolean; background?: boolean; status?: string }> {
+    const q = `voice=${encodeURIComponent(voice)}&provider=${encodeURIComponent(provider)}${skipImages ? '&skip_images=true' : ''}`;
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/audio?${q}`, {
       method: 'POST',
       headers: this.getHeaders(true),
     });

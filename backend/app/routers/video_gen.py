@@ -447,8 +447,9 @@ def get_script(video_id: int, db: Session = Depends(get_db)):
 @router.post("/{video_id}/audio")
 async def generate_audio(
     video_id: int,
-    voice: str = "es_mx_002",
-    provider: str = "tiktok",
+    voice: Optional[str] = None,
+    provider: Optional[str] = None,
+    skip_images: bool = False,
     db: Session = Depends(get_db)
 ):
     video = db.query(Video).filter(Video.id == video_id).first()
@@ -460,8 +461,13 @@ async def generate_audio(
     if not plan_path.exists():
         raise HTTPException(status_code=400, detail="Script not uploaded")
 
+    # Voz/proveedor: usa los del request, o los guardados en el vídeo, o inferencia
+    # (útil al regenerar SOLO el audio de un vídeo viejo cuyos .mp3 se borraron).
+    vc = voice or video.voice or "es_mx_002"
+    prov = (provider or getattr(video, "tts_provider", None) or _infer_tts_provider(vc)).lower()
+
     # Pre-validate ElevenLabs key here (sync) so we fail fast before kicking off bg task
-    if provider.lower() == "elevenlabs":
+    if prov == "elevenlabs":
         settings = get_user_settings_for_video(video, db)
         if not settings or not settings.elevenlabs_api_key:
             raise HTTPException(status_code=400, detail="No has configurado tu API Key de ElevenLabs en Ajustes.")
@@ -472,8 +478,8 @@ async def generate_audio(
     progress_file.write_text("0")
 
     video.status = "generating_audio"
-    video.voice = voice
-    video.tts_provider = provider  # remember it so single-paragraph regen matches
+    video.voice = vc
+    video.tts_provider = prov  # remember it so single-paragraph regen matches
     video.last_error = None
     db.commit()
 
@@ -537,7 +543,7 @@ async def generate_audio(
     # When it finishes successfully, auto-chain image generation so the user never has
     # to press "Auto-imágenes" manually — some videos used to get stuck in audio_ready.
     loop = asyncio.get_running_loop()
-    fut = loop.run_in_executor(None, _do_audio_sync, video_id, voice, provider)
+    fut = loop.run_in_executor(None, _do_audio_sync, video_id, vc, prov)
 
     def _after_audio(f):
         try:
@@ -546,7 +552,10 @@ async def generate_audio(
             return
         asyncio.ensure_future(_auto_start_images_after_audio(video_id))
 
-    fut.add_done_callback(_after_audio)
+    # Solo encadenar imágenes en el flujo normal. Al regenerar SOLO el audio desde el
+    # revisor de imágenes (skip_images=True) NO se tocan las imágenes ya generadas.
+    if not skip_images:
+        fut.add_done_callback(_after_audio)
 
     return {"ok": True, "background": True, "status": "generating_audio"}
 
