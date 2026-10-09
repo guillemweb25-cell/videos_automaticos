@@ -51,6 +51,7 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
   const [titlesCopied, setTitlesCopied] = useState(false);
   const [videosLoadedExtended, setVideosLoadedExtended] = useState(false);
   const [generations, setGenerations] = useState<VideoResponse[]>([]);
+  const [genSort, setGenSort] = useState<'created' | 'rendered'>('created');
   const [previewVideo, setPreviewVideo] = useState<VideoResponse | null>(null);
   // "Analizar Canal" tab — scrapes a public YouTube channel via yt-dlp
   // (no OAuth) to research competitor titles / view counts. Independent
@@ -912,7 +913,21 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
           <div className="glass-panel">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2>Mis Generaciones</h2>
-              <button className="btn btn-secondary" onClick={loadGenerations}>Actualizar</button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Ordenar:</span>
+                <button
+                  className={`btn ${genSort === 'created' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setGenSort('created')}
+                  style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                >Creación</button>
+                <button
+                  className={`btn ${genSort === 'rendered' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setGenSort('rendered')}
+                  style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                  title="Ordena por fecha del render (los más recientes arriba; los no renderizados al final)"
+                >Renderizado</button>
+                <button className="btn btn-secondary" onClick={loadGenerations} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>Actualizar</button>
+              </div>
             </div>
             <div className="generations-list">
               {generations.length === 0 ? (
@@ -924,11 +939,19 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
                       <th style={{ padding: '12px' }}>Título</th>
                       <th style={{ padding: '12px' }}>Estado</th>
                       <th style={{ padding: '12px' }}>Fecha</th>
+                      <th style={{ padding: '12px' }}>Renderizado</th>
                       <th style={{ padding: '12px' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {generations.map(g => (
+                    {[...generations].sort((a, b) => {
+                      if (genSort === 'rendered') {
+                        const ta = a.rendered_at ? new Date(a.rendered_at).getTime() : 0;
+                        const tb = b.rendered_at ? new Date(b.rendered_at).getTime() : 0;
+                        return tb - ta; // más reciente arriba; no renderizados (0) al final
+                      }
+                      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                    }).map(g => (
                       <tr key={g.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={{ padding: '12px' }}>
                           <div style={{ fontWeight: 600 }}>{g.title}</div>
@@ -953,6 +976,11 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
                         </td>
                         <td style={{ padding: '12px', fontSize: '0.9rem' }}>
                           {new Date(g.created_at).toLocaleDateString()}
+                        </td>
+                        <td style={{ padding: '12px', fontSize: '0.9rem' }}>
+                          {g.rendered_at
+                            ? <span title={new Date(g.rendered_at).toLocaleString()}>{new Date(g.rendered_at).toLocaleString()}</span>
+                            : <span style={{ color: '#64748b' }}>—</span>}
                         </td>
                         <td style={{ padding: '12px' }}>
                           <div style={{ display: 'flex', gap: '8px' }}>

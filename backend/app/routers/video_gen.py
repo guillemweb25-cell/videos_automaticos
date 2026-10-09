@@ -210,7 +210,16 @@ def update_video(video_id: int, video_in: VideoUpdate, db: Session = Depends(get
 
 @router.get("/channel/{channel_id}", response_model=List[VideoResponse])
 def get_channel_videos(channel_id: int, db: Session = Depends(get_db)):
-    return db.query(Video).filter(Video.channel_id == channel_id).order_by(Video.created_at.desc()).all()
+    videos = db.query(Video).filter(Video.channel_id == channel_id).order_by(Video.created_at.desc()).all()
+    # Fecha de renderizado = mtime del final_video.mp4 (sirve también para vídeos viejos,
+    # sin necesidad de columna en BD). None si aún no se ha renderizado.
+    for v in videos:
+        try:
+            fp = Path(v.base_dir) / "output" / "final_video.mp4" if v.base_dir else None
+            v.rendered_at = datetime.fromtimestamp(fp.stat().st_mtime) if (fp and fp.exists()) else None
+        except Exception:
+            v.rendered_at = None
+    return videos
 
 @public_router.get("/{video_id}/thumbnail.png")
 def get_video_thumbnail(video_id: int, db: Session = Depends(get_db)):

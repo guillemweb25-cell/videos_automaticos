@@ -18,6 +18,7 @@ export interface VideoResponse extends Video {
   style?: string;
   max_images_per_paragraph?: number;
   llm_provider?: string;
+  rendered_at?: string | null;
 }
 
 export interface ParagraphPrompt {

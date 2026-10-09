@@ -42,6 +42,7 @@ class VideoResponse(VideoBase):
     is_uploaded: bool = False
     created_at: datetime
     updated_at: datetime
+    rendered_at: Optional[datetime] = None  # fecha del final_video.mp4 (si existe)
 
     class Config:
         from_attributes = True
