@@ -52,6 +52,17 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
   const [videosLoadedExtended, setVideosLoadedExtended] = useState(false);
   const [generations, setGenerations] = useState<VideoResponse[]>([]);
   const [genSort, setGenSort] = useState<'created' | 'rendered'>('created');
+  const [genSortDir, setGenSortDir] = useState<'asc' | 'desc'>('desc');
+  // Clic en una cabecera: si ya es la columna activa, alterna asc/desc; si no,
+  // cambia de columna y empieza en descendente (más reciente arriba).
+  const sortGenBy = (col: 'created' | 'rendered') => {
+    if (col === genSort) {
+      setGenSortDir(d => (d === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setGenSort(col);
+      setGenSortDir('desc');
+    }
+  };
   const [previewVideo, setPreviewVideo] = useState<VideoResponse | null>(null);
   // "Analizar Canal" tab — scrapes a public YouTube channel via yt-dlp
   // (no OAuth) to research competitor titles / view counts. Independent
@@ -913,21 +924,7 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
           <div className="glass-panel">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2>Mis Generaciones</h2>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Ordenar:</span>
-                <button
-                  className={`btn ${genSort === 'created' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setGenSort('created')}
-                  style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                >Creación</button>
-                <button
-                  className={`btn ${genSort === 'rendered' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setGenSort('rendered')}
-                  style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                  title="Ordena por fecha del render (los más recientes arriba; los no renderizados al final)"
-                >Renderizado</button>
-                <button className="btn btn-secondary" onClick={loadGenerations} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>Actualizar</button>
-              </div>
+              <button className="btn btn-secondary" onClick={loadGenerations}>Actualizar</button>
             </div>
             <div className="generations-list">
               {generations.length === 0 ? (
@@ -938,19 +935,31 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
                     <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
                       <th style={{ padding: '12px' }}>Título</th>
                       <th style={{ padding: '12px' }}>Estado</th>
-                      <th style={{ padding: '12px' }}>Fecha</th>
-                      <th style={{ padding: '12px' }}>Renderizado</th>
+                      <th
+                        style={{ padding: '12px', cursor: 'pointer', userSelect: 'none', color: genSort === 'created' ? '#a855f7' : undefined }}
+                        onClick={() => sortGenBy('created')}
+                        title="Ordenar por fecha de creación"
+                      >Fecha {genSort === 'created' ? (genSortDir === 'desc' ? '▼' : '▲') : '↕'}</th>
+                      <th
+                        style={{ padding: '12px', cursor: 'pointer', userSelect: 'none', color: genSort === 'rendered' ? '#a855f7' : undefined }}
+                        onClick={() => sortGenBy('rendered')}
+                        title="Ordenar por fecha de renderizado (los no renderizados al final)"
+                      >Renderizado {genSort === 'rendered' ? (genSortDir === 'desc' ? '▼' : '▲') : '↕'}</th>
                       <th style={{ padding: '12px' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {[...generations].sort((a, b) => {
+                      const dir = genSortDir === 'asc' ? 1 : -1;
                       if (genSort === 'rendered') {
-                        const ta = a.rendered_at ? new Date(a.rendered_at).getTime() : 0;
-                        const tb = b.rendered_at ? new Date(b.rendered_at).getTime() : 0;
-                        return tb - ta; // más reciente arriba; no renderizados (0) al final
+                        const ta = a.rendered_at ? new Date(a.rendered_at).getTime() : null;
+                        const tb = b.rendered_at ? new Date(b.rendered_at).getTime() : null;
+                        if (ta === null && tb === null) return 0;
+                        if (ta === null) return 1;   // no renderizados siempre al final
+                        if (tb === null) return -1;
+                        return (ta - tb) * dir;
                       }
-                      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                      return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
                     }).map(g => (
                       <tr key={g.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={{ padding: '12px' }}>
