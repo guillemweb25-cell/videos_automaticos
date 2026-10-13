@@ -753,6 +753,85 @@ def char_scene(req: SceneRequest, current_user: User = Depends(get_current_user)
     return {"ok": True, "prompt_id": pid, "expected": num, "prompt_en": prompt_en, "seed": seed, "entry_id": entry_id}
 
 
+# ── Influencers (fotos realistas tipo influencer, SFW) ─────────────────────────
+# Técnicas del tutorial de Qwen "Small Screen Realism" adaptadas a nuestro SDXL
+# realista: estética candid/cámara 2006, variación de cuerpo/altura (la altura es
+# el mayor "tell" de la IA) y de escena/encuadre. SIEMPRE vestido (guardarraíl SFW).
+INFLU_BODIES = ["slim petite build", "average build", "curvy hourglass figure",
+                "athletic toned build", "plus-size figure", "soft natural build"]
+# Sesgo contra el "todo el mundo alto" que delata a la IA: más baja/media que alta.
+INFLU_HEIGHTS = ["short height, petite", "short height", "average height",
+                 "average height", "slightly below average height"]
+INFLU_SCENES = ["in a cozy coffee shop", "bathroom mirror selfie", "in an underground parking garage at night",
+                "at a house party in a kitchen", "in a shopping mall corridor", "in a messy living room with friends",
+                "on a city street at golden hour", "in a bedroom with soft window light", "inside a car",
+                "on a rooftop at sunset", "at a casual restaurant", "walking down a suburban street"]
+INFLU_FRAMINGS = ["candid full-body shot", "candid waist-up shot", "casual mirror selfie",
+                  "over-the-shoulder candid shot", "medium close-up candid photo"]
+INFLU_LOOKS = {
+    "candid": PHONE_SUFFIX,
+    "vintage": ("candid photo on a 2006 vintage digital camera, direct on-camera flash, slight motion blur, "
+                "grainy, authentic amateur snapshot, instagram throwback, realistic skin with pores and imperfections"),
+    "clean": ("natural candid portrait, soft natural light, realistic skin texture with visible pores, 50mm lens, "
+              "photorealistic, authentic unposed everyday moment"),
+}
+
+
+class InfluencerRequest(BaseModel):
+    prompt: Optional[str] = ""     # descripción opcional (ES); vacío = aleatorio
+    num_images: int = 2
+    width: int = 832
+    height: int = 1216
+    seed: Optional[int] = None
+    look: str = "candid"           # candid | vintage | clean
+    hq: bool = False               # FaceDetailer (piel/cara) + upscale 2x
+    provider: str = "openai"
+
+
+@router.post("/influencer")
+def char_influencer(req: InfluencerRequest, current_user: User = Depends(get_current_user)):
+    """Genera fotos realistas tipo influencer (SFW) desde un prompt opcional,
+    aplicando las técnicas de realismo del tutorial (candid/cámara 2006, variación
+    de cuerpo/altura/escena). No usa personaje guardado (txt→imagen puro)."""
+    import random
+    from app.routers.video_ltx import _to_english_prompt
+    _ok, _gk = _llm_keys(current_user.id)
+    base = (req.prompt or "").strip()
+    body = random.choice(INFLU_BODIES)
+    height = random.choice(INFLU_HEIGHTS)
+    framing = random.choice(INFLU_FRAMINGS)
+    look = INFLU_LOOKS.get(req.look, PHONE_SUFFIX)
+
+    parts = [framing]
+    if base:
+        # El usuario describe a la persona/escena: se respeta (traducido).
+        parts.append(_to_english_prompt(base, req.provider, _ok, _gk))
+    else:
+        # Aleatorio: persona + variación de cuerpo/altura + escena.
+        parts.append(f"a young woman, {body}, {height}, casual everyday outfit")
+        parts.append(random.choice(INFLU_SCENES))
+    # Guardarraíl SFW reforzado en el positivo (el negativo ya lleva nsfw/nude).
+    parts.append("fully clothed, modest casual clothing, SFW")
+    prompt_core = ", ".join(p for p in parts if p)
+
+    ckpt = STYLES["realista"]      # RealVisXL (nuestro checkpoint fotorrealista)
+    seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
+    num = max(1, min(4, int(req.num_images)))
+    w = max(512, (int(req.width) // 8) * 8)
+    h = max(512, (int(req.height) // 8) * 8)
+
+    wf = _build_scene_graph(current_user.id, "", prompt_core, ckpt, look, seed, num, w, h,
+                            pose_name=None, use_ipadapter=False, extra_neg=REALISM_NEG, cfg=4.5, hq=req.hq)
+    try:
+        r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": wf}, timeout=30)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo contactar con ComfyUI: {e}")
+    if not r.ok:
+        raise HTTPException(status_code=400, detail=f"ComfyUI rechazó el grafo: {r.text[:500]}")
+    pid = r.json().get("prompt_id")
+    return {"ok": True, "prompt_id": pid, "expected": num, "seed": seed, "prompt_en": prompt_core}
+
+
 def _build_regen_graph(uid: int, ref_name: str, desc_en: str, ckpt: str,
                        style_suffix: str, seed: int, pose_names: dict, w: int = 832, h: int = 1216) -> dict:
     """Regenera el character sheet (frontal, 3/4, perfil + retrato) desde la

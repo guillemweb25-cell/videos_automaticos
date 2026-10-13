@@ -527,6 +527,13 @@ class ApiClient {
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al generar'); }
     return res.json();
   }
+  async charInfluencer(payload: { prompt?: string; num_images: number; width?: number; height?: number; seed?: number | null; look?: string; hq?: boolean; provider?: string }): Promise<{ ok: boolean; prompt_id?: string; expected?: number; seed?: number; prompt_en?: string }> {
+    const res = await fetch(`${this.baseUrl}/characters/influencer`, {
+      method: 'POST', headers: this.getHeaders(true), body: JSON.stringify(payload),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error al generar'); }
+    return res.json();
+  }
   async charPoseFromImage(file: File, provider = 'openai'): Promise<{ ok: boolean; skeleton: string; preview: string; suggested_prompt?: string }> {
     const fd = new FormData();
     fd.append('file', file);

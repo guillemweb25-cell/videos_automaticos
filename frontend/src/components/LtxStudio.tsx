@@ -3,8 +3,9 @@ import LtxVideoGenerator from './LtxVideoGenerator';
 import CharacterGenerator from './CharacterGenerator';
 import CharacterImages from './CharacterImages';
 import CharacterFromRef from './CharacterFromRef';
+import InfluencerGenerator from './InfluencerGenerator';
 
-type Tab = 'video' | 'chars' | 'images' | 'ref';
+type Tab = 'video' | 'chars' | 'images' | 'ref' | 'influencer';
 
 /** Apartado "Vídeo LTX" con pestañas: vídeo, personajes e imágenes. */
 export default function LtxStudio() {
@@ -29,8 +30,13 @@ export default function LtxStudio() {
         {tabBtn('chars', '🧑‍🎨 Personajes')}
         {tabBtn('images', '🖼️ Imágenes')}
         {tabBtn('ref', '🎯 Desde referencia')}
+        {tabBtn('influencer', '🧍‍♀️ Influencers')}
       </div>
-      {tab === 'video' ? <LtxVideoGenerator /> : tab === 'chars' ? <CharacterGenerator /> : tab === 'images' ? <CharacterImages /> : <CharacterFromRef />}
+      {tab === 'video' ? <LtxVideoGenerator />
+        : tab === 'chars' ? <CharacterGenerator />
+        : tab === 'images' ? <CharacterImages />
+        : tab === 'ref' ? <CharacterFromRef />
+        : <InfluencerGenerator />}
     </div>
   );
 }
