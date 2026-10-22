@@ -33,6 +33,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
   const [shouldAutoRender, setShouldAutoRender] = useState(false);
   const [enableSubtitles, setEnableSubtitles] = useState(false);
   const [enableQr, setEnableQr] = useState(false);
+  const [renderMode, setRenderMode] = useState<'classic' | 'motion'>('classic');
   const [leonardoModels, setLeonardoModels] = useState<{ id: string, name: string }[]>([]);
   const [selectedModel, setSelectedModel] = useState('gpt-image-1.5'); // Default to GPT Image-1.5
   const [generationModes, setGenerationModes] = useState<{ id: string, name: string, cost: number }[]>([]);
@@ -435,7 +436,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
         setStatus('rendering');
         addLog('Iniciando renderizado del vídeo final en segundo plano...');
         const overlayArg = selectedOverlay === '' ? undefined : selectedOverlay;
-        await api.renderVideo(currentId, enableSubtitles, overlayArg, enableQr);
+        await api.renderVideo(currentId, enableSubtitles, overlayArg, enableQr, renderMode);
         addLog('Render lanzado. Quedará disponible en "Mis Generaciones" cuando termine.');
         setStatus('completed');
       } else {
@@ -646,6 +647,13 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
               disabled={isBusy}
             />
             <label htmlFor="enableQr" style={{ margin: 0, cursor: 'pointer' }} title="Muestra el QR de afiliado del canal arriba-derecha, 30s de cada minuto">QR de afiliado</label>
+          </div>
+          <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '10px' }}>
+            <label>Estilo de render</label>
+            <select value={renderMode} onChange={(e) => setRenderMode(e.target.value as 'classic' | 'motion')} disabled={isBusy} style={{ padding: '8px', borderRadius: '4px', background: '#334155', color: '#fff', border: '1px solid #475569' }}>
+              <option value="classic">Clásico (Ken Burns)</option>
+              <option value="motion">Motion (beta): animaciones, pantalla partida, textos</option>
+            </select>
           </div>
           <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '10px' }}>
             <label>Efecto Overlay</label>

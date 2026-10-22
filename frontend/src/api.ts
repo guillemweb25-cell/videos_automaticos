@@ -994,8 +994,9 @@ class ApiClient {
     return res.json();
   }
 
-  async renderVideo(videoId: number, subtitles: boolean = false, overlay?: string, qr: boolean = false): Promise<{ ok: boolean; background?: boolean; status?: string }> {
+  async renderVideo(videoId: number, subtitles: boolean = false, overlay?: string, qr: boolean = false, mode: 'classic' | 'motion' = 'classic'): Promise<{ ok: boolean; background?: boolean; status?: string }> {
     const url = new URL(`${this.baseUrl}/videos/${videoId}/render`);
+    if (mode !== 'classic') url.searchParams.append('mode', mode);
     if (subtitles) url.searchParams.append('subtitles', 'true');
     if (overlay) url.searchParams.append('overlay', overlay);
     if (qr) url.searchParams.append('qr', 'true');

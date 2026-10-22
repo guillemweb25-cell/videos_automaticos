@@ -36,6 +36,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [uploading, setUploading] = useState(false);
   const [enableSubtitles, setEnableSubtitles] = useState(false);
   const [enableQr, setEnableQr] = useState(false);
+  const [renderMode, setRenderMode] = useState<'classic' | 'motion'>('classic');
   const [audioRegenerating, setAudioRegenerating] = useState(false);
   const [audioPct, setAudioPct] = useState(0);
   const [availableOverlays, setAvailableOverlays] = useState<string[]>([]);
@@ -371,7 +372,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
     try {
       setRendering(true);
       const overlayArg = selectedOverlay === '' ? undefined : selectedOverlay;
-      await api.renderVideo(videoId, enableSubtitles, overlayArg, enableQr);
+      await api.renderVideo(videoId, enableSubtitles, overlayArg, enableQr, renderMode);
       alert('Render lanzado en segundo plano. Aparecerá listo en la lista de vídeos del canal cuando termine.');
       onClose();
     } catch (err) {
@@ -772,6 +773,16 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
               />
               QR de afiliado
             </label>
+            <select
+              value={renderMode}
+              onChange={(e) => setRenderMode(e.target.value as 'classic' | 'motion')}
+              disabled={rendering}
+              title="Motion: render con HyperFrames (animaciones, pantalla partida, textos y subtítulos animados)"
+              style={{ padding: '6px', borderRadius: '6px', background: '#334155', color: '#fff', border: '1px solid #475569', fontSize: '13px' }}
+            >
+              <option value="classic">Render clásico</option>
+              <option value="motion">Render motion (beta)</option>
+            </select>
             <button
               onClick={onClose}
               style={{

@@ -2475,7 +2475,7 @@ async def generate_seo(video_id: int, db: Session = Depends(get_db)):
     return {"ok": True, "description": description, "hashtags": hashtags, "tags": question_tags}
 
 @router.post("/{video_id}/render")
-async def render_video(video_id: int, subtitles: bool = False, overlay: str | None = None, qr: bool = False, db: Session = Depends(get_db)):
+async def render_video(video_id: int, subtitles: bool = False, overlay: str | None = None, qr: bool = False, mode: str = "classic", db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -2495,7 +2495,7 @@ async def render_video(video_id: int, subtitles: bool = False, overlay: str | No
     video.last_error = None
     db.commit()
 
-    def _do_render_sync(vid_id: int, subs: bool, ovl: str | None, show_qr: bool):
+    def _do_render_sync(vid_id: int, subs: bool, ovl: str | None, show_qr: bool, render_mode: str):
         """Runs in a thread executor so the event loop stays free for other requests."""
         from app.database import SessionLocal
         db_bg = SessionLocal()
@@ -2503,7 +2503,7 @@ async def render_video(video_id: int, subtitles: bool = False, overlay: str | No
             vid = db_bg.query(Video).filter(Video.id == vid_id).first()
             if not vid:
                 return
-            _render_video_blocking(vid, db_bg, subs, ovl, show_qr)
+            _render_video_blocking(vid, db_bg, subs, ovl, show_qr, render_mode)
         except Exception as e:
             print(f"[BG render] FAILED for video {vid_id}: {e}", flush=True)
             import traceback
@@ -2519,7 +2519,7 @@ async def render_video(video_id: int, subtitles: bool = False, overlay: str | No
     # Run the CPU-bound render in a thread so the asyncio event loop stays
     # responsive for other requests (status polls, UI navigation, etc).
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _do_render_sync, video_id, subtitles, overlay, qr)
+    loop.run_in_executor(None, _do_render_sync, video_id, subtitles, overlay, qr, mode)
 
     return {"ok": True, "background": True, "status": "rendering"}
 
@@ -2618,7 +2618,100 @@ def _ensure_seo_metadata(video, db):
         print(f"[seo] auto-SEO omitido para vídeo {getattr(video, 'id', None)}: {e}", flush=True)
 
 
-def _render_video_blocking(video, db, subtitles: bool, overlay: str | None, show_qr: bool = False):
+def _render_motion(video, db, image_paths, durs, audio_paths, out_path: Path, out_size,
+                   bg_music_path, overlay_path, subtitles: bool):
+    """Render "motion" con HyperFrames (ver services/motion_engine.py): director LLM →
+    composición HTML con plantillas + subtítulos animados → render en el servicio motion
+    del host → audio/loudnorm/overlay con FFmpeg."""
+    from app.services import motion_engine
+    from openai import OpenAI
+
+    base_dir = Path(video.base_dir)
+    output_dir = out_path.parent
+    progress_file = output_dir / "render_progress.txt"
+
+    # Segmentos contiguos (uno por imagen/clip) y su párrafo (de "p003_02" → 3).
+    segments, t = [], 0.0
+    for p, d in zip(image_paths, durs):
+        segments.append({"path": p, "start": t, "duration": d, "para": int(p.stem[1:4])})
+        t += d
+
+    # ── Tiempos por palabra (AssemblyAI) para los subtítulos animados ──
+    words = None
+    if subtitles:
+        settings = get_user_settings_for_video(video, db)
+        if not settings or not settings.assemblyai_api_key:
+            print("[motion] sin AssemblyAI API key: vídeo sin subtítulos", flush=True)
+        else:
+            from app.services.subtitle_engine import SubtitleEngine
+            from pydub import AudioSegment
+            newest_chunk = max(ap.stat().st_mtime for ap in audio_paths)
+            combined_audio = output_dir / "combined_audio.mp3"
+            if not combined_audio.exists() or combined_audio.stat().st_mtime < newest_chunk:
+                combined = AudioSegment.empty()
+                for ap in audio_paths:
+                    combined += AudioSegment.from_mp3(str(ap))
+                combined.export(str(combined_audio), format="mp3")
+            words_cache = output_dir / "subtitle_words.json"
+            if words_cache.exists() and words_cache.stat().st_mtime >= combined_audio.stat().st_mtime:
+                words = json.loads(words_cache.read_text())
+            else:
+                words = SubtitleEngine(api_key=settings.assemblyai_api_key).transcribe_words(combined_audio)
+                words_cache.write_text(json.dumps(words, indent=2), encoding="utf-8")
+    progress_file.write_text("3")
+
+    # ── Director de escenas (cacheado: borra motion_plan.json para regenerarlo) ──
+    plan_path = base_dir / "motion_plan.json"
+    scenes = None
+    if plan_path.exists():
+        cached = json.loads(plan_path.read_text())
+        if len(cached) == len(segments):
+            scenes = cached
+    if scenes is None:
+        spoken = {}
+        plan_file = base_dir / "plan.json"
+        if plan_file.exists():
+            for item in json.loads(plan_file.read_text()):
+                spoken[item.get("idx")] = item.get("spoken", "")
+        para_ids = list(dict.fromkeys(s["para"] for s in segments))
+        paragraphs = [{"text": spoken.get(pid, ""), "n_images": sum(1 for s in segments if s["para"] == pid)}
+                      for pid in para_ids]
+        client, model = None, "gpt-4o-mini"
+        settings = get_user_settings_for_video(video, db)
+        provider = video.llm_provider or "openai"
+        key = (settings.grok_api_key if provider == "grok" else settings.openai_api_key) if settings else None
+        if key:
+            if provider == "grok":
+                client, model = OpenAI(api_key=key, base_url="https://api.x.ai/v1"), "grok-4.20-beta"
+            else:
+                client = OpenAI(api_key=key)
+        scenes = [s for para in motion_engine.plan_scenes(paragraphs, client, model) for s in para]
+        plan_path.write_text(json.dumps(scenes, ensure_ascii=False, indent=2), encoding="utf-8")
+    progress_file.write_text("5")
+
+    # Tarjetas finales iguales que el clásico: miniatura (3 s) + logo del canal (2,5 s).
+    end_cards = []
+    if (output_dir / "thumbnail.png").exists():
+        end_cards.append({"path": output_dir / "thumbnail.png", "duration": 3.0, "kind": "thumb"})
+    if (base_dir.parent / "logo.png").exists():
+        end_cards.append({"path": base_dir.parent / "logo.png", "duration": 2.5, "kind": "logo"})
+
+    project_dir = base_dir / "motion"
+    _, total = motion_engine.build_composition(
+        project_dir, segments, scenes, words, out_size,
+        motion_engine.theme_for_channel(base_dir.parent.name), fps=24, end_cards=end_cards)
+
+    silent = output_dir / "__motion_silent.mp4"
+    motion_engine.render_project(project_dir, silent, fps=24, progress_file=progress_file)
+    progress_file.write_text("90")
+    motion_engine.mux_audio(silent, audio_paths, out_path, total, bg_music_path=bg_music_path,
+                            overlay_video_path=overlay_path, out_size=out_size)
+    silent.unlink(missing_ok=True)
+    progress_file.write_text("96")
+    print(f"[motion] render terminado: {out_path} ({total:.1f}s)", flush=True)
+
+
+def _render_video_blocking(video, db, subtitles: bool, overlay: str | None, show_qr: bool = False, mode: str = "classic"):
     """Original synchronous render logic, callable from background tasks."""
     try:
         base_dir = Path(video.base_dir)
@@ -2733,17 +2826,23 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None, show
         out_path = base_dir / "output/final_video.mp4"
         out_size = (video.width or 1024, video.height or 1792)
         
-        RenderingEngine.render_simple_slideshow(
-            image_paths=image_paths,
-            durations=durs,
-            audio_paths=audio_paths,
-            out_path=out_path,
-            out_size=out_size,
-            bg_music_path=bg_music_path,
-            overlay_video_path=overlay_path,
-            bg_music_volume=0.06,
-            voice_volume=1.6
-        )
+        if mode == "motion":
+            # Motion (HyperFrames): los subtítulos van dentro de la composición,
+            # así que no se queman después.
+            _render_motion(video, db, image_paths, durs, audio_paths, out_path, out_size,
+                           bg_music_path, overlay_path, subtitles)
+        else:
+            RenderingEngine.render_simple_slideshow(
+                image_paths=image_paths,
+                durations=durs,
+                audio_paths=audio_paths,
+                out_path=out_path,
+                out_size=out_size,
+                bg_music_path=bg_music_path,
+                overlay_video_path=overlay_path,
+                bg_music_volume=0.06,
+                voice_volume=1.6
+            )
 
         # ── QR de afiliado (arriba-derecha, 30s sí / 30s no) ──
         # AUTOMÁTICO: si el canal tiene affiliate_url configurado, se pone el QR
@@ -2767,7 +2866,7 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None, show
             # No romper el render por el QR.
 
         # ── Karaoke Subtitles ──
-        if subtitles:
+        if subtitles and mode != "motion":
             try:
                 (base_dir / "output" / "render_progress.txt").write_text("98")
             except Exception:
