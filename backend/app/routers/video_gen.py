@@ -2476,6 +2476,8 @@ async def generate_seo(video_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{video_id}/render")
 async def render_video(video_id: int, subtitles: bool = False, overlay: str | None = None, qr: bool = False, mode: str = "classic", db: Session = Depends(get_db)):
+    if mode not in ("classic", "motion", "documental"):
+        raise HTTPException(status_code=400, detail=f"Estilo de render desconocido: {mode}")
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -2618,17 +2620,113 @@ def _ensure_seo_metadata(video, db):
         print(f"[seo] auto-SEO omitido para vídeo {getattr(video, 'id', None)}: {e}", flush=True)
 
 
+def _collect_render_inputs(base_dir: Path, durations: list):
+    """Imágenes/clips por párrafo con su duración y los audios a concatenar
+    (compartido por el render clásico, motion y los previews)."""
+    image_paths = []
+    audio_paths = []
+    durs = []
+    
+    for d in durations:
+        idx = d["id"]
+
+        files_dict = {}
+        for ext in [".png", ".mp4"]:
+            for p in base_dir.glob(f"images/p{idx:03d}_*{ext}"):
+                files_dict[p.stem] = p
+
+        img_ps = sorted(files_dict.values(), key=lambda x: x.stem)
+
+        # Paragraph has no images: extend last visual to cover this paragraph's audio
+        # so the audio keeps playing without the rendered video freezing/ending.
+        if not img_ps:
+            p_total_dur = d["seconds"]
+            if durs:
+                print(f"[render] Paragraph {idx} has no images; extending previous visual by {p_total_dur:.1f}s", flush=True)
+                durs[-1] += p_total_dur
+                audio_paths.append(base_dir / "audio/chunks" / d["file"])
+            else:
+                # No previous image to extend either — skip whole paragraph (audio would
+                # play with nothing to show, which is worse).
+                print(f"[render] WARNING: Paragraph {idx} has no images and no previous visual to extend; skipping audio too.", flush=True)
+            continue
+        
+        v_ps = [p for p in img_ps if p.suffix.lower() == '.mp4']
+        i_ps = [p for p in img_ps if p.suffix.lower() == '.png']
+        
+        # Helper to get duration of an MP4
+        from moviepy.video.io.VideoFileClip import VideoFileClip
+        
+        p_total_dur = d["seconds"]
+        video_durations = []
+        sum_v_dur = 0
+        
+        for vp in v_ps:
+            try:
+                with VideoFileClip(str(vp)) as vc:
+                    vdur = vc.duration
+                    video_durations.append(vdur)
+                    sum_v_dur += vdur
+            except:
+                video_durations.append(4.0) # Fallback
+                sum_v_dur += 4.0
+
+        # If videos exceed paragraph duration, scale them down proportionally
+        if sum_v_dur > p_total_dur:
+            factor = p_total_dur / sum_v_dur
+            for i in range(len(video_durations)):
+                video_durations[i] *= factor
+            
+            # In this case images get almost no time, let's give them a tiny bit if they exist
+            for vp, vdur in zip(v_ps, video_durations):
+                image_paths.append(vp)
+                durs.append(vdur)
+            
+            if i_ps:
+                dur_per_img = 0.5 # Tiny flash for images if they exist but no time left
+                for ip in i_ps:
+                    image_paths.append(ip)
+                    durs.append(dur_per_img)
+        else:
+            # Videos take their natural duration
+            for vp, vdur in zip(v_ps, video_durations):
+                image_paths.append(vp)
+                durs.append(vdur)
+            
+            # Remaining time for images
+            rem_dur = p_total_dur - sum_v_dur
+            if i_ps:
+                dur_per_img = rem_dur / len(i_ps)
+                for ip in i_ps:
+                    image_paths.append(ip)
+                    durs.append(dur_per_img)
+            elif rem_dur > 0 and v_ps:
+                # If no images, distribute remaining time to the last video (stretch it)
+                durs[-1] += rem_dur
+        
+        audio_paths.append(base_dir / "audio/chunks" / d["file"])
+    
+    return image_paths, durs, audio_paths
+
+
 def _render_motion(video, db, image_paths, durs, audio_paths, out_path: Path, out_size,
-                   bg_music_path, overlay_path, subtitles: bool):
-    """Render "motion" con HyperFrames (ver services/motion_engine.py): director LLM →
-    composición HTML con plantillas + subtítulos animados → render en el servicio motion
-    del host → audio/loudnorm/overlay con FFmpeg."""
+                   bg_music_path, overlay_path, subtitles: bool, style: str = "motion",
+                   show_qr: bool = False, limit_secs: float | None = None):
+    """Render "motion" con HyperFrames: director LLM → composición HTML con plantillas +
+    subtítulos animados → render en el servicio motion del host → audio/loudnorm/overlay.
+    style: "motion" (dinámico, services/motion_engine.py) o "documental"
+    (services/motion_documental.py, con QR integrado si show_qr).
+    limit_secs: solo los primeros N segundos y sin tarjetas finales (previews)."""
     from app.services import motion_engine
     from openai import OpenAI
+    if style == "documental":
+        from app.services import motion_documental as styler
+    else:
+        styler = motion_engine
 
     base_dir = Path(video.base_dir)
-    output_dir = out_path.parent
-    progress_file = output_dir / "render_progress.txt"
+    output_dir = base_dir / "output"
+    progress_file = output_dir / ("preview_progress.txt" if limit_secs else "render_progress.txt")
 
     # Segmentos contiguos (uno por imagen/clip) y su párrafo (de "p003_02" → 3).
     segments, t = [], 0.0
@@ -2660,12 +2758,15 @@ def _render_motion(video, db, image_paths, durs, audio_paths, out_path: Path, ou
                 words_cache.write_text(json.dumps(words, indent=2), encoding="utf-8")
     progress_file.write_text("3")
 
-    # ── Director de escenas (cacheado: borra motion_plan.json para regenerarlo) ──
-    plan_path = base_dir / "motion_plan.json"
+    # ── Director de escenas (cacheado por estilo: borra el json para regenerarlo).
+    # Se planifica SIEMPRE el vídeo entero, así el preview y el render final coinciden.
+    plan_path = base_dir / ("motion_plan.json" if style == "motion" else f"motion_plan_{style}.json")
     scenes = None
+    # dinámico: una escena por imagen; documental: cada escena consume "images" imágenes.
+    n_used = (lambda sc: sum(styler.scene_image_counts(sc))) if style == "documental" else len
     if plan_path.exists():
         cached = json.loads(plan_path.read_text())
-        if len(cached) == len(segments):
+        if n_used(cached) == len(segments):
             scenes = cached
     if scenes is None:
         spoken = {}
@@ -2674,7 +2775,9 @@ def _render_motion(video, db, image_paths, durs, audio_paths, out_path: Path, ou
             for item in json.loads(plan_file.read_text()):
                 spoken[item.get("idx")] = item.get("spoken", "")
         para_ids = list(dict.fromkeys(s["para"] for s in segments))
-        paragraphs = [{"text": spoken.get(pid, ""), "n_images": sum(1 for s in segments if s["para"] == pid)}
+        paragraphs = [{"text": spoken.get(pid, ""),
+                       "n_images": sum(1 for s in segments if s["para"] == pid),
+                       "secs": sum(s["duration"] for s in segments if s["para"] == pid)}
                       for pid in para_ids]
         client, model = None, "gpt-4o-mini"
         settings = get_user_settings_for_video(video, db)
@@ -2685,21 +2788,46 @@ def _render_motion(video, db, image_paths, durs, audio_paths, out_path: Path, ou
                 client, model = OpenAI(api_key=key, base_url="https://api.x.ai/v1"), "grok-4.20-beta"
             else:
                 client = OpenAI(api_key=key)
-        scenes = [s for para in motion_engine.plan_scenes(paragraphs, client, model) for s in para]
+        scenes = [s for para in styler.plan_scenes(paragraphs, client, model) for s in para]
         plan_path.write_text(json.dumps(scenes, ensure_ascii=False, indent=2), encoding="utf-8")
     progress_file.write_text("5")
 
+    if limit_secs:
+        if style == "documental":
+            kept, used = [], 0
+            for sc, k in zip(scenes, styler.scene_image_counts(scenes)):
+                if segments[used]["start"] >= limit_secs:
+                    break
+                kept.append(sc)
+                used += k
+            scenes, segments = kept, segments[:used]
+        else:
+            keep = [k for k, s in enumerate(segments) if s["start"] < limit_secs]
+            segments, scenes = [segments[k] for k in keep], [scenes[k] for k in keep]
+
     # Tarjetas finales iguales que el clásico: miniatura (3 s) + logo del canal (2,5 s).
     end_cards = []
-    if (output_dir / "thumbnail.png").exists():
-        end_cards.append({"path": output_dir / "thumbnail.png", "duration": 3.0, "kind": "thumb"})
-    if (base_dir.parent / "logo.png").exists():
-        end_cards.append({"path": base_dir.parent / "logo.png", "duration": 2.5, "kind": "logo"})
+    if not limit_secs:
+        if (output_dir / "thumbnail.png").exists():
+            end_cards.append({"path": output_dir / "thumbnail.png", "duration": 3.0, "kind": "thumb"})
+        if (base_dir.parent / "logo.png").exists():
+            end_cards.append({"path": base_dir.parent / "logo.png", "duration": 2.5, "kind": "logo"})
 
-    project_dir = base_dir / "motion"
-    _, total = motion_engine.build_composition(
-        project_dir, segments, scenes, words, out_size,
-        motion_engine.theme_for_channel(base_dir.parent.name), fps=24, end_cards=end_cards)
+    project_dir = base_dir / ("motion" if style == "motion" else f"motion_{style}")
+    theme = styler.theme_for_channel(base_dir.parent.name)
+    if style == "documental":
+        # QR integrado en la composición (sirve igual en horizontal y en shorts) solo si se
+        # marca la casilla y el canal tiene affiliate_url.
+        qr = None
+        if show_qr:
+            channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
+            aff_url = (channel.affiliate_url or "").strip() if channel else ""
+            qr = {"url": aff_url} if aff_url else None
+        _, total = styler.build_composition(project_dir, segments, scenes, words, out_size, theme,
+                                            fps=24, end_cards=end_cards, qr=qr)
+    else:
+        _, total = styler.build_composition(project_dir, segments, scenes, words, out_size, theme,
+                                            fps=24, end_cards=end_cards)
 
     silent = output_dir / "__motion_silent.mp4"
     motion_engine.render_project(project_dir, silent, fps=24, progress_file=progress_file)
@@ -2720,90 +2848,8 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None, show
             raise HTTPException(status_code=400, detail="Audio not generated")
 
         durations = json.loads(durations_path.read_text())
-        
-        image_paths = []
-        audio_paths = []
-        durs = []
-        
-        for d in durations:
-            idx = d["id"]
+        image_paths, durs, audio_paths = _collect_render_inputs(base_dir, durations)
 
-            files_dict = {}
-            for ext in [".png", ".mp4"]:
-                for p in base_dir.glob(f"images/p{idx:03d}_*{ext}"):
-                    files_dict[p.stem] = p
-
-            img_ps = sorted(files_dict.values(), key=lambda x: x.stem)
-
-            # Paragraph has no images: extend last visual to cover this paragraph's audio
-            # so the audio keeps playing without the rendered video freezing/ending.
-            if not img_ps:
-                p_total_dur = d["seconds"]
-                if durs:
-                    print(f"[render] Paragraph {idx} has no images; extending previous visual by {p_total_dur:.1f}s", flush=True)
-                    durs[-1] += p_total_dur
-                    audio_paths.append(base_dir / "audio/chunks" / d["file"])
-                else:
-                    # No previous image to extend either — skip whole paragraph (audio would
-                    # play with nothing to show, which is worse).
-                    print(f"[render] WARNING: Paragraph {idx} has no images and no previous visual to extend; skipping audio too.", flush=True)
-                continue
-            
-            v_ps = [p for p in img_ps if p.suffix.lower() == '.mp4']
-            i_ps = [p for p in img_ps if p.suffix.lower() == '.png']
-            
-            # Helper to get duration of an MP4
-            from moviepy.video.io.VideoFileClip import VideoFileClip
-            
-            p_total_dur = d["seconds"]
-            video_durations = []
-            sum_v_dur = 0
-            
-            for vp in v_ps:
-                try:
-                    with VideoFileClip(str(vp)) as vc:
-                        vdur = vc.duration
-                        video_durations.append(vdur)
-                        sum_v_dur += vdur
-                except:
-                    video_durations.append(4.0) # Fallback
-                    sum_v_dur += 4.0
-
-            # If videos exceed paragraph duration, scale them down proportionally
-            if sum_v_dur > p_total_dur:
-                factor = p_total_dur / sum_v_dur
-                for i in range(len(video_durations)):
-                    video_durations[i] *= factor
-                
-                # In this case images get almost no time, let's give them a tiny bit if they exist
-                for vp, vdur in zip(v_ps, video_durations):
-                    image_paths.append(vp)
-                    durs.append(vdur)
-                
-                if i_ps:
-                    dur_per_img = 0.5 # Tiny flash for images if they exist but no time left
-                    for ip in i_ps:
-                        image_paths.append(ip)
-                        durs.append(dur_per_img)
-            else:
-                # Videos take their natural duration
-                for vp, vdur in zip(v_ps, video_durations):
-                    image_paths.append(vp)
-                    durs.append(vdur)
-                
-                # Remaining time for images
-                rem_dur = p_total_dur - sum_v_dur
-                if i_ps:
-                    dur_per_img = rem_dur / len(i_ps)
-                    for ip in i_ps:
-                        image_paths.append(ip)
-                        durs.append(dur_per_img)
-                elif rem_dur > 0 and v_ps:
-                    # If no images, distribute remaining time to the last video (stretch it)
-                    durs[-1] += rem_dur
-            
-            audio_paths.append(base_dir / "audio/chunks" / d["file"])
-        
         if not image_paths:
             raise HTTPException(status_code=400, detail="No images found for rendering")
 
@@ -2826,11 +2872,11 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None, show
         out_path = base_dir / "output/final_video.mp4"
         out_size = (video.width or 1024, video.height or 1792)
         
-        if mode == "motion":
+        if mode in ("motion", "documental"):
             # Motion (HyperFrames): los subtítulos van dentro de la composición,
             # así que no se queman después.
             _render_motion(video, db, image_paths, durs, audio_paths, out_path, out_size,
-                           bg_music_path, overlay_path, subtitles)
+                           bg_music_path, overlay_path, subtitles, style=mode, show_qr=show_qr)
         else:
             RenderingEngine.render_simple_slideshow(
                 image_paths=image_paths,
@@ -2851,7 +2897,9 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None, show
         try:
             channel = db.query(Channel).filter(Channel.id == video.channel_id).first()
             aff_url = (channel.affiliate_url or "").strip() if channel else ""
-            if aff_url:
+            if mode == "documental":
+                pass  # el QR va integrado en la composición (según la casilla)
+            elif aff_url:
                 RenderingEngine.apply_qr_overlay(
                     video_path=out_path,
                     out_size=out_size,
@@ -2866,7 +2914,7 @@ def _render_video_blocking(video, db, subtitles: bool, overlay: str | None, show
             # No romper el render por el QR.
 
         # ── Karaoke Subtitles ──
-        if subtitles and mode != "motion":
+        if subtitles and mode not in ("motion", "documental"):
             try:
                 (base_dir / "output" / "render_progress.txt").write_text("98")
             except Exception:

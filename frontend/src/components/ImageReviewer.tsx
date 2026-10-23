@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, API_URL } from '../api';
+import { api, API_URL, type RenderMode } from '../api';
 
 interface ImageReviewerProps {
   videoId: number;
@@ -36,7 +36,7 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
   const [uploading, setUploading] = useState(false);
   const [enableSubtitles, setEnableSubtitles] = useState(false);
   const [enableQr, setEnableQr] = useState(false);
-  const [renderMode, setRenderMode] = useState<'classic' | 'motion'>('classic');
+  const [renderMode, setRenderMode] = useState<RenderMode>('classic');
   const [audioRegenerating, setAudioRegenerating] = useState(false);
   const [audioPct, setAudioPct] = useState(0);
   const [availableOverlays, setAvailableOverlays] = useState<string[]>([]);
@@ -775,13 +775,14 @@ const ImageReviewer: React.FC<ImageReviewerProps> = ({ videoId, onClose }) => {
             </label>
             <select
               value={renderMode}
-              onChange={(e) => setRenderMode(e.target.value as 'classic' | 'motion')}
+              onChange={(e) => setRenderMode(e.target.value as RenderMode)}
               disabled={rendering}
               title="Motion: render con HyperFrames (animaciones, pantalla partida, textos y subtítulos animados)"
               style={{ padding: '6px', borderRadius: '6px', background: '#334155', color: '#fff', border: '1px solid #475569', fontSize: '13px' }}
             >
               <option value="classic">Render clásico</option>
               <option value="motion">Render motion (beta)</option>
+              <option value="documental">Render documental (beta)</option>
             </select>
             <button
               onClick={onClose}

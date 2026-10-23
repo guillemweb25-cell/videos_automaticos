@@ -1,3 +1,6 @@
+// Estilo de render: clásico (Ken Burns) o, con HyperFrames, motion (dinámico) y documental (editorial).
+export type RenderMode = 'classic' | 'motion' | 'documental';
+
 export interface Video {
   id: number;
   title: string;
@@ -994,7 +997,7 @@ class ApiClient {
     return res.json();
   }
 
-  async renderVideo(videoId: number, subtitles: boolean = false, overlay?: string, qr: boolean = false, mode: 'classic' | 'motion' = 'classic'): Promise<{ ok: boolean; background?: boolean; status?: string }> {
+  async renderVideo(videoId: number, subtitles: boolean = false, overlay?: string, qr: boolean = false, mode: RenderMode = 'classic'): Promise<{ ok: boolean; background?: boolean; status?: string }> {
     const url = new URL(`${this.baseUrl}/videos/${videoId}/render`);
     if (mode !== 'classic') url.searchParams.append('mode', mode);
     if (subtitles) url.searchParams.append('subtitles', 'true');

@@ -1,5 +1,5 @@
 import React, { useState, ChangeEvent, useRef } from 'react';
-import { api, type VideoResponse, type ChannelResponse } from '../api';
+import { api, type VideoResponse, type ChannelResponse, type RenderMode } from '../api';
 import VideoUploadModal from './VideoUploadModal';
 
 interface VideoCreatorProps {
@@ -33,7 +33,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
   const [shouldAutoRender, setShouldAutoRender] = useState(false);
   const [enableSubtitles, setEnableSubtitles] = useState(false);
   const [enableQr, setEnableQr] = useState(false);
-  const [renderMode, setRenderMode] = useState<'classic' | 'motion'>('classic');
+  const [renderMode, setRenderMode] = useState<RenderMode>('classic');
   const [leonardoModels, setLeonardoModels] = useState<{ id: string, name: string }[]>([]);
   const [selectedModel, setSelectedModel] = useState('gpt-image-1.5'); // Default to GPT Image-1.5
   const [generationModes, setGenerationModes] = useState<{ id: string, name: string, cost: number }[]>([]);
@@ -650,9 +650,10 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
           </div>
           <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '10px' }}>
             <label>Estilo de render</label>
-            <select value={renderMode} onChange={(e) => setRenderMode(e.target.value as 'classic' | 'motion')} disabled={isBusy} style={{ padding: '8px', borderRadius: '4px', background: '#334155', color: '#fff', border: '1px solid #475569' }}>
+            <select value={renderMode} onChange={(e) => setRenderMode(e.target.value as RenderMode)} disabled={isBusy} style={{ padding: '8px', borderRadius: '4px', background: '#334155', color: '#fff', border: '1px solid #475569' }}>
               <option value="classic">Clásico (Ken Burns)</option>
               <option value="motion">Motion (beta): animaciones, pantalla partida, textos</option>
+              <option value="documental">Documental (beta): fotos impresas, titulares y cifras</option>
             </select>
           </div>
           <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '10px' }}>
