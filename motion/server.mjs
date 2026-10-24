@@ -9,7 +9,7 @@
 // Un render a la vez (Chrome + encoder ya usan todos los núcleos); el resto espera en cola.
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, renameSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -86,6 +86,33 @@ http.createServer((req, res) => {
       console.log(`[motion] job ${job.id} en cola: ${projectDir}`);
       runNext();
       send(res, 200, { id: job.id });
+    });
+    return;
+  }
+  // Captura un fotograma fijo como PNG (miniaturas). Rápido: no pasa por la cola de renders.
+  if (req.method === "POST" && req.url === "/snapshot") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      let p;
+      try { p = JSON.parse(body); } catch { return send(res, 400, { error: "JSON inválido" }); }
+      const projectDir = toHost(p.projectDir);
+      const output = toHost(p.output);
+      if (!projectDir || !output) return send(res, 400, { error: `rutas fuera de ${FROM_ROOT}` });
+      if (!existsSync(path.join(projectDir, "index.html"))) return send(res, 400, { error: "falta index.html" });
+      const at = Number(p.at) || 0.5;
+      const outDir = path.join(projectDir, ".snap");
+      const args = [CLI, "snapshot", projectDir, "--at", String(at), "--no-end", "--keep", "-o", outDir, "--describe", "false"];
+      const child = spawn(process.execPath, args, { cwd: projectDir, env: process.env });
+      let tail = "";
+      child.stdout.on("data", (b) => (tail = (tail + b).slice(-2000)));
+      child.stderr.on("data", (b) => (tail = (tail + b).slice(-2000)));
+      child.on("close", (code) => {
+        const png = path.join(outDir, `at-${at}s.png`);
+        if (code !== 0 || !existsSync(png)) return send(res, 500, { error: `snapshot exit ${code}: ${tail}` });
+        try { renameSync(png, output); } catch (e) { return send(res, 500, { error: String(e) }); }
+        send(res, 200, { ok: true });
+      });
     });
     return;
   }

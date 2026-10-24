@@ -24,6 +24,10 @@ SCOPES = [
 # Allow scope changes (Google sometimes returns scopes in different formats)
 os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
 
+# client_secret.json global opcional (backend/youtube_creds/client_secret.json → /app/youtube_creds):
+# si un canal no tiene el suyo, se copia este al iniciar el OAuth.
+YOUTUBE_CREDS_BASE = Path("youtube_creds")
+
 class YouTubeService:
     @staticmethod
     def get_creds_dir(channel_id: int, user_id: int, channel_name: str) -> Path:
@@ -79,8 +83,9 @@ class YouTubeService:
                 return None
         return creds
 
-    def get_auth_url(self, redirect_uri: str):
-        """Generates the authorization URL for Google OAuth."""
+    def get_auth_url(self, redirect_uri: str, state: str | None = None):
+        """Generates the authorization URL for Google OAuth. `state` vuelve tal cual en la
+        redirección (la app manda ahí el id del canal que inició la vinculación)."""
         if not self.secret_path.exists():
             # Check if there's a global one
             global_secret = YOUTUBE_CREDS_BASE / "client_secret.json"
@@ -107,6 +112,8 @@ class YouTubeService:
             "prompt": "consent",
             "include_granted_scopes": "true"
         }
+        if state:
+            params["state"] = state
         import urllib.parse
         auth_url = f"{auth_uri}?{urllib.parse.urlencode(params)}"
         return auth_url

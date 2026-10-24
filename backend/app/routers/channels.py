@@ -248,13 +248,9 @@ def get_youtube_auth_url(
     
     yt = YouTubeService(channel.id, channel.user_id, channel.name)
     try:
-        # Use state to pass channel_id back to callback
-        import json
-        state = json.dumps({"channel_id": channel_id})
-        auth_url = yt.get_auth_url(redirect_uri)
-        # Append state to auth_url if not already there managed by library
-        # Actually InstalledAppFlow.authorization_url handles state
-        # But we use our wrapper. Let's fix YouTubeService to accept state.
+        # El state vuelve en la redirección de Google: así el callback sabe qué canal inició
+        # la vinculación aunque el dashboard abierto al volver sea otro.
+        auth_url = yt.get_auth_url(redirect_uri, state=f"channel:{channel_id}")
         return {"auth_url": auth_url}
     except FileNotFoundError:
         raise HTTPException(status_code=400, detail="Falta el archivo client_secret.json en el servidor para este canal.")
@@ -269,10 +265,10 @@ async def get_youtube_info(
 ):
     """Obtiene información del canal de YouTube (suscriptores, vistas)."""
     channel = db.query(Channel).filter(Channel.id == channel_id, Channel.user_id == current_user.id).first()
-    if not channel or not channel.creds_dir:
+    if not channel:
         return {"error": "No configurado"}
-    
-    yt = YouTubeService(channel.creds_dir)
+
+    yt = YouTubeService(channel.id, channel.user_id, channel.name)
     if not yt.is_authenticated():
         return {"error": "No autenticado"}
     
@@ -294,10 +290,11 @@ def youtube_callback(
     code: str,
     channel_id: int,
     redirect_uri: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Finaliza el flujo de OAuth guardando el token."""
-    channel = db.query(Channel).filter(Channel.id == channel_id).first()
+    """Finaliza el flujo de OAuth guardando el token (solo en canales del usuario logueado)."""
+    channel = db.query(Channel).filter(Channel.id == channel_id, Channel.user_id == current_user.id).first()
     if not channel:
         raise HTTPException(status_code=404, detail="Canal no encontrado")
     

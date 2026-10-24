@@ -161,6 +161,22 @@ async def list_channel_downloads(
     files = YouTubeDLService.list_downloads(channel.name)
     return files
 
+def _related_video(video, db) -> Optional[dict]:
+    """Para un short promocional: el vídeo largo del que sale (para ponerlo como "Vídeo
+    relacionado" a mano en la app de YouTube: la API no permite fijarlo)."""
+    if not video.is_short or not video.base_dir:
+        return None
+    try:
+        plan = json.loads((Path(video.base_dir) / "promo_plan.json").read_text(encoding="utf-8"))
+        src = db.query(Video).filter(Video.id == plan.get("source_video")).first()
+    except Exception:
+        return None
+    if not src:
+        return None
+    return {"id": src.id, "title": src.youtube_title or src.title or "",
+            "url": f"https://youtu.be/{src.youtube_video_id}" if src.youtube_video_id else None}
+
+
 @router.get("/{video_id}/metadata")
 async def get_video_metadata(
     video_id: int,
@@ -170,8 +186,20 @@ async def get_video_metadata(
     video = db.query(Video).join(Channel).filter(Video.id == video_id, Channel.user_id == current_user.id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Vídeo no encontrado")
-        
+
+    # Texto de la miniatura guardado (para el editor de miniaturas HyperFrames del modal).
+    thumbnail_hook = ""
+    try:
+        prompts = Path(video.base_dir) / "image_prompts_all.json"
+        if prompts.exists():
+            thumbnail_hook = (json.loads(prompts.read_text()).get("thumbnail") or {}).get("hook") or ""
+    except Exception:
+        pass
+
     return {
+        "thumbnail_hook": thumbnail_hook,
+        "is_short": bool(video.is_short),
+        "related_video": _related_video(video, db),
         "title": video.youtube_title or video.title,
         "description": video.youtube_description or "",
         "tags": video.youtube_tags or "",
@@ -218,7 +246,15 @@ async def upload_video_to_youtube(
             except Exception as e:
                 print(f"Error uploading thumbnail: {e}")
                 
-        return {"status": "success", "youtube_id": youtube_id}
+        related = _related_video(video, db)
+        if related and youtube_id:
+            from app.services.telegram_service import send_telegram
+            send_telegram(
+                f"📱 Short subido: {video.youtube_title or video.title}\nhttps://youtu.be/{youtube_id}\n\n"
+                f"👉 Ponle como VÍDEO RELACIONADO (app de YouTube → editar):\n{related['title']}\n"
+                f"{related['url'] or '(el vídeo largo aún no está subido)'}\n"
+                f"Y como miniatura, la portada fija del final.")
+        return {"status": "success", "youtube_id": youtube_id, "related_video": related}
     except Exception as e:
         import traceback
         traceback.print_exc()

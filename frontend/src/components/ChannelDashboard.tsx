@@ -154,19 +154,21 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
     if (code) {
+      // El state ("channel:<id>") dice qué canal inició la vinculación.
+      const stateMatch = /^channel:(\d+)$/.exec(urlParams.get('state') || '');
       // Clear URL params immediately
       window.history.replaceState({}, document.title, window.location.pathname);
-      handleOAuthCallback(code);
+      handleOAuthCallback(code, stateMatch ? Number(stateMatch[1]) : channel.id);
     }
   }, [channel]);
 
-  const handleOAuthCallback = async (code: string) => {
+  const handleOAuthCallback = async (code: string, channelId: number) => {
     setLoading(true);
     try {
       // Use the origin as a predictable redirect URI (with trailing slash)
       const redirectUri = window.location.origin + "/";
       console.log("Finishing OAuth with redirectUri:", redirectUri);
-      await api.finishYouTubeOAuth(channel.id, code, redirectUri);
+      await api.finishYouTubeOAuth(channelId, code, redirectUri);
       setUpdateStatus({msg: '¡Cuenta vinculada correctamente!', type: 'success'});
       loadYouTubeData();
     } catch (err: any) {
@@ -1034,11 +1036,48 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
                                   </button>
                                 )}
                                 <button className="btn-link" style={{ color: '#38bdf8' }} onClick={() => setPreviewVideo(g)}>▶ Previsualizar</button>
+                                {!g.is_short && (
+                                  <button
+                                    className="btn-link"
+                                    style={{ color: '#f472b6' }}
+                                    title="Crea un vídeo nuevo vertical (~40 s) con las mejores frases de este vídeo y motion graphics"
+                                    onClick={async () => {
+                                      const withQr = confirm('Short promocional: ¿incluir el QR de afiliado del canal en la tarjeta final?');
+                                      try {
+                                        await api.createPromoShort(g.id, withQr);
+                                        alert('Short promocional en marcha. Aparecerá en esta lista como vídeo nuevo (tarda unos minutos).');
+                                        await loadGenerations();
+                                      } catch (err: any) {
+                                        alert('Error: ' + err.message);
+                                      }
+                                    }}
+                                  >
+                                    📱 Short promocional
+                                  </button>
+                                )}
                                 <button className="btn-link">Ver Carpeta</button>
                               </>
                             ) : (
                               <>
-                                <button className="btn-link" onClick={() => { setSelectedVideo(g); setActiveTab('create'); }}>Continuar</button>
+                                {g.is_short && g.status === 'failed' ? (
+                                  <button
+                                    className="btn-link"
+                                    style={{ color: '#f472b6' }}
+                                    title="Vuelve a renderizar este short promocional con su mismo plan"
+                                    onClick={async () => {
+                                      try {
+                                        await api.retryPromoShort(g.id);
+                                        await loadGenerations();
+                                      } catch (err: any) {
+                                        alert('Error: ' + err.message);
+                                      }
+                                    }}
+                                  >
+                                    🔁 Reintentar short
+                                  </button>
+                                ) : (
+                                  <button className="btn-link" onClick={() => { setSelectedVideo(g); setActiveTab('create'); }}>Continuar</button>
+                                )}
                                 {g.status === 'audio_ready' && (
                                   <button
                                     className="btn-link"

@@ -22,6 +22,7 @@ export interface VideoResponse extends Video {
   max_images_per_paragraph?: number;
   llm_provider?: string;
   rendered_at?: string | null;
+  is_short?: boolean;
 }
 
 export interface ParagraphPrompt {
@@ -1015,6 +1016,34 @@ class ApiClient {
     return res.json();
   }
 
+  // Reintenta un short promocional fallido (mismo registro y mismo plan).
+  async retryPromoShort(videoId: number): Promise<{ ok: boolean; background?: boolean }> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/promo-short/retry`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al reintentar el short');
+    }
+    return res.json();
+  }
+
+  // Short promocional (vídeo nuevo vertical) a partir de un vídeo ya renderizado.
+  async createPromoShort(videoId: number, qr: boolean = false): Promise<{ ok: boolean; background?: boolean }> {
+    const url = new URL(`${this.baseUrl}/videos/${videoId}/promo-short`);
+    if (qr) url.searchParams.append('qr', 'true');
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: this.getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al crear el short promocional');
+    }
+    return res.json();
+  }
+
   async getRenderProgress(videoId: number): Promise<{ progress: number; status: string; last_error: string | null }> {
     const res = await fetch(`${this.baseUrl}/videos/${videoId}/render-progress`, {
       headers: this.getHeaders(true),
@@ -1272,12 +1301,30 @@ class ApiClient {
     return res.json();
   }
 
+  // Miniatura con tipografía HyperFrames (épico / documental / impacto) sobre la imagen IA
+  // (image = undefined) o la n-ésima imagen del vídeo. Sobrescribe thumbnail.png.
+  async thumbnailMotion(videoId: number, opts: { template: string; hook?: string; kicker?: string; charSide?: string; image?: number }): Promise<{ ok: boolean; hook: string; image: string; url: string }> {
+    const res = await fetch(`${this.baseUrl}/videos/${videoId}/thumbnail-motion`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: JSON.stringify({ template: opts.template, hook: opts.hook, kicker: opts.kicker, char_side: opts.charSide, image: opts.image ?? null }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al generar la miniatura');
+    }
+    return res.json();
+  }
+
   // YouTube Upload & SEO
   async getVideoMetadata(videoId: number): Promise<{
     title: string;
     description: string;
     tags: string;
     thumbnail_url: string;
+    thumbnail_hook?: string;
+    is_short?: boolean;
+    related_video?: { id: number; title: string; url: string | null } | null;
     is_uploaded?: boolean;
     youtube_video_id?: string;
     channel_description_header?: string;
@@ -1289,7 +1336,7 @@ class ApiClient {
     return res.json();
   }
 
-  async uploadToYouTube(videoId: number, metadata: any): Promise<{ status: string, youtube_id: string }> {
+  async uploadToYouTube(videoId: number, metadata: any): Promise<{ status: string, youtube_id: string, related_video?: { id: number; title: string; url: string | null } | null }> {
     const res = await fetch(`${this.baseUrl}/youtube/${videoId}/upload`, {
       method: 'POST',
       headers: this.getHeaders(true),

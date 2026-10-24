@@ -32,6 +32,10 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
   const [ytRegenCtx, setYtRegenCtx] = useState(true);
   const [ytTextAngle, setYtTextAngle] = useState<number>(0);
   const [thumbBusy, setThumbBusy] = useState<string | null>(null);
+  // Miniatura HyperFrames
+  const [hfHook, setHfHook] = useState('');
+  const [hfKicker, setHfKicker] = useState('');
+  const [hfImage, setHfImage] = useState<number | undefined>(undefined); // undefined = imagen IA
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const loadMetadata = async () => {
@@ -41,6 +45,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
       const res = await api.getVideoMetadata(videoId);
       setMetadata(res);
       setTitle(res.title || '');
+      setHfHook(res.thumbnail_hook || '');
       setDescription(res.description || '');
       setTags(res.tags || '');
     } catch (err: any) {
@@ -133,6 +138,43 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
     }
   };
 
+  const handleHookAI = async () => {
+    setThumbBusy('hf-hook');
+    try {
+      const r = await api.regenerateThumbnailHook(videoId);
+      setHfHook(r.hook || '');
+    } catch (err: any) {
+      setUploadStatus(`Error al generar el texto: ${err.message || ''}`);
+    } finally {
+      setThumbBusy(null);
+    }
+  };
+
+  const handleShortCoverRender = async () => {
+    setThumbBusy('cover');
+    try {
+      await api.retryPromoShort(videoId);
+      setUploadStatus('Re-renderizando el short con la nueva portada (unos minutos). Aparecerá como listo en Mis Generaciones.');
+    } catch (err: any) {
+      setUploadStatus(`Error al re-renderizar: ${err.message || ''}`);
+    } finally {
+      setThumbBusy(null);
+    }
+  };
+
+  const handleThumbnailMotion = async (template: string) => {
+    setThumbBusy(`hf-${template}`);
+    try {
+      const r = await api.thumbnailMotion(videoId, { template, hook: hfHook, kicker: hfKicker, charSide: ytCharSide, image: hfImage });
+      setHfHook(r.hook);
+      setThumbnailBust(Date.now());
+    } catch (err: any) {
+      setUploadStatus(`Error en la miniatura HyperFrames: ${err.message || ''}`);
+    } finally {
+      setThumbBusy(null);
+    }
+  };
+
   const handleUploadThumbnailFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -169,6 +211,11 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
           privacy_status: privacyStatus,
           publish_at: publishAt || undefined
         });
+        if (res.related_video) {
+          setUploadStatus(`¡Short subido! ID: ${res.youtube_id}. Ahora, en la app de YouTube, ponle como vídeo relacionado: "${res.related_video.title}"${res.related_video.url ? ` (${res.related_video.url})` : ' (aún no subido)'} y elige la portada final como miniatura. (También te llega por Telegram.)`);
+          await loadMetadata(); // ya está subido: el botón pasa a "Sincronizar" y no se resube
+          return;
+        }
         setUploadStatus(`¡Vídeo subido con éxito! ID: ${res.youtube_id}`);
       }
       setTimeout(() => onClose(), 2000);
@@ -296,6 +343,74 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({ videoId, onClose })
                     onChange={handleUploadThumbnailFile}
                     style={{ display: 'none' }}
                   />
+                </div>
+                {metadata?.is_short && (
+                  <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', background: '#111827', border: '1px solid #374151', fontSize: '0.75rem', color: '#cbd5e1', lineHeight: 1.4 }}>
+                    <b style={{ color: '#f472b6' }}>Short:</b> YouTube no deja poner su miniatura ni el vídeo relacionado por API.
+                    Diseña abajo la portada (sale en vertical), pulsa <b>Meter portada en el vídeo</b> y, tras subirlo,
+                    en la app de YouTube → editar el short:
+                    <br />• <b>Miniatura:</b> elige un fotograma de la portada fija del final.
+                    {metadata?.related_video && (
+                      <>
+                        <br />• <b>Vídeo relacionado:</b> {metadata.related_video.title}
+                        {metadata.related_video.url
+                          ? <> (<a href={metadata.related_video.url} target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>{metadata.related_video.url}</a>)</>
+                          : <span style={{ color: '#fbbf24' }}> (aún no está subido: súbelo primero)</span>}
+                      </>
+                    )}
+                  </div>
+                )}
+                <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', background: '#111827', border: '1px solid #374151' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#f472b6', fontWeight: 700 }}>
+                    Miniatura HyperFrames (beta){metadata?.is_short ? ' · vertical' : ''}
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <input value={hfHook} onChange={(e) => setHfHook(e.target.value)} disabled={!!thumbBusy}
+                    placeholder="Texto: LÍNEA 1... LÍNEA 2  (o PANTEÓN: HUESOS SAGRADOS)"
+                    style={{ width: '100%', marginTop: '6px', padding: '6px', borderRadius: '6px', border: '1px solid #475569', background: '#1f2937', color: 'white', fontSize: '0.78rem', boxSizing: 'border-box' }} />
+                  <button type="button" onClick={handleHookAI} disabled={!!thumbBusy} title="Genera el texto con IA a partir del guion"
+                    style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.72rem', color: 'white', marginTop: '6px', fontWeight: 600, background: '#7c3aed', whiteSpace: 'nowrap' }}>
+                    {thumbBusy === 'hf-hook' ? '…' : '✨ IA'}
+                  </button>
+                  </div>
+                  <input value={hfKicker} onChange={(e) => setHfKicker(e.target.value)} disabled={!!thumbBusy}
+                    placeholder="Etiqueta pequeña opcional (ej. 1 de noviembre)"
+                    style={{ width: '100%', marginTop: '6px', padding: '6px', borderRadius: '6px', border: '1px solid #475569', background: '#1f2937', color: 'white', fontSize: '0.78rem', boxSizing: 'border-box' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>Imagen:</span>
+                    <button type="button" onClick={() => setHfImage(undefined)} disabled={!!thumbBusy}
+                      style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.72rem', color: 'white', fontWeight: 600, background: hfImage === undefined ? '#7c3aed' : '#374151' }}>IA</button>
+                    <button type="button" onClick={() => setHfImage(Math.max(0, (hfImage ?? 0) - 1))} disabled={!!thumbBusy}
+                      style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.72rem', color: 'white', background: '#374151' }}>◀</button>
+                    <button type="button" onClick={() => setHfImage(hfImage ?? 0)} disabled={!!thumbBusy}
+                      style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.72rem', color: 'white', fontWeight: 600, background: hfImage !== undefined ? '#7c3aed' : '#374151' }}>
+                      Del vídeo {hfImage !== undefined ? `#${hfImage + 1}` : ''}
+                    </button>
+                    <button type="button" onClick={() => setHfImage((hfImage ?? -1) + 1)} disabled={!!thumbBusy}
+                      style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.72rem', color: 'white', background: '#374151' }}>▶</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                    {[['epico', 'Épico'], ['documental', 'Documental'], ['impacto', 'Impacto']].map(([tpl, label]) => (
+                      <button key={tpl} className="yt-regen-btn" onClick={() => handleThumbnailMotion(tpl)} disabled={!!thumbBusy}
+                        style={{ flex: 1, fontSize: '0.75rem' }} title={`Genera la miniatura con la plantilla ${label}`}>
+                        {thumbBusy === `hf-${tpl}` ? 'Generando…' : label}
+                      </button>
+                    ))}
+                  </div>
+                  <p style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '6px', lineHeight: 1.3 }}>
+                    Usa el lado del personaje de arriba. La miniatura anterior se guarda como thumbnail-prev.png.
+                  </p>
+                  {metadata?.is_short && (metadata?.related_video ? (
+                    <button type="button" onClick={handleShortCoverRender} disabled={!!thumbBusy || !!metadata?.is_uploaded}
+                      title={metadata?.is_uploaded ? 'Ya está subido: no se re-renderiza' : 'Re-renderiza el short con esta miniatura como portada final'}
+                      style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.74rem', color: 'white', marginTop: '6px', width: '100%', fontWeight: 700, background: metadata?.is_uploaded ? '#374151' : '#db2777' }}>
+                      {thumbBusy === 'cover' ? 'Lanzando…' : '🎬 Meter portada en el vídeo'}
+                    </button>
+                  ) : (
+                    <p style={{ fontSize: '0.68rem', color: '#fbbf24', marginTop: '6px', lineHeight: 1.3 }}>
+                      Para que salga al final del short, vuelve a renderizarlo (Imágenes → Finalizar y Renderizar).
+                    </p>
+                  ))}
                 </div>
                 {metadata?.is_uploaded && (
                   <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '6px', lineHeight: 1.3 }}>

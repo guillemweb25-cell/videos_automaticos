@@ -9,6 +9,7 @@ import logging
 import asyncio
 import random
 import math
+import shutil
 from datetime import datetime
 from typing import List, Optional
 import requests
@@ -2425,6 +2426,78 @@ async def update_thumbnail_text(
 
     return {"ok": True, "url": f"/{url_rel}?t={int(datetime.now().timestamp())}"}
 
+
+class ThumbnailMotionRequest(BaseModel):
+    template: str = "epico"              # epico | documental | impacto (services/thumbnail_motion.py)
+    hook: Optional[str] = None           # "LÍNEA 1... LÍNEA 2"; si falta, el guardado del vídeo
+    char_side: Optional[str] = "right"   # dónde está el personaje en la imagen
+    kicker: Optional[str] = None
+    image: Optional[int] = None          # None = miniatura IA limpia; n = n-ésima imagen del vídeo
+
+
+@router.post("/{video_id}/thumbnail-motion")
+async def thumbnail_motion(video_id: int, req: ThumbnailMotionRequest, db: Session = Depends(get_db)):
+    """Miniatura con tipografía HTML (HyperFrames) sobre la imagen de ComfyUI o una del vídeo.
+    Sobrescribe output/thumbnail.png (copia previa en thumbnail-prev.png)."""
+    from app.services import thumbnail_motion as tm
+    from app.services.motion_documental import theme_for_channel
+
+    if req.template not in tm.TEMPLATES:
+        raise HTTPException(status_code=400, detail=f"Plantilla desconocida: {req.template}")
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    _require_motion_service()
+    base_dir = Path(video.base_dir)
+    out_dir = base_dir / "output"
+
+    images_json = base_dir / "image_prompts_all.json"
+    data = json.loads(images_json.read_text()) if images_json.exists() else {}
+    data.setdefault("thumbnail", {})
+    hook = (req.hook or "").strip() or data["thumbnail"].get("hook") or ""
+    if not hook:
+        raise HTTPException(status_code=400, detail="Escribe el texto de la miniatura")
+    if req.hook and images_json.exists():
+        data["thumbnail"]["hook"] = hook
+        images_json.write_text(json.dumps(data, indent=2))
+
+    video_imgs = sorted((base_dir / "images").glob("p*.png"))
+    clean = out_dir / "thumbnail-clean.png"
+    if req.image is not None and video_imgs:
+        main = video_imgs[req.image % len(video_imgs)]
+    elif clean.exists():
+        main = clean
+    elif video_imgs:
+        main = video_imgs[0]
+    else:
+        raise HTTPException(status_code=400, detail="El vídeo no tiene imágenes")
+    images = [main]
+
+    thumb = out_dir / "thumbnail.png"
+    if thumb.exists():
+        shutil.copy2(thumb, out_dir / "thumbnail-prev.png")
+    project_dir = base_dir / "thumb_motion"
+
+    # Short: miniatura vertical, que además será la portada de sus últimos fotogramas
+    # (marcador thumbnail.custom → el short promocional la usa y no la sobrescribe).
+    is_vertical = bool(video.is_short) or (video.height or 0) > (video.width or 0)
+    size = (1080, 1920) if is_vertical else (1280, 720)
+
+    def _work():
+        tm.build_thumbnail(project_dir, images, hook, req.template, theme_for_channel(base_dir.parent.name),
+                           size=size, char_side=req.char_side or "right", kicker=(req.kicker or "").strip())
+        tm.render_thumbnail(project_dir, thumb)
+        shutil.rmtree(project_dir, ignore_errors=True)
+        if is_vertical:
+            (out_dir / "thumbnail.custom").write_text(req.template)
+
+    try:
+        await asyncio.to_thread(_work)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)[:500])
+    return {"ok": True, "hook": hook, "image": str(main.name),
+            "url": f"/{video.base_dir}/output/thumbnail.png?t={int(datetime.now().timestamp())}"}
+
 @router.post("/{video_id}/seo")
 async def generate_seo(video_id: int, db: Session = Depends(get_db)):
     video = db.query(Video).filter(Video.id == video_id).first()
@@ -2478,6 +2551,8 @@ async def generate_seo(video_id: int, db: Session = Depends(get_db)):
 async def render_video(video_id: int, subtitles: bool = False, overlay: str | None = None, qr: bool = False, mode: str = "classic", db: Session = Depends(get_db)):
     if mode not in ("classic", "motion", "documental"):
         raise HTTPException(status_code=400, detail=f"Estilo de render desconocido: {mode}")
+    if mode != "classic":
+        _require_motion_service()
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -2709,6 +2784,208 @@ def _collect_render_inputs(base_dir: Path, durations: list):
     return image_paths, durs, audio_paths
 
 
+def _llm_client_for(video, db):
+    """(cliente OpenAI-compatible, modelo) según el proveedor LLM del vídeo, o (None, modelo)
+    si no hay API key (los directores de motion caen entonces a su heurística)."""
+    from openai import OpenAI
+    settings = get_user_settings_for_video(video, db)
+    provider = video.llm_provider or "openai"
+    key = (settings.grok_api_key if provider == "grok" else settings.openai_api_key) if settings else None
+    if not key:
+        return None, "gpt-4o-mini"
+    if provider == "grok":
+        return OpenAI(api_key=key, base_url="https://api.x.ai/v1"), "grok-4.20-beta"
+    return OpenAI(api_key=key), "gpt-4o-mini"
+
+
+def _make_promo_short(source_id: int, show_qr: bool = False, short_id: int | None = None) -> int:
+    """Short promocional (vídeo NUEVO, vertical) a partir de un vídeo ya generado: frases de su
+    narración recortadas del audio original + motion graphics (services/motion_promo.py).
+    short_id: regenera ese short (mismo registro, carpeta y promo_plan.json, sin LLM).
+    Devuelve el id del short. Bloqueante: llamar desde un hilo/tarea en segundo plano."""
+    from app.database import SessionLocal
+    from app.services import motion_engine, motion_promo
+    from app.services.motion_documental import theme_for_channel
+
+    db = SessionLocal()
+    short = None
+    try:
+        src = db.query(Video).filter(Video.id == source_id).first()
+        if not src:
+            raise RuntimeError(f"Vídeo {source_id} no encontrado")
+        src_dir = Path(src.base_dir)
+        words_path = src_dir / "output" / "subtitle_words.json"
+        combined = src_dir / "output" / "combined_audio.mp3"
+        if not words_path.exists() or not combined.exists():
+            raise RuntimeError("El vídeo necesita tiempos por palabra: renderízalo antes con subtítulos")
+        words = json.loads(words_path.read_text())
+        durations = json.loads((src_dir / "paragraphs_durations.json").read_text())
+        image_paths, durs, _ = _collect_render_inputs(src_dir, durations)
+        segments, t = [], 0.0
+        for p, d in zip(image_paths, durs):
+            segments.append({"path": p, "start": t, "duration": d})
+            t += d
+
+        if short_id:
+            short = db.query(Video).filter(Video.id == short_id).first()
+            if short.is_uploaded:
+                # El archivo local debe seguir siendo el que está en YouTube.
+                raise RuntimeError(f"El short {short_id} ya está subido a YouTube: no se regenera")
+            base_dir = Path(short.base_dir)
+            short.status = "rendering"
+            db.commit()
+        else:
+            short = Video(channel_id=src.channel_id, title=f"Short: {src.title or ''}"[:255], is_short=True,
+                          width=1080, height=1920, voice=src.voice, tts_provider=src.tts_provider,
+                          style=src.style, llm_provider=src.llm_provider, youtube_tags=src.youtube_tags,
+                          status="rendering", is_uploaded=False)
+            db.add(short)
+            db.commit()
+            db.refresh(short)
+            base_dir = src_dir.parent / f"{datetime.now():%Y-%m-%d}-{short.id:04d}-short-{slugify(src.title or 'video')}"
+            short.base_dir = str(base_dir)
+            db.commit()
+        out_dir = base_dir / "output"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        progress = out_dir / "render_progress.txt"
+        progress.write_text("2")
+
+        sentences = motion_promo.candidate_sentences(words)
+        plan_path = base_dir / "promo_plan.json"
+        if short_id and plan_path.exists():
+            saved = json.loads(plan_path.read_text(encoding="utf-8"))
+            keep = ("sentence", "visual", "number", "label", "chips", "items", "keywords")
+            plan = {**saved, "beats": [{k: b.get(k) for k in keep} for b in saved["beats"]]}
+        else:
+            client, model = _llm_client_for(src, db)
+            plan = motion_promo.plan_promo(sentences, src.youtube_title or src.title or "", client, model)
+        voice_wav = out_dir / "promo_voice.wav"
+        beats = motion_promo.build_voice(combined, sentences, plan, voice_wav)
+        plan_path.write_text(json.dumps(
+            {**plan, "source_video": src.id, "qr": show_qr,
+             "beats": [{k: v for k, v in b.items() if k != "words"} for b in beats]},
+            ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # Al regenerar se respeta el título/descripción que el usuario haya editado.
+        if not short_id or not (short.youtube_title or "").strip():
+            short.youtube_title = plan["short_title"][:100]
+            desc = plan["description"]
+            if src.youtube_video_id:
+                desc += f"\n\n▶ Vídeo completo: https://youtu.be/{src.youtube_video_id}"
+            short.youtube_description = _with_channel_header(src.channel, desc)
+            db.commit()
+        progress.write_text("5")
+
+        qr = None
+        if show_qr:
+            aff = (src.channel.affiliate_url or "").strip() if src.channel else ""
+            qr = {"url": aff} if aff else None
+        logo = src_dir.parent / "logo.png"
+        project_dir = base_dir / "motion_promo"
+        # Miniatura vertical hecha a mano (modal de YouTube) → portada final del short.
+        custom_cover = out_dir / "thumbnail.png" if (out_dir / "thumbnail.custom").exists() else None
+        _, total = motion_promo.build_composition(
+            project_dir, beats, segments, plan, theme_for_channel(src_dir.parent.name),
+            logo=logo if logo.exists() else None, long_title=src.youtube_title or src.title or "", qr=qr,
+            cover_image=custom_cover if custom_cover and custom_cover.exists() else None)
+        silent = out_dir / "__motion_silent.mp4"
+        motion_engine.render_project(project_dir, silent, fps=30, progress_file=progress)
+        progress.write_text("90")
+        music = sorted((src_dir.parent / "music").glob("*.mp3"))
+        motion_engine.mux_audio(silent, [voice_wav], out_dir / "final_video.mp4", total,
+                                bg_music_path=random.choice(music) if music else None,
+                                out_size=(1080, 1920), voice_volume=1.0, bg_music_volume=0.10)
+        silent.unlink(missing_ok=True)
+        # La portada fija del final (motion_promo.COVER_SECS) también como miniatura del short,
+        # salvo que ya sea una miniatura hecha a mano.
+        if not custom_cover:
+            import subprocess
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{total - motion_promo.COVER_SECS / 2:.2f}",
+                            "-i", str(out_dir / "final_video.mp4"), "-frames:v", "1", str(out_dir / "thumbnail.png")])
+        progress.write_text("100")
+        # Transacción nueva: si el backend se reinició durante el render, su recuperación de
+        # arranque pudo tocar esta fila (MariaDB rechaza actualizar sobre una lectura vieja).
+        db.rollback()
+        short = db.query(Video).filter(Video.id == short.id).first()
+        short.duration_seconds = total
+        short.status = "ready"
+        short.last_error = None
+        db.commit()
+        send_telegram(f"📱 Short promocional listo — vídeo #{short.id}\n{short.youtube_title}")
+        return short.id
+    except Exception as e:
+        if short is not None:
+            short.status = "failed"
+            short.last_error = str(e)[:1000]
+            db.commit()
+        raise
+    finally:
+        db.close()
+
+
+def _require_motion_service():
+    """503 claro si el servicio de render motion (host) no responde, antes de crear nada."""
+    base = os.getenv("MOTION_URL", "http://host.docker.internal:8610").rstrip("/")
+    try:
+        requests.get(f"{base}/health", timeout=4).raise_for_status()
+    except Exception:
+        raise HTTPException(status_code=503, detail="El servicio de render motion está apagado: "
+                            "arráncalo en el PC con motion\\start_motion.bat (o start_motion_hidden.vbs)")
+
+
+@router.post("/{video_id}/promo-short")
+async def create_promo_short(video_id: int, qr: bool = False, db: Session = Depends(get_db)):
+    """Lanza en segundo plano la creación del short promocional de un vídeo ya generado."""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    _require_motion_service()
+    if not (Path(video.base_dir) / "output" / "subtitle_words.json").exists():
+        raise HTTPException(status_code=400, detail="El vídeo necesita tiempos por palabra: renderízalo antes con subtítulos")
+
+    def _run():
+        try:
+            _make_promo_short(video_id, qr)
+        except Exception as e:
+            print(f"[promo] FALLÓ el short del vídeo {video_id}: {e}", flush=True)
+            send_telegram(f"❌ Short promocional FALLÓ — vídeo #{video_id}\n{type(e).__name__}: {e}")
+
+    asyncio.get_running_loop().run_in_executor(None, _run)
+    return {"ok": True, "background": True}
+
+
+@router.post("/{video_id}/promo-short/retry")
+async def retry_promo_short(video_id: int, db: Session = Depends(get_db)):
+    """Reintenta un short promocional fallido sobre el MISMO registro, con su promo_plan.json
+    (mismas frases y golpes; sin volver a llamar al LLM si el plan ya se guardó)."""
+    short = db.query(Video).filter(Video.id == video_id).first()
+    if not short or not short.is_short:
+        raise HTTPException(status_code=404, detail="Short no encontrado")
+    if short.is_uploaded:
+        raise HTTPException(status_code=400, detail="Este short ya está subido a YouTube: no se regenera")
+    plan_path = Path(short.base_dir) / "promo_plan.json"
+    if not plan_path.exists():
+        raise HTTPException(status_code=400, detail="Este short no tiene plan promocional guardado")
+    saved = json.loads(plan_path.read_text(encoding="utf-8"))
+    source_id = saved.get("source_video")
+    if not source_id:
+        raise HTTPException(status_code=400, detail="El plan no indica el vídeo de origen")
+    _require_motion_service()
+    short.status = "rendering"
+    short.last_error = None
+    db.commit()
+
+    def _run():
+        try:
+            _make_promo_short(source_id, bool(saved.get("qr")), short_id=video_id)
+        except Exception as e:
+            print(f"[promo] FALLÓ el reintento del short {video_id}: {e}", flush=True)
+            send_telegram(f"❌ Short promocional FALLÓ — vídeo #{video_id}\n{type(e).__name__}: {e}")
+
+    asyncio.get_running_loop().run_in_executor(None, _run)
+    return {"ok": True, "background": True}
+
+
 def _render_motion(video, db, image_paths, durs, audio_paths, out_path: Path, out_size,
                    bg_music_path, overlay_path, subtitles: bool, style: str = "motion",
                    show_qr: bool = False, limit_secs: float | None = None):
@@ -2718,7 +2995,6 @@ def _render_motion(video, db, image_paths, durs, audio_paths, out_path: Path, ou
     (services/motion_documental.py, con QR integrado si show_qr).
     limit_secs: solo los primeros N segundos y sin tarjetas finales (previews)."""
     from app.services import motion_engine
-    from openai import OpenAI
     if style == "documental":
         from app.services import motion_documental as styler
     else:
@@ -2779,15 +3055,7 @@ def _render_motion(video, db, image_paths, durs, audio_paths, out_path: Path, ou
                        "n_images": sum(1 for s in segments if s["para"] == pid),
                        "secs": sum(s["duration"] for s in segments if s["para"] == pid)}
                       for pid in para_ids]
-        client, model = None, "gpt-4o-mini"
-        settings = get_user_settings_for_video(video, db)
-        provider = video.llm_provider or "openai"
-        key = (settings.grok_api_key if provider == "grok" else settings.openai_api_key) if settings else None
-        if key:
-            if provider == "grok":
-                client, model = OpenAI(api_key=key, base_url="https://api.x.ai/v1"), "grok-4.20-beta"
-            else:
-                client = OpenAI(api_key=key)
+        client, model = _llm_client_for(video, db)
         scenes = [s for para in styler.plan_scenes(paragraphs, client, model) for s in para]
         plan_path.write_text(json.dumps(scenes, ensure_ascii=False, indent=2), encoding="utf-8")
     progress_file.write_text("5")
