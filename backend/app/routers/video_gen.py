@@ -220,7 +220,20 @@ def get_channel_videos(channel_id: int, db: Session = Depends(get_db)):
             v.rendered_at = datetime.fromtimestamp(fp.stat().st_mtime) if (fp and fp.exists()) else None
         except Exception:
             v.rendered_at = None
+    # Vídeo largo → su short promocional (si tiene), para no ofrecer crear otro.
+    shorts = {_promo_source_of(v): v.id for v in videos if v.is_short}
+    for v in videos:
+        v.promo_short_id = shorts.get(v.id)
     return videos
+
+
+def _promo_source_of(short) -> int | None:
+    """Id del vídeo largo del que sale un short promocional (su promo_plan.json), o None."""
+    try:
+        plan = json.loads((Path(short.base_dir) / "promo_plan.json").read_text(encoding="utf-8"))
+        return int(plan.get("source_video")) if plan.get("source_video") else None
+    except Exception:
+        return None
 
 @public_router.get("/{video_id}/thumbnail.png")
 def get_video_thumbnail(video_id: int, db: Session = Depends(get_db)):
@@ -2852,8 +2865,12 @@ def _make_promo_short(source_id: int, show_qr: bool = False, short_id: int | Non
 
         sentences = motion_promo.candidate_sentences(words)
         plan_path = base_dir / "promo_plan.json"
-        if short_id and plan_path.exists():
-            saved = json.loads(plan_path.read_text(encoding="utf-8"))
+        if not short_id:
+            # Vínculo con el vídeo largo desde el primer momento (evita un segundo short si
+            # se pulsa otra vez antes de que exista el plan completo).
+            plan_path.write_text(json.dumps({"source_video": src.id, "qr": show_qr}), encoding="utf-8")
+        saved = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else {}
+        if short_id and saved.get("beats"):
             keep = ("sentence", "visual", "number", "label", "chips", "items", "keywords")
             plan = {**saved, "beats": [{k: b.get(k) for k in keep} for b in saved["beats"]]}
         else:
@@ -2939,6 +2956,13 @@ async def create_promo_short(video_id: int, qr: bool = False, db: Session = Depe
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
+    if video.is_short:
+        raise HTTPException(status_code=400, detail="Este vídeo ya es un short")
+    # Un vídeo, un short promocional: si ya existe (aunque fallara), se reintenta ese.
+    for s in db.query(Video).filter(Video.channel_id == video.channel_id, Video.is_short == True).all():  # noqa: E712
+        if _promo_source_of(s) == video_id:
+            raise HTTPException(status_code=409, detail=f"Este vídeo ya tiene su short promocional (#{s.id}). "
+                                "Si falló, usa «Reintentar short» en esa fila.")
     _require_motion_service()
     if not (Path(video.base_dir) / "output" / "subtitle_words.json").exists():
         raise HTTPException(status_code=400, detail="El vídeo necesita tiempos por palabra: renderízalo antes con subtítulos")

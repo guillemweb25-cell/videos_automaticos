@@ -1036,7 +1036,12 @@ const ChannelDashboard: React.FC<ChannelDashboardProps> = ({ channel, onChannelU
                                   </button>
                                 )}
                                 <button className="btn-link" style={{ color: '#38bdf8' }} onClick={() => setPreviewVideo(g)}>▶ Previsualizar</button>
-                                {!g.is_short && (
+                                {!g.is_short && g.promo_short_id && (
+                                  <span style={{ color: '#f472b6', fontSize: '0.85em' }} title="Este vídeo ya tiene su short promocional">
+                                    📱 Short #{g.promo_short_id}
+                                  </span>
+                                )}
+                                {!g.is_short && !g.promo_short_id && (
                                   <button
                                     className="btn-link"
                                     style={{ color: '#f472b6' }}

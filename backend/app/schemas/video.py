@@ -43,6 +43,7 @@ class VideoResponse(VideoBase):
     created_at: datetime
     updated_at: datetime
     rendered_at: Optional[datetime] = None  # fecha del final_video.mp4 (si existe)
+    promo_short_id: Optional[int] = None    # short promocional ya creado a partir de este vídeo
 
     class Config:
         from_attributes = True

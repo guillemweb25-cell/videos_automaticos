@@ -23,6 +23,7 @@ export interface VideoResponse extends Video {
   llm_provider?: string;
   rendered_at?: string | null;
   is_short?: boolean;
+  promo_short_id?: number | null;  // short promocional ya creado desde este vídeo
 }
 
 export interface ParagraphPrompt {
