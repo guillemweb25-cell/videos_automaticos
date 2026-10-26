@@ -373,7 +373,9 @@ class ComfyService:
             latent_node = workflow[latent_node_id]
         else:
             for node in workflow.values():
-                if node.get("class_type") in ("EmptyLatentImage", "EmptySD3LatentImage", "EmptyLatentImage (rgthree)"):
+                # EmptyFlux2LatentImage = MOSS-Image (workflows/MOSS-Turbo.json, docs/moss-image-guia.md)
+                if node.get("class_type") in ("EmptyLatentImage", "EmptySD3LatentImage", "EmptyLatentImage (rgthree)",
+                                              "EmptyFlux2LatentImage"):
                     latent_node = node
                     break
         

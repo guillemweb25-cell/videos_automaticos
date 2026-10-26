@@ -1209,7 +1209,7 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                                 elif "onirico" in sty.lower() or "suenos" in sty.lower():
                                     current_wf = "Dreamy-Oniric.json"
                                 else:
-                                    current_wf = "Comic-Horror.json"
+                                    current_wf = "MOSS-Turbo.json"  # motor por defecto (docs/moss-image-guia.md)
 
                             result = await engine.generate_comfy_image(
                                 p_text, out_path,

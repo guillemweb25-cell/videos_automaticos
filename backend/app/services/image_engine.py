@@ -541,6 +541,12 @@ class ImageEngine:
         except:
             w, h = 1024, 1024
 
+        # MOSS-Image (workflows/MOSS-*.json): las LoRAs y el ControlNet OpenPose son de SDXL y
+        # romperían el grafo; MOSS coloca al sujeto siguiendo el propio prompt.
+        is_moss = any(n.get("class_type") == "EmptyFlux2LatentImage" for n in base_workflow.values())
+        if is_moss:
+            loras, trigger_words, pose_image = None, None, None
+
         # 3. Inject parameters into workflow
         workflow = self.comfy_service.prepare_workflow(
             base_workflow,

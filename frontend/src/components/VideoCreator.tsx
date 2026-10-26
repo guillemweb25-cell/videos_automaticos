@@ -41,7 +41,7 @@ const VideoCreator: React.FC<VideoCreatorProps> = ({ channelId, channel, initial
   const [availableOverlays, setAvailableOverlays] = useState<string[]>([]);
   const [selectedOverlay, setSelectedOverlay] = useState<string>('');
   const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
-  const [selectedWorkflow, setSelectedWorkflow] = useState<string>('Comic-Horror.json');
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string>('MOSS-Turbo.json'); // motor por defecto: MOSS-Image
   const stopRequested = useRef(false);
 
   // Persistence logic: Load draft on mount
