@@ -546,6 +546,11 @@ class ImageEngine:
         is_moss = any(n.get("class_type") == "EmptyFlux2LatentImage" for n in base_workflow.values())
         if is_moss:
             loras, trigger_words, pose_image = None, None, None
+            # Su codificador es un LLM: los pesos estilo SD "(texto:1.4)" y el markdown "**"
+            # de los prompts del LLM sobran (y pueden confundirlo).
+            import re as _re
+            prompt = _re.sub(r"\(([^()]*?):\s*[\d.]+\)", r"\1", prompt or "").replace("**", "")
+            prompt = _re.sub(r"\s{2,}", " ", prompt).strip()
 
         # 3. Inject parameters into workflow
         workflow = self.comfy_service.prepare_workflow(

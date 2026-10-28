@@ -49,7 +49,7 @@
         "2",
         0
       ],
-      "text": "Painterly illustration, traditional ink wash painting, hand-painted aesthetic, painterly brushwork visible, warm earthen palette, soft golden backlight, atmospheric haze, deep contrast, narrative dramatic composition, expressive emotions, textures, realistic skin, detailed hands. Every person has realistic anatomy and correctly formed hands with five fingers. People wear modest, fully covering clothing appropriate to the era. No text, no letters, no watermark, no frame."
+      "text": "Painterly illustration, traditional ink wash painting, hand-painted aesthetic, painterly brushwork visible, warm earthen palette, soft golden backlight, atmospheric haze, deep contrast, narrative dramatic composition, expressive emotions, textures, realistic skin, detailed hands. Show people only if the scene describes them; if anyone appears, they have realistic anatomy with correctly formed hands and wear modest, fully covering clothing appropriate to the era. No text, no letters, no watermark, no frame."
     },
     "class_type": "CLIPTextEncode",
     "_meta": {

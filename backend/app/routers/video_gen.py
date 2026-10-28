@@ -1294,7 +1294,8 @@ async def generate_images(video_id: int, req: ImageGenerationRequest, db: Sessio
                         hook, visual_prompt, thumbnail_path,
                         size=f"{vid.width}x{vid.height}",
                         channel_name=channel.name,
-                        workflow_name=getattr(vid, "workflow_name", None) or wf_n
+                        # Motor por defecto del canal (MOSS) antes que el de las imágenes del vídeo.
+                        workflow_name=channel.default_workflow or getattr(vid, "workflow_name", None) or wf_n
                     )
                 except Exception as e:
                     import traceback
@@ -2390,7 +2391,8 @@ async def generate_thumbnail_api(
         negative_prompt=neg,
         mode=gen_mode,
         channel_name=video.channel.name,
-        workflow_name=data.get("workflow_name"),
+        # Motor por defecto del canal (MOSS) aunque el vídeo sea antiguo y sus imágenes fueran SDXL.
+        workflow_name=(video.channel.default_workflow if video.channel else None) or data.get("workflow_name"),
         text_position=(req.position or "top"),
         char_side=(req.char_side or "right"),
         text_angle=req.text_angle,

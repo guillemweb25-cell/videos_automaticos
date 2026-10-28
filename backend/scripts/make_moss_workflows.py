@@ -55,8 +55,9 @@ def natural(style: str) -> str:
 
 def moss_text(style: str, channel_style: str = "") -> str:
     base = natural(style)
-    tail = ("Every person has realistic anatomy and correctly formed hands with five fingers. "
-            "People wear modest, fully covering clothing appropriate to the era.")
+    # En condicional: decirle "toda persona..." le invita a meter personas en cualquier escena.
+    tail = ("Show people only if the scene describes them; if anyone appears, they have realistic anatomy "
+            "with correctly formed hands and wear modest, fully covering clothing appropriate to the era.")
     # Canales que muestran números/letras (Grabovoi, cábala): sin "no text".
     if SHOWS_TEXT.search(style) or SHOWS_TEXT.search(channel_style or ""):
         tail += " No watermark, no frame."

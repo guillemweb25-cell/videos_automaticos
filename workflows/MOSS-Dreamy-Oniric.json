@@ -49,7 +49,7 @@
         "2",
         0
       ],
-      "text": "Surreal oniric dream, ethereal mystical atmosphere, dream-like, double exposure, glowing soft highlights, hazy fog, mystical lighting, transcendental, floating particles, painterly texture, soft focus, cinematic. Every person has realistic anatomy and correctly formed hands with five fingers. People wear modest, fully covering clothing appropriate to the era. No text, no letters, no watermark, no frame."
+      "text": "Surreal oniric dream, ethereal mystical atmosphere, dream-like, double exposure, glowing soft highlights, hazy fog, mystical lighting, transcendental, floating particles, painterly texture, soft focus, cinematic. Show people only if the scene describes them; if anyone appears, they have realistic anatomy with correctly formed hands and wear modest, fully covering clothing appropriate to the era. No text, no letters, no watermark, no frame."
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
